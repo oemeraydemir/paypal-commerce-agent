@@ -1,0 +1,44 @@
+{
+  "name": "paypal-commerce-agent-backend",
+  "version": "1.0.0",
+  "description": "PayPal Commerce Agent — Sprint 1 backend foundation + catalog (Node.js + TypeScript + Express)",
+  "main": "dist/src/server.js",
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc -p tsconfig.json && node -e \"const fs=require('fs');if(fs.existsSync('public')){fs.cpSync('public','dist/public',{recursive:true});console.log('copied public/ -> dist/public')}\"",
+    "start": "node dist/src/server.js",
+    "test": "jest --runInBand",
+    "test:unit": "jest tests/unit",
+    "test:integration": "jest tests/integration",
+    "test:smoke": "jest tests/smoke --runInBand",
+    "register-webhook": "ts-node scripts/register-webhook.ts",
+    "e2e:smoke": "ts-node --transpile-only scripts/e2e-smoke-test.ts"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "fast-json-stable-stringify": "^2.1.0",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "openai": "^4.56.0",
+    "uuid": "^9.0.1",
+    "zod": "^3.23.8",
+    "@paypal/paypal-server-sdk": "^2.5.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.12",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^20.14.0",
+    "@types/uuid": "^9.0.8",
+    "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "supertest": "^7.0.0",
+    "ts-jest": "^29.2.4",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4"
+  }
+}

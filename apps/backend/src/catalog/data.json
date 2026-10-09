@@ -1,0 +1,102 @@
+{
+  "business": "AI Café",
+  "currency": "EUR",
+  "products": [
+    {
+      "id": "veg_breakfast",
+      "name": "Vegetarian Breakfast",
+      "description": "Avocado toast, scrambled eggs, fresh salad, granola",
+      "priceMinor": 1000,
+      "currency": "EUR",
+      "category": "breakfast",
+      "tags": ["vegetarian", "healthy"],
+      "dietary": ["vegetarian"],
+      "occasion": ["breakfast", "workday"],
+      "available": true
+    },
+    {
+      "id": "coffee",
+      "name": "Fresh Brewed Coffee",
+      "description": "Single origin Arabica, freshly ground",
+      "priceMinor": 300,
+      "currency": "EUR",
+      "category": "drinks",
+      "tags": ["hot", "caffeine"],
+      "dietary": ["vegan"],
+      "occasion": ["breakfast", "workday", "meeting"],
+      "available": true
+    },
+    {
+      "id": "orange_juice",
+      "name": "Fresh Orange Juice",
+      "description": "Freshly squeezed, no sugar added",
+      "priceMinor": 350,
+      "currency": "EUR",
+      "category": "drinks",
+      "tags": ["cold", "healthy", "vegan"],
+      "dietary": ["vegan", "gluten-free"],
+      "occasion": ["breakfast", "refreshment"],
+      "available": true
+    },
+    {
+      "id": "premium_cake",
+      "name": "Premium Chocolate Cake",
+      "description": "Belgian chocolate, 3 layers, serves 8",
+      "priceMinor": 4500,
+      "currency": "EUR",
+      "category": "desserts",
+      "tags": ["birthday", "gift", "chocolate"],
+      "dietary": ["vegetarian"],
+      "occasion": ["birthday", "celebration", "gift"],
+      "available": true
+    },
+    {
+      "id": "gift_box",
+      "name": "Café Gift Box",
+      "description": "Artisan coffee beans, chocolate truffles, biscotti",
+      "priceMinor": 3500,
+      "currency": "EUR",
+      "category": "gifts",
+      "tags": ["gift", "birthday"],
+      "dietary": ["vegetarian"],
+      "occasion": ["birthday", "gift", "thank-you"],
+      "available": true
+    },
+    {
+      "id": "flowers_bouquet",
+      "name": "Fresh Flower Bouquet",
+      "description": "Seasonal flowers, beautifully arranged",
+      "priceMinor": 2500,
+      "currency": "EUR",
+      "category": "gifts",
+      "tags": ["gift", "birthday", "romantic"],
+      "dietary": [],
+      "occasion": ["birthday", "romantic", "anniversary"],
+      "available": true
+    },
+    {
+      "id": "pancakes",
+      "name": "Fluffy Pancakes",
+      "description": "Stack of 3 with maple syrup and fresh berries",
+      "priceMinor": 900,
+      "currency": "EUR",
+      "category": "breakfast",
+      "tags": ["sweet", "vegetarian"],
+      "dietary": ["vegetarian"],
+      "occasion": ["breakfast", "weekend", "brunch"],
+      "available": true
+    },
+    {
+      "id": "latte",
+      "name": "Café Latte",
+      "description": "Espresso with steamed milk, latte art",
+      "priceMinor": 450,
+      "currency": "EUR",
+      "category": "drinks",
+      "tags": ["hot", "caffeine", "milk"],
+      "dietary": ["vegetarian"],
+      "occasion": ["breakfast", "workday", "meeting"],
+      "available": true
+    }
+  ]
+}

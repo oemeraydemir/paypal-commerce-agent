@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Control Center</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/styles/ag-grid.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/styles/ag-theme-alpine.css"
+    />
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --border: #dfe7f1;
+        --text: #1f2937;
+        --muted: #6b7280;
+        --primary: #2d6cdf;
+        --success: #1f9d62;
+        --warning: #d97706;
+        --danger: #dc2626;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      .demo-banner {
+        background: #111827;
+        color: #f9fafb;
+        text-align: center;
+        padding: 12px 16px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .page {
+        max-width: 1400px;
+        margin: 24px auto;
+        padding: 0 16px 32px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 1.8rem;
+      }
+
+      .last-updated {
+        font-size: 0.85rem;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .last-updated .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--success);
+        display: inline-block;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(180px, 1fr));
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .stat-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        min-height: 120px;
+      }
+
+      .stat-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      .stat-value {
+        font-size: 1.9rem;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .stat-sub {
+        margin-top: 8px;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .grid-wrap {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 10px;
+      }
+
+      .ag-theme-alpine {
+        --ag-header-background-color: #f8fafc;
+        --ag-foreground-color: var(--text);
+        --ag-border-color: var(--border);
+        --ag-font-size: 13px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.76rem;
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+
+      .decision-AUTO_ALLOW { background: rgba(31, 157, 98, 0.12); color: var(--success); }
+      .decision-REQUIRE_CONFIRMATION { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
+      .decision-BLOCK { background: rgba(220, 38, 38, 0.12); color: var(--danger); }
+
+      .tooltip-wrap {
+        position: relative;
+        display: inline-block;
+        cursor: help;
+      }
+
+      .tooltip-wrap .tooltip-text {
+        visibility: hidden;
+        opacity: 0;
+        position: absolute;
+        bottom: 125%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1f2937;
+        color: #ffffff;
+        text-align: left;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 0.8rem;
+        white-space: pre-wrap;
+        width: max-content;
+        max-width: 320px;
+        z-index: 1000;
+        transition: opacity 0.2s;
+        pointer-events: none;
+      }
+
+      .tooltip-wrap:hover .tooltip-text {
+        visibility: visible;
+        opacity: 1;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.52);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .modal.visible { display: flex; }
+
+      .modal-content {
+        width: min(760px, 100%);
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 30px 70px rgba(15, 23, 42, 0.28);
+        max-height: 80vh;
+        overflow: auto;
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--border);
+        padding: 18px 20px;
+      }
+
+      .modal-header h3 {
+        margin: 0;
+      }
+
+      .modal-close {
+        border: none;
+        background: transparent;
+        font-size: 1.3rem;
+        cursor: pointer;
+      }
+
+      .modal-body {
+        padding: 20px;
+      }
+
+      .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(180px, 1fr));
+        gap: 12px 18px;
+        margin-bottom: 18px;
+      }
+
+      .detail-item {
+        background: #f8fafc;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+
+      .detail-item .label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        margin-bottom: 6px;
+      }
+
+      .detail-item .value {
+        font-weight: 700;
+        word-break: break-word;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th, td {
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        padding: 8px 6px;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="demo-banner">
+      Demo-only — public read-only Agent Control Center. No authentication by design (hackathon).
+    </div>
+
+    <div class="page">
+      <div class="header">
+        <h1>Agent Control Center</h1>
+        <div class="last-updated" id="lastUpdated">
+          <span class="dot"></span>
+          <span id="lastUpdatedText">Not yet refreshed</span>
+        </div>
+      </div>
+
+      <div class="stats" id="statsCards">
+        <div class="stat-card">
+          <div class="stat-label">Requests</div>
+          <p id="totalRequestsValue" class="stat-value">0</p>
+          <div class="stat-sub" id="totalRequestsSub">total policy evaluations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Allowed</div>
+          <p id="allowedValue" class="stat-value">0</p>
+          <div class="stat-sub" id="allowedSub">non-block evaluations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Blocked</div>
+          <p id="blockedValue" class="stat-value">0</p>
+          <div class="stat-sub" id="blockedSub">policy violations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Spent</div>
+          <p id="spentValue" class="stat-value">€0.00</p>
+          <div class="stat-sub" id="spentSub">captured from paid orders</div>
+        </div>
+      </div>
+
+      <div class="grid-wrap">
+        <div id="eventGrid" class="ag-theme-alpine" style="height: 620px; width: 100%;"></div>
+      </div>
+    </div>
+
+    <div id="eventModal" class="modal" aria-hidden="true">
+      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <h3 id="modalTitle">Policy Event Detail</h3>
+          <button type="button" class="modal-close" id="closeModal" aria-label="Close">&times;</button>
+        </div>
+        <div id="eventModalBody" class="modal-body"></div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+    <script>
+      (function () {
+        'use strict';
+
+        var VALID_DECISIONS = ['AUTO_ALLOW', 'REQUIRE_CONFIRMATION', 'BLOCK'];
+
+        function escapeHtml(value) {
+          if (value == null) return '';
+          var raw = String(value);
+          return raw.replace(/[&<>"']/g, function (char) {
+            return {
+              '&': '&amp;',
+              '<': '&lt;',
+              '>': '&gt;',
+              '"': '&quot;',
+              "'": '&#39;'
+            }[char];
+          });
+        }
+
+        function shortenId(id) {
+          if (!id) return '';
+          var str = String(id);
+          if (str.length <= 16) return str;
+          return str.slice(0, 8) + '…' + str.slice(-8);
+        }
+
+        function formatTimestamp(ts) {
+          if (!ts) return '—';
+          var d = new Date(ts);
+          return isNaN(d.getTime()) ? '—' : d.toLocaleString();
+        }
+
+        function formatViolations(violations) {
+          if (!violations || !violations.length) return '—';
+          return violations.map(function (v) {
+            return v.type || 'UNKNOWN';
+          }).join(', ');
+        }
+
+        function decisionRenderer(params) {
+          var value = (params.value || '').toUpperCase();
+          var normalized = VALID_DECISIONS.includes(value) ? value : 'AUTO_ALLOW';
+          var label = value;
+          if (value === 'REQUIRE_CONFIRMATION') label = 'REQUIRE CONFIRMATION';
+          return '<span class="badge decision-' + escapeHtml(normalized) + '">' + escapeHtml(label) + '</span>';
+        }
+
+        function shortIdRenderer(params) {
+          var value = params.value || '';
+          if (!value) return '—';
+          var short = shortenId(value);
+          return '<span title="' + escapeHtml(value) + '">' + escapeHtml(short) + '</span>';
+        }
+
+        function violationsRenderer(params) {
+          var violations = params.value || [];
+          if (!violations.length) return '<span>—</span>';
+
+          var types = violations.map(function (v) {
+            return v.type || 'UNKNOWN';
+          });
+          var safeTypes = types.join('; ');
+          var fullInfo = violations.map(function (v) {
+            return (v.type || 'UNKNOWN') + ': ' + (v.message || v.rule || '');
+          }).join('\n');
+
+          var tooltipText = escapeHtml(fullInfo);
+          return '<span class="tooltip-wrap" title="' + tooltipText + '">' + escapeHtml(safeTypes) + '</span>';
+        }
+
+        function timeRenderer(params) {
+          var value = params.value;
+          var short = formatTimestamp(value);
+          return '<span title="' + escapeHtml(value) + '">' + escapeHtml(short) + '</span>';
+        }
+
+        function moneyRenderer(params) {
+          var minor = params.data.amountMinor;
+          var currency = params.data.currency || 'EUR';
+          if (typeof minor !== 'number') return '—';
+          var formatted = (minor / 100).toLocaleString(undefined, {
+            style: 'currency',
+            currency: currency,
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          });
+          return '<span title="' + escapeHtml(currency + ' ' + minor) + '">' + escapeHtml(formatted) + '</span>';
+        }
+
+        function updateStats(stats) {
+          var total = Number(stats?.totalRequests || 0);
+          var allowed = Number(stats?.allowed || 0);
+          var blocked = Number(stats?.blocked || 0);
+          var spentFormatted = stats?.spentFormatted || formatMoneyFallback(0);
+
+          document.getElementById('totalRequestsValue').textContent = String(total);
+          document.getElementById('totalRequestsSub').textContent =
+            total + ' total policy evaluations';
+          document.getElementById('allowedValue').textContent = String(allowed);
+          document.getElementById('allowedSub').textContent =
+            allowed + ' non-block evaluations';
+          document.getElementById('blockedValue').textContent = String(blocked);
+          document.getElementById('blockedSub').textContent =
+            blocked + ' policy violations';
+          document.getElementById('spentValue').textContent = escapeHtml(stripped(spentFormatted));
+          document.getElementById('spentSub').textContent =
+            (stats?.spentMinor || 0) + ' ' + (stats?.spentFormatted ? '' : 'minor units') + ' from paid orders';
+        }
+
+        function formatMoneyFallback(minor) {
+          return (Number(minor || 0) / 100).toLocaleString(undefined, {
+            style: 'currency',
+            currency: 'EUR',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          });
+        }
+
+        function stripped(value) {
+          return value == null ? '' : String(value);
+        }
+
+        function setLastUpdated(text) {
+          document.getElementById('lastUpdatedText').textContent = text;
+        }
+
+        var gridOptions = {
+          columnDefs: [
+            {
+              headerName: 'Time',
+              field: 'timestamp',
+              cellRenderer: timeRenderer,
+              minWidth: 180,
+              sort: 'desc'
+            },
+            {
+              headerName: 'Agent',
+              field: 'agent',
+              minWidth: 130,
+              cellRenderer: shortIdRenderer
+            },
+            {
+              headerName: 'Cart ID',
+              field: 'cartId',
+              minWidth: 160,
+              cellRenderer: shortIdRenderer
+            },
+            {
+              headerName: 'Order ID',
+              field: 'orderId',
+              minWidth: 160,
+              cellRenderer: shortIdRenderer
+            },
+            {
+              headerName: 'Decision',
+              field: 'decision',
+              minWidth: 160,
+              cellRenderer: decisionRenderer,
+              filter: true
+            },
+            {
+              headerName: 'Amount',
+              minWidth: 120,
+              cellRenderer: moneyRenderer
+            },
+            {
+              headerName: 'Reason',
+              field: 'reason',
+              minWidth: 220,
+              cellRenderer: function (params) {
+                var val = params.value || '—';
+                return '<span title="' + escapeHtml(val) + '">' + escapeHtml(val) + '</span>';
+              }
+            },
+            {
+              headerName: 'Violations',
+              field: 'violatedRules',
+              minWidth: 180,
+              cellRenderer: violationsRenderer,
+              filter: true
+            }
+          ],
+          defaultColDef: { flex: 1, minWidth: 120, sortable: true, resizable: true, filter: true },
+          getRowId: function (params) {
+            return params.data.id;
+          },
+          rowData: [],
+          onRowClicked: function (params) {
+            openModal(params.data);
+          }
+        };
+
+        var gridApi = agGrid.createGrid(
+          document.getElementById('eventGrid'),
+          gridOptions
+        );
+
+        var modal = document.getElementById('eventModal');
+        var modalBody = document.getElementById('eventModalBody');
+        var closeModalBtn = document.getElementById('closeModal');
+
+        function openModal(event) {
+          if (!event) return;
+
+          var details = [
+            { label: 'Event ID', value: event.id },
+            { label: 'Timestamp', value: event.timestamp },
+            { label: 'User ID', value: event.userId },
+            { label: 'Session ID', value: event.sessionId || '—' },
+            { label: 'Cart ID', value: event.cartId },
+            { label: 'Order ID', value: event.orderId || '—' },
+            { label: 'Agent', value: event.agent },
+            { label: 'Amount', value: event.amountFormatted || event.amountMinor },
+            { label: 'Currency', value: event.currency },
+            { label: 'Decision', value: event.decision },
+            { label: 'Reason', value: event.reason || '—' }
+          ];
+
+          var detailHtml = details
+            .map(function (detail) {
+              return '<div class="detail-item">' +
+                '<span class="label">' + escapeHtml(detail.label) + '</span>' +
+                '<div class="value">' + escapeHtml(detail.value) + '</div>' +
+                '</div>';
+            })
+            .join('');
+
+          var violations = event.violatedRules || [];
+          var violationRows;
+          if (violations.length === 0) {
+            violationRows = '<tr><td colspan="4">—</td></tr>';
+          } else {
+            violationRows = violations
+              .map(function (v) {
+                return '<tr>' +
+                  '<td>' + escapeHtml(v.type || '—') + '</td>' +
+                  '<td>' + escapeHtml(v.rule || '—') + '</td>' +
+                  '<td>' + escapeHtml(JSON.stringify(v.expected)) + '</td>' +
+                  '<td>' + escapeHtml(v.message || '—') + '</td>' +
+                  '</tr>';
+              })
+              .join('');
+          }
+
+          var policySnapshot = event.policySnapshot || {};
+          var snapshotRows = Object.keys(policySnapshot)
+            .map(function (key) {
+              return '<tr>' +
+                '<td>' + escapeHtml(key) + '</td>' +
+                '<td>' + escapeHtml(JSON.stringify(policySnapshot[key])) + '</td>' +
+                '</tr>';
+            })
+            .join('') || '<tr><td colspan="2">No snapshot</td></tr>';
+
+          modalBody.innerHTML =
+            '<div class="detail-grid">' + detailHtml + '</div>' +
+            '<h4>Violations</h4>' +
+            '<table><thead><tr><th>Type</th><th>Rule</th><th>Expected</th><th>Message</th></tr></thead><tbody>' +
+            violationRows +
+            '</tbody></table>' +
+            '<h4 style="margin-top:18px;">Policy Snapshot</h4>' +
+            '<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>' +
+            snapshotRows +
+            '</tbody></table>';
+
+          modal.classList.add('visible');
+          modal.setAttribute('aria-hidden', 'false');
+        }
+
+        function closeModal() {
+          modal.classList.remove('visible');
+          modal.setAttribute('aria-hidden', 'true');
+        }
+
+        closeModalBtn.addEventListener('click', closeModal);
+        modal.addEventListener('click', function (event) {
+          if (event.target === modal) closeModal();
+        });
+
+        function updateLastUpdated() {
+          setLastUpdated('Updated ' + new Date().toLocaleTimeString());
+        }
+
+        async function refreshData() {
+          var [eventsResponse, statsResponse] = await Promise.all([
+            fetch('/api/policy-events?limit=100'),
+            fetch('/api/policy-events/stats')
+          ]);
+
+          if (!eventsResponse.ok) {
+            throw new Error('Policy events request failed: ' + eventsResponse.status);
+          }
+          if (!statsResponse.ok) {
+            throw new Error('Stats request failed: ' + statsResponse.status);
+          }
+
+          var eventsPayload = await eventsResponse.json();
+          var statsPayload = await statsResponse.json();
+
+          gridApi.setGridOption('rowData', eventsPayload.events || []);
+          updateStats(statsPayload);
+          updateLastUpdated();
+        }
+
+        // 5-second polling (R10).
+        refreshData().catch(function (err) {
+          console.error(err);
+          setLastUpdated('Error loading data');
+        });
+
+        setInterval(function () {
+          refreshData().catch(function (err) {
+            console.error(err);
+            setLastUpdated('Error loading data');
+          });
+        }, 5000);
+      })();
+    </script>
+  </body>
+</html>

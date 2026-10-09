@@ -1,0 +1,66 @@
+{
+  "info": {
+    "name": "PayPal Commerce Agent",
+    "description": "Sprint 1 backend API collection (health + catalog). No PayPal/OpenAI calls yet (S2/S4).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "health"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Catalog",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/catalog",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "catalog"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Get Product by Id",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/catalog/coffee",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "catalog", "coffee"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Search Catalog",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/catalog/search?category=drinks&maxPriceMinor=500",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "catalog", "search"],
+          "query": [
+            { "key": "category", "value": "drinks" },
+            { "key": "maxPriceMinor", "value": "500" }
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
