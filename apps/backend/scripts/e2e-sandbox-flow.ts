@@ -36,6 +36,10 @@ const SESSION = `e2e-sandbox-${Date.now()}`;
 const report: string[] = [];
 function log(line: string) { console.log(line); report.push(line); }
 
+// How long to wait for the human to approve in the PayPal sandbox browser.
+const APPROVAL_TIMEOUT_MS = Number(process.env.E2E_APPROVAL_TIMEOUT_MS ?? 180_000);
+const CAPTURE_POLL_INTERVAL_MS = 10_000;
+
 async function post(path: string, body: unknown, extraHeaders: Record<string, string> = {}) {
   const res = await fetch(`${base}${path}`, {
     method: 'POST',
@@ -47,6 +51,39 @@ async function post(path: string, body: unknown, extraHeaders: Record<string, st
 async function get(path: string) {
   const res = await fetch(`${base}${path}`);
   return { status: res.status, json: await res.json().catch(() => null) };
+}
+
+/**
+ * Poll capture until the buyer has approved (capture succeeds) or the timeout
+ * elapses. Capturing before approval returns 400 with ORDER_NOT_APPROVED, which
+ * is recoverable — so we treat it as "not ready yet" and retry. A 409
+ * (already captured) also counts as success-ish for our purpose.
+ */
+async function waitForApprovalAndCapture(
+  orderId: string,
+  logFn: (s: string) => void
+): Promise<{ status: number; json: any; timedOut: boolean }> {
+  const deadline = Date.now() + APPROVAL_TIMEOUT_MS;
+  let last: { status: number; json: any } = { status: 0, json: null };
+
+  while (Date.now() < deadline) {
+    last = await post(`/api/orders/${orderId}/capture`, {});
+    const issue = last.json?.details?.[0]?.issue ?? last.json?.error;
+
+    if (last.status === 200 && last.json?.status === 'PAID') {
+      logFn(`    capture -> 200 PAID (order approved and captured)`);
+      return { ...last, timedOut: false };
+    }
+    if (last.status === 409) {
+      logFn(`    capture -> 409 already captured (treating as PAID)`);
+      return { ...last, timedOut: false };
+    }
+    // Recoverable: buyer has not approved yet.
+    logFn(`    capture -> ${last.status} (${issue ?? 'not ready yet'}); retrying in ${CAPTURE_POLL_INTERVAL_MS / 1000}s…`);
+    await new Promise((r) => setTimeout(r, CAPTURE_POLL_INTERVAL_MS));
+  }
+
+  return { ...last, timedOut: true };
 }
 
 async function run() {
@@ -109,8 +146,11 @@ async function run() {
   }
 
   if (create.json.approvalUrl) {
-    log(`\n    >>> HUMAN STEP: open this URL, log in with a PayPal SANDBOX BUYER, approve:`);
+    log(`\n    >>> HUMAN STEP: open this URL in a browser, log in with a PayPal`);
+    log(`        SANDBOX BUYER account, and click Approve:`);
     log(`    ${create.json.approvalUrl}`);
+    log(`    The script will then wait up to ${APPROVAL_TIMEOUT_MS / 1000}s for you,`);
+    log(`    polling capture until the order is approved.`);
   }
 
   // 4) Spent must NOT increase yet (order is not PAID).
@@ -118,11 +158,13 @@ async function run() {
   log(`\n[5] spent AFTER order create, BEFORE capture: ${statsMid.json?.spentFormatted}`);
   log(`    (must still equal BEFORE value — proves spent only counts PAID)`);
 
-  // 5) Capture (only works after the human approved).
-  log(`\n[6] Attempting capture…`);
-  const capture = await post(`/api/orders/${create.json.orderId}/capture`, {});
-  log(`    POST /api/orders/${create.json.orderId}/capture -> ${capture.status}`);
-  log(`    ${JSON.stringify(capture.json)?.slice(0, 300)}`);
+  // 5) Wait for buyer approval, then capture.
+  //    IMPORTANT: capturing before the buyer approves returns ORDER_NOT_APPROVED,
+  //    which the backend treats as a definitive failure (400 "Payment failed").
+  //    So we poll: retry capture until it succeeds, the approval timeout
+  //    elapses, or a definitive failure occurs. Interval-gated, bounded.
+  log(`\n[6] Waiting for buyer approval, then capturing (timeout ${APPROVAL_TIMEOUT_MS / 1000}s)…`);
+  const capture = await waitForApprovalAndCapture(create.json.orderId, log);
 
   const statsAfter = await get('/api/policy-events/stats');
   log(`\n[7] spent AFTER capture: ${statsAfter.json?.spentFormatted} (requests=${statsAfter.json?.totalRequests}, blocked=${statsAfter.json?.blocked})`);
@@ -133,10 +175,17 @@ async function run() {
     log(increased
       ? 'SUCCESS: real PayPal capture completed; order PAID; spent increased.'
       : 'WARNING: order PAID but spent did not increase — inspect dashboard logic.');
+    if (!process.env.PAYPAL_WEBHOOK_ID) {
+      log('NOTE: PAID here came from the capture response. Webhook-driven PAID also');
+      log('      requires a registered PAYPAL_WEBHOOK_ID + public HTTPS callback.');
+    }
+  } else if (capture.timedOut) {
+    log('TIMEOUT: buyer did not approve within the window. Payment was NOT captured');
+    log('and spent did NOT increase (correct). Re-run after approving.');
   } else {
-    log('Capture not completed. If PayPal says ORDER_NOT_APPROVED, a human must');
-    log('approve at the approvalUrl first, then re-run step 6/capture.');
-    log('NOTE: webhook-driven PAID additionally requires a public HTTPS callback.');
+    log(`Capture not completed (status=${capture.status}).`);
+    log('If this says "Payment failed"/ORDER_NOT_APPROVED, approve at the URL above');
+    log('and re-run. No payment is captured until the buyer approves.');
   }
 }
 

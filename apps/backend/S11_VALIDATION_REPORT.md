@@ -1,27 +1,27 @@
 # S11 Doğrulama & Kapanış Raporu — AI Café (Agent Control Center)
 
-**Tarih:** 2026-10-09
-**Yürütücü:** WorkBuddy AI (emülatör/backend doğrulama oturumu)
+**Tarih:** 2026-10-09  
+**Yürütücü:** WorkBuddy AI (emülatör/backend doğrulama oturumu)  
 **Bağlam:** Kullanıcı S11'i kabul etti ve yeni kod sprint'i açmama kararı verdi. Hedef: S11'i kapatmak, S12 açmamak, ve "BUILD PHASE → DEMONSTRATION / VALIDATION PHASE" geçişini somut kanıtlarla desteklemek.
 
 ---
 
 ## 0. Yönetici Özeti (Verdict)
 
-| Madde | Durum | Not |
-|---|---|---|
-| `tsc --noEmit` | ✅ PASS | exit 0, 0 hata |
-| Test paketi | ⚠️ 141/143 PASS | 2 test `environment.test.ts` içinde **sadece bu sandbox'ın `spawnSync` kısıtı nedeniyle** fail oluyor (gerçek kod hatası değil). Mantık ayrıca doğrulandı. |
-| `spent` = gerçek `PAID` + unique dedup | ✅ DOĞRULANDI | Kod + test ile ispatlandı |
-| `AUTO_ALLOW / REQUIRE_CONFIRMATION / BLOCK` vocabulary | ✅ KORUNDU | `policy/domain.ts` union type |
-| `as any` ile storage-reset bypass | ✅ YOK | Sadece meşru `statusCode`/`rawBody` okumaları |
-| Dashboard gerçek event gösteriyor (fake seed yok) | ✅ DOĞRULANDI | Canlı: `totalRequests:0`, sadece "Demo-only" banner |
-| 5 saniyelik polling | ✅ MEVCUT | `dashboard.html` `setInterval(…, 5000)` |
-| Core modüller (policy/order/AI/PayPal/webhook) değişmedi | ✅ KOD İNCELEMESİ | S11 sadece Agent Control Center yüzeyine dokundu |
-| Gerçek PayPal Sandbox capture + webhook | ⛔ ÇALIŞTIRILAMADI | Bu ortamda `PAYPAL_*`/`OPENAI_*` credential yok; ağ yok |
-| Flutter emülatör (mobil uygulama) | ⛔ ÇALIŞTIRILAMADI | Flutter SDK bu ortamda yüklü değil |
-| Video kaydı (3 dk demo) | ⛔ ÜRETİLEMİYOR | Bu ortam video üretimi desteklemiyor — script + storyboard hazırlandı |
-| Render "live hosted demo verified" | ⚠️ KONFİG + BUILD DOĞRULANDI, CANLI DEPLOY KULLANICIYA KALIYOR | 2 deploy blocker BULUNDU ve DÜZELTİLDİ |
+| Madde                                                    | Durum                                                          | Not                                                                                                                                                        |
+| -------------------------------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tsc --noEmit`                                           | ✅ PASS                                                         | exit 0, 0 hata                                                                                                                                             |
+| Test paketi                                              | ⚠️ 141/143 PASS                                                | 2 test `environment.test.ts` içinde **sadece bu sandbox'ın `spawnSync` kısıtı nedeniyle** fail oluyor (gerçek kod hatası değil). Mantık ayrıca doğrulandı. |
+| `spent` = gerçek `PAID` + unique dedup                   | ✅ DOĞRULANDI                                                   | Kod + test ile ispatlandı                                                                                                                                  |
+| `AUTO_ALLOW / REQUIRE_CONFIRMATION / BLOCK` vocabulary   | ✅ KORUNDU                                                      | `policy/domain.ts` union type                                                                                                                              |
+| `as any` ile storage-reset bypass                        | ✅ YOK                                                          | Sadece meşru `statusCode`/`rawBody` okumaları                                                                                                              |
+| Dashboard gerçek event gösteriyor (fake seed yok)        | ✅ DOĞRULANDI                                                   | Canlı: `totalRequests:0`, sadece "Demo-only" banner                                                                                                        |
+| 5 saniyelik polling                                      | ✅ MEVCUT                                                       | `dashboard.html` `setInterval(…, 5000)`                                                                                                                    |
+| Core modüller (policy/order/AI/PayPal/webhook) değişmedi | ✅ KOD İNCELEMESİ                                               | S11 sadece Agent Control Center yüzeyine dokundu                                                                                                           |
+| Gerçek PayPal Sandbox capture + webhook                  | ⛔ ÇALIŞTIRILAMADI                                              | Bu ortamda `PAYPAL_*`/`OPENAI_*` credential yok; ağ yok                                                                                                    |
+| Flutter emülatör (mobil uygulama)                        | ⛔ ÇALIŞTIRILAMADI                                              | Flutter SDK bu ortamda yüklü değil                                                                                                                         |
+| Video kaydı (3 dk demo)                                  | ⛔ ÜRETİLEMİYOR                                                 | Bu ortam video üretimi desteklemiyor — script + storyboard hazırlandı                                                                                      |
+| Render "live hosted demo verified"                       | ⚠️ KONFİG + BUILD DOĞRULANDI, CANLI DEPLOY KULLANICIYA KALIYOR | 2 deploy blocker BULUNDU ve DÜZELTİLDİ                                                                                                                     |
 
 **Karar:** S11 **kapanır**. S12 **açılmaz**. Özellik eklemek yerine kanıt (demo + deploy) üretme fazına geçilir.
 
@@ -66,6 +66,7 @@ Kullanıcının "140/140" beklentisi bu ortamda **literal olarak karşılanmadı
 ```
 npx tsc --noEmit -p tsconfig.json   →   EXIT=0 (0 hata)
 ```
+
 `strict: true` aktif. Tip kontrolü temiz.
 
 ---
@@ -73,7 +74,9 @@ npx tsc --noEmit -p tsconfig.json   →   EXIT=0 (0 hata)
 ## 4. Kritik Kabul Noktaları — Tek Tek Doğrulama
 
 ### 4.1 `spent` artık `orderId` var diye sayılmıyor → gerçek `PAID` + unique dedup
+
 `src/routes/policy-events.ts:128-142`:
+
 ```ts
 // Spent: only orders in the terminal PAID state. Deduplicate by orderId
 // so one paid order contributes at most once (R3).
@@ -88,34 +91,45 @@ for (const event of events) {
   }
 }
 ```
+
 Ayrıca `tests/integration/e2e-demo-flow.test.ts` içinde **"Control Center shows no spending when order is not PAID"** testi: order `PAYMENT_PENDING` iken (yani `orderId` var ama `PAID` değil) `spentMinor` bekleniyor `0`. ✅ Bu, "sadece orderId var diye sayma" gereksiniminin kesin ispatıdır.
 
 ### 4.2 `AUTO_ALLOW / REQUIRE_CONFIRMATION / BLOCK` vocabulary korundu
+
 `src/policy/domain.ts:1-4`:
+
 ```ts
 export type PolicyDecision = 'AUTO_ALLOW' | 'REQUIRE_CONFIRMATION' | 'BLOCK';
 ```
+
 Tüm karar sınıfları domain'de ve dashboard CSS sınıflarında (`decision-AUTO_ALLOW`, `decision-BLOCK`, `decision-REQUIRE_CONFIRMATION`) birebir korunuyor. ✅
 
 ### 4.3 `as any` ile storage-reset bypass edilmedi
+
 Tüm `src` içinde `as any` sadece şu meşru yerlerde: `error-handler.ts` (`statusCode` okuma), `idempotency.ts` (`res.locals.responseBody`), `raw-body.ts`/`webhooks.ts` (`rawBody`). **`policy/storage.ts`, `orders/service.ts`, `policy/service.ts` içinde hiç `as any` yok.** Testlerdeki `orderService.reset()` / `policyStorage.reset()` çağrıları meşru `beforeEach` izolasyonudur, üretim kodu bypass'ı değildir. ✅
 
 ### 4.4 Dashboard gerçek policy event'leri gösteriyor; fake seed yok
+
 - `src/routes/dashboard.ts` sadece `/dashboard` → `/dashboard.html` redirect; event üretmez.
 - Canlı endpoint (aşağıda): `GET /api/policy-events` → `{"events":[],"total":0}`; `GET /api/policy-events/stats` → `spent: €0.00`. Yani **başlangıçta hiç event yok** — fake demo seed yok.
 - `dashboard.html` içinde tek "Demo-only — public read-only Agent Control Center" banner'ı var (bilgilendirme, sahte event değil). ✅
 
 ### 4.5 5 saniyelik polling mevcut
+
 `public/dashboard.html:624-635`:
+
 ```js
 // 5-second polling (R10).
 refreshData().catch(...);
 setInterval(function () { refreshData().catch(...); }, 5000);
 ```
+
 Canlı serviste `GET /dashboard.html` 200 döndü ve `setInterval` + `5-second polling` marker'ları mevcut. ✅
 
 ### 4.6 Core modüller değişmedi
+
 `src` içinde **hiç `S11` yorumu yok**; tüm S-markerları `S9`/`S10`. S11 dokunuşları yalnızca:
+
 - `src/routes/policy-events.ts` (yeni Agent Control Center API)
 - `src/routes/dashboard.ts` (redirect)
 - `public/dashboard.html` (AG Grid UI)
@@ -157,85 +171,85 @@ GET /dashboard.html  → 200, markerlar:
 `render.yaml` → `startCommand: npm start` → `node dist/server.js`. Ancak build (`tsc`, `rootDir` tanımsız + `tests` `include`'da) çıktıyı **`dist/src/server.js`** olarak veriyor. İki gerçek deploy blocker'ı:
 
 ### Blocker A — Yanlış entry noktası
+
 - `dist/server.js` **yok** → `npm start` Render'da `MODULE_NOT_FOUND` ile crash olurdu.
 - **Düzeltme:** `package.json` `main` ve `start` → `dist/src/server.js`.
 
 ### Blocker B — Statik dosyalar (dashboard) build sonrası kayboluyor
+
 - `src/app.ts:39`: `express.static(path.join(__dirname, '../public'))`.
 - Dev'de (`__dirname = src`) → `apps/backend/public` ✅. Build'de (`__dirname = dist/src`) → `dist/public` ❌ (yok) → `/dashboard.html` **404**.
 - E2E testi yalnızca ts-jest `src`'den çalıştığı için geçiyordu; **canlı/prod build'te dashboard açılmazdı.**
-- **Düzeltme:** `build` script'i artık `public/` klasörünü `dist/public`'a kopyalıyor:
+- **Düzeltme:** `build` script'i artık `public/` klasörünü `dist/public`'a kopyalıyor:  
   `"build": "tsc -p tsconfig.json && node -e \"...fs.cpSync('public','dist/public',{recursive:true})\""`
 
 ### Doğrulama (yeniden build + boot)
+
 ```
 npm run build → BUILD_EXIT=0, "copied public/ -> dist/public"
 GET /dashboard.html → 200  (önce 404'tü, şimdi düzeldi)
 ```
+
 `render.yaml` konfigürasyonu doğru: `NODE_ENV=production`, `PORT=10000`, `PAYPAL_ENABLED=true`, `PAYPAL_ENV=sandbox`, return/cancel URL'leri `RENDER_EXTERNAL_URL`'den türetiliyor (environment.test mantığı ile uyumlu). `PAYPAL_CLIENT_ID/SECRET/WEBHOOK_ID/OPENAI_API_KEY` `sync:false` → Render panelinden girilecek.
 
 **"Live hosted demo verified" durumu:** Build + local start bu ortamda doğrulandı. Ancak **gerçek Render deploy**, (1) kullanıcının Render hesabına push, (2) sandbox credential girişi, (3) public HTTPS webhook kaydı gerektirir — bunlar bu sandbox'ın dışında. Yani "config exists" → "build+start verified" aşamasına getirildi; "canlı public demo" adımı kullanıcıya kalıyor.
 
----
-
-## 7. Gerçek Sandbox E2E Akışı — Ne Kadarı Çalıştırıldı?
-
-Hedef akış: `AI request → BLOCK → retry → allowed cart → user confirmation → PayPal Sandbox → capture → webhook → PAID → Control Center`.
-
-| Adım | Bu ortamda | Kanıt |
-|---|---|---|
-| AI request / BLOCK / retry / REQUIRE_CONFIRMATION | ✅ Mantık | `e2e-demo-flow.test.ts` (3/3 PASS) gerçek kodu çalıştırır, mock PayPal/AI ile |
-| User confirmation → order create | ✅ Mantık | `routes/orders.ts` policy evaluation (BLOCK/ALLOW) kodu + test |
-| PayPal Sandbox capture | ⛔ | Credential + ağ yok; `/capture` 503 döner |
-| Webhook → PAID | ⛔ | Yukarıya bağlı; webhook route mevcut ama canlı tetiklenemedi |
-| Control Center `spent` güncellemesi | ✅ Mantık | Test: capture sonrası `spentMinor=1300`, capture öncesi `0` |
-
-**Özet:** Uçtan uca akışın **policy + Control Center kısmı** gerçek kod yürütmesiyle (jest) ispatlandı. **Ödeme (PayPal capture + webhook) kısmı** yalnızca gerçek sandbox credential'larla çalışır; bu ortamda mock'lanmış halde doğrulandı, canlı halde değil. Kullanıcının istediği gibi, "browser test / canlı PayPal" **validated** diye satılmadı — açıkça bu sınır belirtildi.
-
----
 
 ## 8. 3 Dakikalık Demo Script + Storyboard
 
 > Not: Bu ortam **video üretemiyor**. Aşağıdaki, çekim sırasında okunacak sıkı senaryodur; çekim Flutter emülatörü + tarayıcı (dashboard) ile yapılmalıdır.
 
 ### 0:00–0:20 — Problem
+
 > "AI agent'leri giderek artıyor ve alışveriş yapabiliyor. Ama bir AI'a ticarete erişim vermek tek bir soru doğuruyor: aslında ne satın almasına izin var?"
 
 ### 0:20–0:45 — Policy
+
 Ekran: Agent Control Center / policy. Göster:
+
 - **Max purchase: €20**
 - **Daily limit: €100**
 - **Alcohol: blocked**
+
 > "AI ödemeyi kontrol etmez. Açık policy'lerin içinde çalışır."
 
 ### 0:45–1:20 — AI BLOCK
-Kullanıcı: *"Breakfast for four, vegetarian, under €50."*
+
+Kullanıcı: *"Breakfast for four, vegetarian, under €50."*  
 AI €45 sepeti kurar. Policy: **BLOCK — MAX_PURCHASE_EXCEEDED**. Control Center'daki **BLOCK event** gösterilir.
 
 ### 1:20–1:50 — AI adapts
+
 AI uygun sepeti kurar: **€18.90 → REQUIRE_CONFIRMATION**. Kullanıcı: **Confirm**.
 
 ### 1:50–2:20 — PayPal
+
 PayPal Sandbox onay/capture → webhook → Order: **PAID**.
 
 ### 2:20–2:45 — Agent Control Center
+
 Dashboard:
+
 ```
 Requests   3
 Allowed    2
 Blocked    1
 Spent      €18.90
 ```
+
 Event:
+
 ```
 BLOCK  MAX_PURCHASE_EXCEEDED  €45.00
 AUTO_ALLOW / REQUIRE_CONFIRMATION  €18.90  orderId: ...
 ```
 
 ### 2:45–3:00 — Final
+
 > **"The AI can shop. Your policies decide what it can buy. And you still control the payment."**
 
 ### Storyboard (çekim planı)
+
 1. Flutter emülatör — sohbet ekranı (problem).
 2. Tarayıcı — dashboard policy kartları.
 3. Flutter — AI €45 sepeti + BLOCK toast.
@@ -249,6 +263,7 @@ AUTO_ALLOW / REQUIRE_CONFIRMATION  €18.90  orderId: ...
 ## 9. Bu Oturumda Yapılan Değişiklikler (deploy düzeltmeleri)
 
 `apps/backend/package.json`:
+
 - `"main"`: `dist/server.js` → `dist/src/server.js`
 - `"start"`: `node dist/server.js` → `node dist/src/server.js`
 - `"build"`: `tsc -p tsconfig.json` → `tsc ... && node -e "...fs.cpSync('public','dist/public',{recursive:true})"`
@@ -267,36 +282,4 @@ Bunlar **özellik değişikliği değil**, mevcut deploy'un gerçekten çalışm
   3. **Demo video:** Yukarıdaki 3 dk script ile çekim (bu ortamda üretilemez).
 - **Dürüst sınırlar (tekrar):** Flutter emülatör ve canlı PayPal/OpenAI bu sandbox'ta çalıştırılamadı; video üretimi desteklenmiyor. "Browser test validated" iddiası **yapılmadı**.
 
----
-
-## 11. EK — Faz 2: Deployment & Demo Doğrulama Hazırlığı (2026-10-09, ikinci oturum)
-
-S11 kapatıldıktan sonra "özellik ekleme → kanıt üretme" geçişi için yapılanlar:
-
-### 11.1 Git
-- Repo başlatıldı (`git init`), `.workbuddy-ai/` ignore edildi, `.env` git dışında kaldı (yalnızca `.env.example` + `.env.render.example` takipte).
-- Dal: `fix/render-deployment` · Commit: **`d613f34`** — "fix(deploy): correct Render entry path and ship dashboard assets in build".
-- İki deployment düzeltmesi (Bölüm 6) bu commit'te; `git show HEAD -- apps/backend/package.json` ile incelenebilir.
-
-### 11.2 Yeni doğrulama araçları (commit edildi)
-| Araç | İşlev | Durum |
-|---|---|---|
-| `scripts/verify-deployment.ts` | Canlı URL'i 8 maddede doğrular | ✅ yerelde 8/8 PASS |
-| `scripts/e2e-sandbox-flow.ts` | GERÇEK AI→policy→order→capture akışını sürer; eksik credential'da dürüstçe ABORT eder | ✅ guard doğrulandı |
-| `.github/workflows/ci.yml` | CI'da gerçek 143/143 + build artifact kontrolü | ✅ hazır |
-| `verify.sh` | Tek komut yerel doğrulama | ✅ hazır |
-| `.env.render.example` | Render env şablonu (secret yok) | ✅ hazır |
-| `DEPLOY_AND_DEMO_RUNBOOK.md` | Adım adım deploy+E2E+video runbook'u | ✅ hazır |
-
-### 11.3 Yerel smoke sonucu
-`npm run e2e:smoke` → **7/7 PASS** (health, catalog, orders, orders/stats, dashboard redirect, webhook health, webhook unsigned→401).
-
-### 11.4 Kalan işler (yalnızca kullanıcı yapabilir — hesap/secret/hardware)
-1. GitHub remote push (public repo).
-2. Render deploy + PayPal/OpenAI secret env + webhook kaydı.
-3. Gerçek sandbox E2E: AI BLOCK → retry → buyer approve → capture → webhook → PAID → dashboard `spent`.
-4. 3 dk demo videosu (kurgusuz) + `SUBMISSION.md` URL'leri.
-
-> Ayrım (kullanıcı vurgusu): mock'lu E2E testi **kontrol akışını** doğrular; gerçek PayPal capture/webhook'un çalıştığını tek başına kanıtlamaz. Bunu yalnızca gerçek sandbox + buyer akışı kanıtlar.
-</content>
 </invoke>
