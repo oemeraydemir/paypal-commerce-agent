@@ -266,5 +266,37 @@ Bunlar **özellik değişikliği değil**, mevcut deploy'un gerçekten çalışm
   2. **Render deploy:** Düzeltmeler uygulandı; kullanıcı Render hesabına push + credential girişi + webhook kaydı yapıp public URL'i doğrular.
   3. **Demo video:** Yukarıdaki 3 dk script ile çekim (bu ortamda üretilemez).
 - **Dürüst sınırlar (tekrar):** Flutter emülatör ve canlı PayPal/OpenAI bu sandbox'ta çalıştırılamadı; video üretimi desteklenmiyor. "Browser test validated" iddiası **yapılmadı**.
+
+---
+
+## 11. EK — Faz 2: Deployment & Demo Doğrulama Hazırlığı (2026-10-09, ikinci oturum)
+
+S11 kapatıldıktan sonra "özellik ekleme → kanıt üretme" geçişi için yapılanlar:
+
+### 11.1 Git
+- Repo başlatıldı (`git init`), `.workbuddy-ai/` ignore edildi, `.env` git dışında kaldı (yalnızca `.env.example` + `.env.render.example` takipte).
+- Dal: `fix/render-deployment` · Commit: **`d613f34`** — "fix(deploy): correct Render entry path and ship dashboard assets in build".
+- İki deployment düzeltmesi (Bölüm 6) bu commit'te; `git show HEAD -- apps/backend/package.json` ile incelenebilir.
+
+### 11.2 Yeni doğrulama araçları (commit edildi)
+| Araç | İşlev | Durum |
+|---|---|---|
+| `scripts/verify-deployment.ts` | Canlı URL'i 8 maddede doğrular | ✅ yerelde 8/8 PASS |
+| `scripts/e2e-sandbox-flow.ts` | GERÇEK AI→policy→order→capture akışını sürer; eksik credential'da dürüstçe ABORT eder | ✅ guard doğrulandı |
+| `.github/workflows/ci.yml` | CI'da gerçek 143/143 + build artifact kontrolü | ✅ hazır |
+| `verify.sh` | Tek komut yerel doğrulama | ✅ hazır |
+| `.env.render.example` | Render env şablonu (secret yok) | ✅ hazır |
+| `DEPLOY_AND_DEMO_RUNBOOK.md` | Adım adım deploy+E2E+video runbook'u | ✅ hazır |
+
+### 11.3 Yerel smoke sonucu
+`npm run e2e:smoke` → **7/7 PASS** (health, catalog, orders, orders/stats, dashboard redirect, webhook health, webhook unsigned→401).
+
+### 11.4 Kalan işler (yalnızca kullanıcı yapabilir — hesap/secret/hardware)
+1. GitHub remote push (public repo).
+2. Render deploy + PayPal/OpenAI secret env + webhook kaydı.
+3. Gerçek sandbox E2E: AI BLOCK → retry → buyer approve → capture → webhook → PAID → dashboard `spent`.
+4. 3 dk demo videosu (kurgusuz) + `SUBMISSION.md` URL'leri.
+
+> Ayrım (kullanıcı vurgusu): mock'lu E2E testi **kontrol akışını** doğrular; gerçek PayPal capture/webhook'un çalıştığını tek başına kanıtlamaz. Bunu yalnızca gerçek sandbox + buyer akışı kanıtlar.
 </content>
 </invoke>

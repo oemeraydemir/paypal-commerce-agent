@@ -12,7 +12,9 @@
     "test:integration": "jest tests/integration",
     "test:smoke": "jest tests/smoke --runInBand",
     "register-webhook": "ts-node scripts/register-webhook.ts",
-    "e2e:smoke": "ts-node --transpile-only scripts/e2e-smoke-test.ts"
+    "e2e:smoke": "ts-node --transpile-only scripts/e2e-smoke-test.ts",
+    "e2e:sandbox": "ts-node --transpile-only scripts/e2e-sandbox-flow.ts",
+    "verify:deployment": "ts-node --transpile-only scripts/verify-deployment.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",
