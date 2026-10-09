@@ -117,8 +117,14 @@ Script sırayla şunu yapar ve **her adımı ekrana yazar**:
 **Bölüm 3b — insan adımı** (pazarlık edilemez):
 1. Script'in yazdırdığı `approvalUrl`'i tarayıcıda aç.
 2. **PayPal Sandbox buyer** ile giriş yap ve **Approve** et.
-3. Script'te capture'ı tekrar çalıştır (veya Flutter app'ten Confirm).
+3. Script artık **otomatik olarak bekler** ve onay sonrası capture'ı yapar:
+   - `E2E_APPROVAL_TIMEOUT_MS` (varsayılan 180s) boyunca 10s'de bir capture'ı dener.
+   - Onay gelene kadar PayPal `ORDER_NOT_APPROVED` döner (geri kazanılabilir, script bekler).
+   - Onay sonrası `200 PAID` (veya `409 already captured`) ile başarı raporlar.
+   - Süre dolarsa dürüstçe `TIMEOUT` yazar ve **spent artmaz** (doğru davranış).
 4. `spent` değerinin **sadece** capture başarılı olduktan sonra arttığını doğrula.
+
+> **Neden bu düzeltme önemli:** Script'in ilk sürümü onaydan hemen sonra capture deniyordu; bu gerçek akışta `ORDER_NOT_APPROVED` → backend `400 Payment failed` (definitive failure) döndürür ve **asla `PAID`'e ulaşamazdı**. Bağımsız kaynak incelemesinde bulundu ve düzeltildi (commit `00209e3`).
 
 **Bölüm 3c — webhook ile `PAID`** (isteğe bağlı ama jüri için güçlü):
 - Webhook kayıtlıysa, capture sonrası PayPal `PAYMENT.CAPTURE.COMPLETED` gönderir → order `PAID`.
