@@ -1,6 +1,12 @@
-import { spawnSync } from 'child_process';
-import os from 'os';
-import path from 'path';
+import { env as _doNotUse } from '../../src/config/environment';
+
+// NOTE: This suite previously spawned a child Node process via `spawnSync` to
+// evaluate the real config module with a controlled environment. Child-process
+// spawning is blocked in some CI / sandbox environments, so those tests could
+// never execute their assertions there. We now evaluate the SAME real module
+// (src/config/environment.ts) IN-PROCESS with a controlled `process.env`.
+// The assertions below are unchanged — only the execution mechanism differs,
+// and the real application code is still exercised (no mocking of the logic).
 
 function loadPayPalEnvironment(overrides: Record<string, string | undefined>) {
   const env: NodeJS.ProcessEnv = {
@@ -15,24 +21,33 @@ function loadPayPalEnvironment(overrides: Record<string, string | undefined>) {
   delete env.PAYPAL_RETURN_URL;
   delete env.PAYPAL_CANCEL_URL;
 
-  const environmentModule = path.resolve(
-    __dirname,
-    '../../src/config/environment'
-  );
-  return spawnSync(
-    process.execPath,
-    [
-      '-r',
-      path.resolve(__dirname, '../../node_modules/ts-node/register'),
-      '-e',
-      `const { env } = require(${JSON.stringify(environmentModule)}); process.stdout.write(JSON.stringify({ returnUrl: env.paypal.PAYPAL_RETURN_URL, cancelUrl: env.paypal.PAYPAL_CANCEL_URL }));`,
-    ],
-    {
-      cwd: os.tmpdir(),
-      env,
-      encoding: 'utf8',
-    }
-  );
+  const prev = process.env;
+  let result: { status: number; stdout: string; stderr: string };
+  jest.resetModules();
+  try {
+    process.env = env;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require('../../src/config/environment');
+    result = {
+      status: 0,
+      stdout: JSON.stringify({
+        returnUrl: mod.env.paypal?.PAYPAL_RETURN_URL,
+        cancelUrl: mod.env.paypal?.PAYPAL_CANCEL_URL,
+      }),
+      stderr: '',
+    };
+  } catch (e: any) {
+    result = {
+      status: 1,
+      stdout: '',
+      // Include the Zod issue path so the "rejects a live environment" assertion
+      // can confirm which key was rejected.
+      stderr: (e?.message ?? '') + ' ' + (e?.issues ? JSON.stringify(e.issues) : ''),
+    };
+  } finally {
+    process.env = prev;
+  }
+  return result;
 }
 
 describe('sandbox environment configuration', () => {

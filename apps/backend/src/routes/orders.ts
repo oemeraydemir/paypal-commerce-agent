@@ -20,6 +20,13 @@ import {
   buildPolicyOutcome,
 } from '../policy/context-builder';
 import { PolicyEvaluation } from '../policy/domain';
+import { captureLock } from '../orders/capture-lock';
+import {
+  markOrderPaid,
+  markOrderPaymentFailed,
+  cancelUncapturedOrder,
+  settleFromPayPal,
+} from '../orders/payment-lifecycle';
 
 const router = Router();
 const orderService = OrderService.getInstance();
@@ -250,12 +257,13 @@ router.post('/orders/create', idempotency, async (req, res, next) => {
 });
 
 router.post('/orders/:orderId/capture', async (req, res, next) => {
+  const { orderId } = req.params;
+  let lockHeld = false;
   try {
     if (!env.isPayPalEnabled()) {
       throw new AppError(503, 'PayPal not configured');
     }
 
-    const { orderId } = req.params;
     const order = orderService.getById(orderId);
 
     if (!order) {
@@ -266,9 +274,21 @@ router.post('/orders/:orderId/capture', async (req, res, next) => {
       throw new AppError(400, 'Order has no PayPal order ID');
     }
 
+    // Idempotent retry: a webhook (or an earlier capture) already settled it.
+    if (order.status === OrderStatus.PAID) {
+      throw new AppError(409, 'Order already captured');
+    }
+
     if (order.status !== OrderStatus.PAYMENT_PENDING) {
       throw new AppError(400, `Order status is ${order.status}, cannot capture`);
     }
+
+    // One capture talking to PayPal at a time per order; also keeps the
+    // reservation reconciler away from an order whose capture is mid-flight.
+    if (!captureLock.acquire(orderId)) {
+      throw new AppError(409, 'Capture already in progress');
+    }
+    lockHeld = true;
 
     // FIX #6: map PayPal errors to HTTP status codes.
     let capture: any;
@@ -289,15 +309,33 @@ router.post('/orders/:orderId/capture', async (req, res, next) => {
       const paypalIssue = err?.details?.[0]?.issue;
 
       if (paypalIssue === 'ORDER_ALREADY_CAPTURED') {
-        throw new AppError(409, 'Order already captured');
+        // A previous capture succeeded at PayPal but we never saw the result
+        // (lost response / restart). Settle from PayPal's real state so the
+        // order becomes PAID and the reservation is confirmed; best effort.
+        let settled = false;
+        try {
+          const classification = await settleFromPayPal(order);
+          settled = classification.state === 'COMPLETED';
+        } catch {
+          // Lookup failed: leave everything untouched; the webhook or the
+          // reservation reconciler will settle it.
+        }
+        throw new AppError(409, 'Order already captured', { settled });
       }
       if (paypalIssue === 'INSTRUMENT_DECLINED') {
         // R15: a declined instrument is a definitive PayPal failure.
         definitiveFailure = true;
         paypalStatus = 'DECLINED';
       } else if (paypalIssue === 'ORDER_NOT_APPROVED') {
-        definitiveFailure = true;
-        paypalStatus = 'FAILED';
+        // The buyer has not approved yet (e.g. the app captured too early).
+        // This is RECOVERABLE: do not fail the order and do not touch the
+        // reservation; the client may approve in PayPal and retry. If the buyer
+        // never approves, the reservation TTL/reconciler cleans it up.
+        throw new AppError(
+          400,
+          'Order not approved yet. Approve the payment in PayPal, then retry.',
+          { paypalIssue: 'ORDER_NOT_APPROVED', retryable: true }
+        );
       } else {
         // R15: ambiguous transport/network error — do NOT release the reservation,
         // because the capture may have succeeded remotely.
@@ -319,13 +357,12 @@ router.post('/orders/:orderId/capture', async (req, res, next) => {
 
     // S10 (R15/R16): tie the daily-spend reservation to the definitive capture
     // outcome. Success -> confirm (pending -> spent); definitive failure ->
-    // cancel; ambiguous (network / pending) -> leave untouched.
-    if (order.reservationId) {
-      if (definitiveSuccess) {
-        dailySpendTracker.confirmReservation(order.reservationId);
-      } else if (definitiveFailure) {
-        dailySpendTracker.cancelReservation(order.reservationId);
-      }
+    // cancel; ambiguous (network / pending) -> leave untouched. Both calls are
+    // idempotent, so a webhook racing this response cannot double count.
+    if (definitiveSuccess) {
+      markOrderPaid(order, captureId !== 'unknown' ? captureId : undefined);
+    } else if (definitiveFailure) {
+      markOrderPaymentFailed(order);
     }
 
     if (definitiveFailure) {
@@ -336,12 +373,68 @@ router.post('/orders/:orderId/capture', async (req, res, next) => {
       );
     }
 
+    const settledOrder = orderService.getById(order.id) ?? order;
     res.json({
       orderId: order.id,
-      status: order.status,
-      paypalCaptureId: captureId,
+      status: settledOrder.status,
+      paypalCaptureId: settledOrder.paypalCaptureId ?? captureId,
       paypalStatus,
     });
+  } catch (err) {
+    next(err);
+  } finally {
+    if (lockHeld) captureLock.release(orderId);
+  }
+});
+
+// Explicit buyer/app cancellation of a not-yet-captured checkout. Releases the
+// daily-spend reservation, but only after PayPal confirms nothing was captured.
+// NOTE: like /capture this endpoint is not user-authenticated yet (Step 2).
+router.post('/orders/:orderId/cancel', async (req, res, next) => {
+  const { orderId } = req.params;
+  try {
+    if (!env.isPayPalEnabled()) {
+      throw new AppError(503, 'PayPal not configured');
+    }
+    const order = orderService.getById(orderId);
+    if (!order) {
+      throw new AppError(404, 'Order not found');
+    }
+    if (order.status === OrderStatus.PAID) {
+      throw new AppError(409, 'Order already captured');
+    }
+    if (order.status !== OrderStatus.PAYMENT_PENDING) {
+      // Already failed/cancelled: idempotent success.
+      return res.json({ orderId: order.id, status: order.status });
+    }
+    if (captureLock.isHeld(order.id)) {
+      throw new AppError(409, 'Capture in progress; cannot cancel');
+    }
+
+    if (order.paypalOrderId) {
+      let classification;
+      try {
+        classification = await settleFromPayPal(order);
+      } catch {
+        // Cannot prove nothing was captured: do not release.
+        throw new AppError(502, 'Could not verify PayPal order state; try again');
+      }
+      if (classification.state === 'COMPLETED') {
+        throw new AppError(409, 'Order already captured', { settled: true });
+      }
+      if (classification.state === 'DECLINED') {
+        return res.json({
+          orderId: order.id,
+          status: (orderService.getById(order.id) ?? order).status,
+        });
+      }
+      if (classification.state === 'CAPTURE_PENDING') {
+        throw new AppError(409, 'Payment is pending at PayPal; cannot cancel');
+      }
+    }
+
+    cancelUncapturedOrder(order, 'cancel');
+    res.json({ orderId: order.id, status: (orderService.getById(order.id) ?? order).status });
   } catch (err) {
     next(err);
   }

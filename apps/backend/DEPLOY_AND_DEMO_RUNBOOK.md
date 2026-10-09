@@ -154,9 +154,9 @@ Script sırayla şunu yapar ve **her adımı ekrana yazar**:
 | 0:00–0:20 | Problem (Flutter sohbet) | "AI agents can increasingly shop… what is it actually allowed to buy?" |
 | 0:20–0:45 | Dashboard policy kartları | Max purchase €20 · Daily limit €100 · Alcohol blocked |
 | 0:45–1:20 | AI €45 sepeti → **BLOCK** | Control Center'da BLOCK event (MAX_PURCHASE_EXCEEDED) |
-| 1:20–1:50 | AI adapte olur, **€18.90 → REQUIRE_CONFIRMATION** → Confirm | |
+| 1:20–1:50 | AI adapte olur, **€13.00 (veg breakfast + coffee) → REQUIRE_CONFIRMATION** → Confirm | |
 | 1:50–2:20 | PayPal Sandbox approve/capture → webhook → **PAID** | |
-| 2:20–2:45 | Dashboard: Requests 3 / Allowed 2 / Blocked 1 / **Spent €18.90** | BLOCK ve ALLOW event satırları |
+| 2:20–2:45 | Dashboard: Requests 3 / Allowed 2 / Blocked 1 / **Spent €13.00** | BLOCK ve ALLOW event satırları |
 | 2:45–3:00 | Final | "The AI can shop. Your policies decide what it can buy. And you still control the payment." |
 
 Çekim sonrası: `SUBMISSION.md` içine video URL + repo URL + canlı URL'yi yaz.

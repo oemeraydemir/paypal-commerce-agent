@@ -109,6 +109,43 @@ export class OrderService {
     return order;
   }
 
+  getByReservationId(reservationId: string): Order | undefined {
+    return [...orders.values()].find((order) => order.reservationId === reservationId);
+  }
+
+  // Gateway-confirmed payment. PayPal (verified webhook or a direct order
+  // lookup) is the source of truth for money: if it says the capture COMPLETED
+  // the order must become PAID even when we had locally failed/cancelled it
+  // (e.g. a reservation expired while the capture response was lost). This is
+  // deliberately NOT part of the TRANSITIONS table, which stays closed for
+  // terminal states. Idempotent.
+  reconcileLateCapture(id: string, captureId?: string): Order | undefined {
+    const order = orders.get(id);
+    if (!order) return undefined;
+
+    if (order.status === OrderStatus.PAID || order.status === OrderStatus.ORDER_CONFIRMED) {
+      if (captureId && !order.paypalCaptureId) {
+        order.paypalCaptureId = captureId;
+        order.updatedAt = new Date();
+      }
+      return order;
+    }
+    if (
+      order.status === OrderStatus.PAYMENT_PENDING ||
+      order.status === OrderStatus.PAYMENT_FAILED ||
+      order.status === OrderStatus.ORDER_CANCELLED
+    ) {
+      order.status = OrderStatus.PAID;
+      order.paypalStatus = 'COMPLETED';
+      if (captureId) order.paypalCaptureId = captureId;
+      order.updatedAt = new Date();
+      orders.set(id, order);
+      return order;
+    }
+    // Any other state is a programming error; reuse the validated path.
+    return this.updateStatus(id, OrderStatus.PAID);
+  }
+
   setPayPalOrderId(orderId: string, paypalOrderId: string): Order | undefined {
     const order = orders.get(orderId);
     if (!order) return undefined;
@@ -127,6 +164,17 @@ export class OrderService {
   ): Order | undefined {
     const order = orders.get(orderId);
     if (!order) return undefined;
+
+    // A PAID order is never downgraded by a late/duplicate capture response
+    // (e.g. a PENDING reply racing a COMPLETED webhook).
+    if (order.status === OrderStatus.PAID || order.status === OrderStatus.ORDER_CONFIRMED) {
+      if (captureId && captureId !== 'unknown' && !order.paypalCaptureId) {
+        order.paypalCaptureId = captureId;
+      }
+      order.updatedAt = new Date();
+      orders.set(orderId, order);
+      return order;
+    }
 
     order.paypalCaptureId = captureId;
     order.paypalStatus = paypalStatus;

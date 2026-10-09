@@ -11,6 +11,10 @@ const baseSchema = z.object({
   PORT: z.coerce.number().default(3000),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   PAYPAL_ENABLED: z.enum(['true', 'false']).default('false'),
+  // Reservation lifecycle (see src/orders/payment-lifecycle.ts).
+  RESERVATION_TTL_MS: z.coerce.number().int().positive().default(30 * 60 * 1000),
+  RESERVATION_MAX_AGE_MS: z.coerce.number().int().positive().default(24 * 60 * 60 * 1000),
+  RESERVATION_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(60 * 1000),
 });
 
 const paypalSchema = z.object({

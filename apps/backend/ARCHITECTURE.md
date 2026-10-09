@@ -87,3 +87,45 @@ This is enforced server-side and not by trusting client-supplied origin values. 
 - Client: Flutter app for chat and checkout
 - Dashboard: AG Grid 31.0.0 (CDN)
 - Storage: in-memory singleton order service
+
+
+## Reservation lifecycle and operational assumptions
+
+Daily-spend reservations are created in `POST /api/orders/create` before PayPal
+is contacted and are settled by `src/orders/payment-lifecycle.ts`. PayPal is
+the source of truth for money; every transition is idempotent.
+
+- Confirmed on a COMPLETED capture (capture response, `PAYMENT.CAPTURE.COMPLETED`
+  webhook, or a PayPal order lookup). Released on a definitive failure
+  (declined capture, `PAYMENT.CAPTURE.DENIED`, explicit cancel verified at PayPal).
+- Ambiguous outcomes (network error, PENDING capture, unknown status, failed
+  lookup) never release a reservation.
+- After `RESERVATION_TTL_MS` (default 30 min) a periodic sweep asks PayPal for the
+  real order state. Never-approved orders are expired and cancelled; the capture
+  route then refuses them. Orders PayPal reports as `APPROVED` (buyer mid-flow)
+  are kept until `RESERVATION_MAX_AGE_MS` (default 24 h), then expired and
+  cancelled. If a capture was nevertheless completed at PayPal, a late
+  webhook or lookup still marks the order PAID and books the spend.
+- A late capture response or webhook never moves a PAID order backwards.
+
+### Single-instance assumption
+
+All state (orders, reservations, webhook de-duplication, capture locks, rate
+limits) lives in the memory of ONE Node.js process. The capture lock and the
+sweeper's overlap guard are process-local; running two instances (horizontal
+scaling, rolling deploys with overlap) can double-process the same order. Run
+exactly one instance (the Render blueprint uses a single free-plan instance).
+
+### Known limits that require persistent storage
+
+- After a restart, a real PayPal payment whose order is no longer in memory
+  cannot be attached to an order. The webhook is acknowledged and an
+  `UNRECONCILED_PAYMENT_EVENT` error is logged; the payment is not reflected in
+  the app or the dashboard.
+- Reservations pending at restart are forgotten, so the daily limit can be
+  exceeded by orders that were pending at that moment.
+
+### Not verified against real PayPal
+
+The lifecycle is tested against simulated PayPal responses only. No real
+PayPal Sandbox run has been performed for it yet.

@@ -11,6 +11,8 @@ export interface PayPalClient {
   // FIX #1: PayPal's own idempotency via the PayPal-Request-Id header.
   createOrder(body: any, paypalRequestId: string): Promise<any>;
   captureOrder(orderId: string, paypalRequestId: string): Promise<any>;
+  // Read-only lookup of the real PayPal order state (used for reconciliation).
+  getOrder(orderId: string): Promise<any>;
   // S5: verify a webhook signature via PayPal's verify-webhook-signature API.
   // (NOT HMAC — PayPal validates against their own certificate.)
   verifyWebhookSignature(payload: any): Promise<any>;
@@ -64,6 +66,12 @@ class PayPalClientImpl implements PayPalClient {
       paypalRequestId, // FIX #1: PayPal's idempotency header
     };
     const response = await controller.captureOrder(request);
+    return response.result;
+  }
+
+  async getOrder(orderId: string): Promise<any> {
+    const controller = this.ensure();
+    const response = await controller.getOrder({ id: orderId });
     return response.result;
   }
 

@@ -17,6 +17,9 @@ environment variables from its deployment platform. Copy `.env.example` to
 | `PAYPAL_CANCEL_URL` | No | Android emulator callback | Defaults to the `RENDER_EXTERNAL_URL` cancellation route on Render. |
 | `PAYPAL_WEBHOOK_ID` | No | — | Sandbox webhook ID for signature verification. |
 | `OPENAI_API_KEY` | For AI shopping | — | Server-side OpenAI key; never add to Flutter or commit it. |
+| `RESERVATION_TTL_MS` | No | `1800000` (30 min) | Age after which a pending daily-spend reservation is checked against PayPal by the reconciler. Nothing is released before this, and never without a PayPal lookup (except orders that never reached PayPal). |
+| `RESERVATION_MAX_AGE_MS` | No | `86400000` (24 h) | Hard age after which an order that PayPal still reports as buyer-in-progress (`APPROVED`) is cancelled and its reservation released. |
+| `RESERVATION_SWEEP_INTERVAL_MS` | No | `60000` | How often the reconciler runs (only when PayPal is enabled). |
 
 The health endpoint (`GET /api/health`) reports whether the AI key and PayPal
 sandbox credentials are configured. It does not expose credentials.

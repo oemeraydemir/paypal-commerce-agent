@@ -4,6 +4,7 @@ import { OrderService } from '../orders/service';
 import { OrderStatus } from '../orders/domain';
 import { rawBodyMiddleware } from '../middleware/raw-body';
 import { env } from '../config/environment';
+import { markOrderPaid, markOrderPaymentFailed } from '../orders/payment-lifecycle';
 
 const router = Router();
 const orderService = OrderService.getInstance();
@@ -66,7 +67,22 @@ router.post('/webhooks/paypal', rawBodyMiddleware, async (req: Request, res: Res
 
     const order = orderService.getByPayPalOrderId(paypalOrderId);
     if (!order) {
-      console.warn(`No internal order found for PayPal Order ID: ${paypalOrderId}`);
+      if (
+        event.event_type === 'PAYMENT.CAPTURE.COMPLETED' ||
+        event.event_type === 'PAYMENT.CAPTURE.DENIED'
+      ) {
+        // A payment outcome we cannot attach to any order (typically: the
+        // in-memory state was lost on restart). The event is acknowledged so
+        // PayPal stops retrying, but the money movement is NOT reflected in
+        // this app. Make it impossible to miss in the logs.
+        console.error(
+          `UNRECONCILED_PAYMENT_EVENT type=${event.event_type} event=${event.id} ` +
+            `paypalOrder=${paypalOrderId} capture=${event.resource?.id ?? 'n/a'} ` +
+            `amount=${event.resource?.amount?.value ?? 'n/a'} ${event.resource?.amount?.currency_code ?? ''}`
+        );
+      } else {
+        console.warn(`No internal order found for PayPal Order ID: ${paypalOrderId}`);
+      }
       // Valid event, but we have no matching order — still mark processed.
       webhookService.markProcessed(event.id);
       return res.status(200).json({ message: 'Event processed (order not found)' });
@@ -77,12 +93,16 @@ router.post('/webhooks/paypal', rawBodyMiddleware, async (req: Request, res: Res
 
     try {
       if (eventType === 'PAYMENT.CAPTURE.COMPLETED') {
-        orderService.updateStatus(order.id, OrderStatus.PAID);
+        // Order -> PAID and reservation -> confirmed spend, both idempotent
+        // (a duplicate webhook or a capture-response race never double counts).
+        markOrderPaid(order, event.resource?.id);
         console.log(
           `Order ${order.id} marked PAID via webhook (PayPal Order: ${paypalOrderId})`
         );
       } else if (eventType === 'PAYMENT.CAPTURE.DENIED') {
-        orderService.updateStatus(order.id, OrderStatus.PAYMENT_FAILED);
+        // Definitive failure: fail the order (if still pending) and release the
+        // reservation. Never un-spends an already PAID order.
+        markOrderPaymentFailed(order);
         console.log(`Order ${order.id} marked PAYMENT_FAILED via webhook`);
       } else if (eventType === 'CHECKOUT.ORDER.APPROVED') {
         // Buyer approved the order but has not paid yet — no state change.
