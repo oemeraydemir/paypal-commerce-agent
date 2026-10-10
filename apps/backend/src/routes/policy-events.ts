@@ -6,6 +6,7 @@ import { formatMoney } from '../utils/money';
 import { currentBusiness } from '../config/business-config';
 import { AppError } from '../middleware/error-handler';
 import { PolicyDecision } from '../policy/domain';
+import { publicSessionRef } from '../session';
 
 const router = Router();
 const orderService = OrderService.getInstance();
@@ -55,8 +56,10 @@ function serializeEvent(event: any) {
   return {
     id: event.id,
     timestamp: event.timestamp,
-    userId: event.userId,
-    sessionId: event.sessionId ?? null,
+    // B1: the internal per-session `userId` is not exposed on this public,
+    // unauthenticated endpoint. The masked session ref below is enough for
+    // correlation without leaking the opaque user identifier.
+    sessionId: publicSessionRef(event.sessionId),
     cartId: event.cartId,
     orderId: event.orderId ?? null,
     agent: event.agent,

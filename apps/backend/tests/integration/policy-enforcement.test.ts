@@ -12,6 +12,7 @@ import { OrderStatus } from '../../src/orders/domain';
 import { policyStorage } from '../../src/policy/storage';
 import { dailySpendTracker } from '../../src/policy/daily-spend-tracker';
 import { defaultPolicy, getDemoUserId } from '../../src/policy/default-policy';
+import { newSession, resetSessionState, TestSession } from '../helpers/session';
 
 // Mock PayPal + OpenAI — NO real network calls in this suite.
 jest.mock('../../src/paypal/client', () => ({
@@ -30,7 +31,8 @@ const mockCreateOrder = paypalClient.createOrder as jest.Mock;
 const mockCaptureOrder = paypalClient.captureOrder as jest.Mock;
 const mockChat = aiClient.chat as jest.Mock;
 
-const USER_ID = getDemoUserId();
+const USER_ID = getDemoUserId(); // user of direct (non-HTTP) executeTool calls
+let sess: TestSession;
 
 const CREATED_PAYPAL = {
   id: 'MOCK_PAYPAL_ORDER_ID',
@@ -60,11 +62,14 @@ async function postCreate(
 ) {
   return request(app)
     .post('/api/orders/create')
+    .set(sess.headers)
     .set('Idempotency-Key', key)
-    .send({ sessionId, items, ...extra });
+    .send({ items, ...extra });
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  resetSessionState();
+  sess = await newSession(app);
   jest.clearAllMocks();
   orderService.reset();
   policyStorage.reset();
@@ -167,7 +172,7 @@ describe('S10 Policy Enforcement', () => {
       const res = await postCreate('auth-6', [{ productId: 'coffee', quantity: 1 }], 'key-auth-6');
 
       expect(res.status).toBe(200);
-      const events = policyStorage.getEvents(USER_ID);
+      const events = policyStorage.getEvents(sess.userId);
       const auth = events.find((e) => e.orderId !== undefined);
       expect(auth).toBeDefined();
       expect(auth?.decision).toBe('AUTO_ALLOW');
@@ -184,7 +189,7 @@ describe('S10 Policy Enforcement', () => {
     test('8. BLOCK creates no reservation', async () => {
       await postCreate('auth-8', [{ productId: 'premium_cake', quantity: 1 }], 'key-auth-8');
 
-      expect(dailySpendTracker.getPendingReservations(USER_ID)).toBe(0);
+      expect(dailySpendTracker.getPendingReservations(sess.userId)).toBe(0);
     });
 
     test('9. BLOCK creates no PayPal order', async () => {
@@ -198,7 +203,7 @@ describe('S10 Policy Enforcement', () => {
 
       expect(res.status).toBe(200);
       expect(mockCreateOrder).toHaveBeenCalledTimes(1);
-      expect(dailySpendTracker.getPendingReservations(USER_ID)).toBe(300);
+      expect(dailySpendTracker.getPendingReservations(sess.userId)).toBe(300);
     });
 
     test('11. PayPal create failure releases the reservation', async () => {
@@ -206,7 +211,7 @@ describe('S10 Policy Enforcement', () => {
       const res = await postCreate('auth-11', [{ productId: 'coffee', quantity: 1 }], 'key-auth-11');
 
       expect(res.status).toBe(500);
-      expect(dailySpendTracker.getPendingReservations(USER_ID)).toBe(0);
+      expect(dailySpendTracker.getPendingReservations(sess.userId)).toBe(0);
       const created = orderService.getAll().find((o) => o.status === OrderStatus.ORDER_CANCELLED);
       expect(created).toBeDefined();
     });
@@ -215,13 +220,13 @@ describe('S10 Policy Enforcement', () => {
       const res = await postCreate('auth-12', [{ productId: 'coffee', quantity: 1 }], 'key-auth-12');
       expect(res.status).toBe(200);
 
-      const capture = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
+      const capture = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
 
       expect(capture.status).toBe(200);
       expect(capture.body.status).toBe('PAID');
       expect(capture.body.paypalStatus).toBe('COMPLETED');
-      expect(dailySpendTracker.getSpentToday(USER_ID)).toBe(300);
-      expect(dailySpendTracker.getPendingReservations(USER_ID)).toBe(0);
+      expect(dailySpendTracker.getSpentToday(sess.userId)).toBe(300);
+      expect(dailySpendTracker.getPendingReservations(sess.userId)).toBe(0);
     });
 
     test('13. definitive PayPal capture failure releases reservation', async () => {
@@ -230,10 +235,10 @@ describe('S10 Policy Enforcement', () => {
         details: [{ issue: 'INSTRUMENT_DECLINED' }],
       });
 
-      const capture = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
+      const capture = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
 
       expect(capture.status).toBe(402);
-      expect(dailySpendTracker.getPendingReservations(USER_ID)).toBe(0);
+      expect(dailySpendTracker.getPendingReservations(sess.userId)).toBe(0);
       expect(orderService.getById(res.body.orderId)?.status).toBe(OrderStatus.PAYMENT_FAILED);
     });
 
@@ -241,11 +246,11 @@ describe('S10 Policy Enforcement', () => {
       const res = await postCreate('auth-14', [{ productId: 'coffee', quantity: 1 }], 'key-auth-14');
       mockCaptureOrder.mockRejectedValueOnce(new Error('network down'));
 
-      const capture = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
+      const capture = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
 
       expect(capture.status).toBe(502);
       // Reservation is intentionally LEFT pending — the capture may have succeeded remotely.
-      expect(dailySpendTracker.getPendingReservations(USER_ID)).toBe(300);
+      expect(dailySpendTracker.getPendingReservations(sess.userId)).toBe(300);
       expect(orderService.getById(res.body.orderId)?.status).toBe(OrderStatus.PAYMENT_PENDING);
     });
   });
@@ -257,9 +262,9 @@ describe('S10 Policy Enforcement', () => {
     test('15. client-supplied policyDecision is ignored', async () => {
       const res = await request(app)
         .post('/api/orders/create')
+        .set(sess.headers)
         .set('Idempotency-Key', 'key-sec-15')
         .send({
-          sessionId: 'sec-15',
           items: [{ productId: 'coffee', quantity: 1 }],
           policyDecision: 'BLOCK',
         });
@@ -270,9 +275,9 @@ describe('S10 Policy Enforcement', () => {
     test('16. client-supplied origin is ignored', async () => {
       const res = await request(app)
         .post('/api/orders/create')
+        .set(sess.headers)
         .set('Idempotency-Key', 'key-sec-16')
         .send({
-          sessionId: 'sec-16',
           items: [{ productId: 'coffee', quantity: 1 }],
           origin: 'AI_AGENT',
         });
@@ -282,17 +287,18 @@ describe('S10 Policy Enforcement', () => {
     });
 
     test('17. server derives AI origin from trusted session state', async () => {
-      markSessionAIPrepared('sec-17');
+      markSessionAIPrepared(sess.sessionId);
 
       const res = await request(app)
         .post('/api/orders/create')
+        .set(sess.headers)
         .set('Idempotency-Key', 'key-sec-17')
-        .send({ sessionId: 'sec-17', items: [{ productId: 'coffee', quantity: 1 }] });
+        .send({ items: [{ productId: 'coffee', quantity: 1 }] });
 
       expect(res.status).toBe(200);
       expect(res.body.origin).toBe('AI_AGENT');
       // The marker is consumed (one-time) — a second order is HUMAN.
-      expect(consumeAIPreparedSession('sec-17')).toBe(false);
+      expect(consumeAIPreparedSession(sess.sessionId)).toBe(false);
     });
   });
 
@@ -301,13 +307,13 @@ describe('S10 Policy Enforcement', () => {
   // ------------------------------------------------------------------
   describe('Daily limit & reservation lifecycle', () => {
     test('18. pending reservations count toward the daily limit', async () => {
-      policyStorage.setPolicy({ ...defaultPolicy, dailySpendLimitMinor: 1000 });
+      policyStorage.setPolicy({ ...defaultPolicy, userId: sess.userId, dailySpendLimitMinor: 1000 });
 
       // Three orders of 300 each (pending 0→300→600→900, all allowed).
       await postCreate('dl-18a', [{ productId: 'coffee', quantity: 1 }], 'key-dl-18a');
       await postCreate('dl-18b', [{ productId: 'coffee', quantity: 1 }], 'key-dl-18b');
       await postCreate('dl-18c', [{ productId: 'coffee', quantity: 1 }], 'key-dl-18c');
-      expect(dailySpendTracker.getPendingReservations(USER_ID)).toBe(900);
+      expect(dailySpendTracker.getPendingReservations(sess.userId)).toBe(900);
 
       // 4th order: projected 0 + 900 (pending) + 300 = 1200 > 1000 → policy BLOCK.
       const res = await postCreate('dl-18d', [{ productId: 'coffee', quantity: 1 }], 'key-dl-18d');
@@ -365,9 +371,9 @@ describe('S10 Policy Enforcement', () => {
         .mockResolvedValueOnce(msg('Here is your cart, ready to checkout.', null));
 
       const res = await request(app)
-        .post('/api/ai/chat')
+        .post('/api/ai/chat').set(sess.headers)
         .set('Idempotency-Key', 'ai-21')
-        .send({ sessionId: 'retry-21', message: 'Breakfast for 4, vegetarian' });
+        .send({ message: 'Breakfast for 4, vegetarian' });
 
       expect(res.status).toBe(200);
       expect(res.body.checkoutReady).toBe(true);
@@ -388,8 +394,8 @@ describe('S10 Policy Enforcement', () => {
         );
 
       const res = await request(app)
-        .post('/api/ai/chat')
-        .send({ sessionId: 'retry-22', message: 'I want the most expensive cake' });
+        .post('/api/ai/chat').set(sess.headers)
+        .send({ message: 'I want the most expensive cake' });
 
       expect(res.status).toBe(200);
       // The service returns its own explanation after the 3rd BLOCK; no 4th call.
@@ -408,8 +414,8 @@ describe('S10 Policy Enforcement', () => {
         .mockResolvedValueOnce(msg('Done', null));
 
       const res = await request(app)
-        .post('/api/ai/chat')
-        .send({ sessionId: 'retry-23', message: 'find something cheaper' });
+        .post('/api/ai/chat').set(sess.headers)
+        .send({ message: 'find something cheaper' });
 
       expect(res.status).toBe(200);
       expect(res.body.checkoutReady).toBe(true);
@@ -430,8 +436,8 @@ describe('S10 Policy Enforcement', () => {
         );
 
       const res = await request(app)
-        .post('/api/ai/chat')
-        .send({ sessionId: 'retry-24', message: 'I keep wanting expensive things' });
+        .post('/api/ai/chat').set(sess.headers)
+        .send({ message: 'I keep wanting expensive things' });
 
       expect(res.status).toBe(200);
       expect(res.body.checkoutReady).toBe(false);
@@ -462,7 +468,7 @@ describe('S10 Policy Enforcement', () => {
       const res = await postCreate('event-26', [{ productId: 'coffee', quantity: 1 }], 'key-event-26');
       expect(res.status).toBe(200);
 
-      const events = policyStorage.getEvents(USER_ID);
+      const events = policyStorage.getEvents(sess.userId);
       const auth = events.find((e) => e.orderId === res.body.orderId);
       expect(auth).toBeDefined();
       expect(auth?.cartId).toBeDefined();
@@ -472,7 +478,7 @@ describe('S10 Policy Enforcement', () => {
     test('27. reservation failure creates an authoritative BLOCK event', async () => {
       // Disabled policy => AUTO_ALLOW for the rules, but tryReserve still
       // enforces the (now low) daily budget → reservation failure (R20).
-      policyStorage.setPolicy({ ...defaultPolicy, enabled: false, dailySpendLimitMinor: 500 });
+      policyStorage.setPolicy({ ...defaultPolicy, userId: sess.userId, enabled: false, dailySpendLimitMinor: 500 });
 
       const res = await postCreate(
         'event-27',
@@ -481,7 +487,7 @@ describe('S10 Policy Enforcement', () => {
       );
 
       expect(res.status).toBe(403);
-      const events = policyStorage.getEvents(USER_ID);
+      const events = policyStorage.getEvents(sess.userId);
       const deny = events.find((e) => e.decision === 'BLOCK');
       expect(deny).toBeDefined();
       expect(deny?.orderId).toBeUndefined();

@@ -6,6 +6,7 @@ import 'package:flutter_app/providers/checkout_provider.dart';
 import 'package:flutter_app/providers/shopper_profile_provider.dart';
 import 'package:flutter_app/screens/chat_screen.dart';
 import 'package:flutter_app/services/api_service.dart';
+import 'package:flutter_app/services/secure_session_storage.dart';
 
 void main() => runApp(const MyApp());
 
@@ -18,7 +19,7 @@ class MyApp extends StatelessWidget {
       providers: [
         // Single HTTP client shared by both providers.
         Provider<ApiService>(
-          create: (_) => ApiService(),
+          create: (_) => ApiService(storage: SecureSessionStorage()),
           dispose: (_, api) => api.dispose(),
         ),
         ChangeNotifierProvider<ChatProvider>(

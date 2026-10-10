@@ -4,7 +4,7 @@ import { paypalClient } from '../../src/paypal/client';
 import { aiClient } from '../../src/ai/client';
 import { executeTool } from '../../src/ai/tool-executor';
 import { OrderService } from '../../src/orders/service';
-import { getDemoUserId } from '../../src/policy/default-policy';
+import { newSession, resetSessionState, TestSession } from '../helpers/session';
 import { policyStorage } from '../../src/policy/storage';
 import { dailySpendTracker } from '../../src/policy/daily-spend-tracker';
 
@@ -24,7 +24,7 @@ const mockCreateOrder = paypalClient.createOrder as jest.Mock;
 const mockCaptureOrder = paypalClient.captureOrder as jest.Mock;
 const mockChat = aiClient.chat as jest.Mock;
 
-const USER_ID = getDemoUserId();
+let sess: TestSession;
 
 const CREATED_PAYPAL = {
   id: 'PAYPAL-ORDER-001',
@@ -49,7 +49,9 @@ const toolCall = (id: string, name: string, args: any) => ({
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('S11 E2E: Agent Control Center Full Demo Flow', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    resetSessionState();
+    sess = await newSession(app);
     jest.clearAllMocks();
     orderService.reset();
     policyStorage.reset();
@@ -74,11 +76,11 @@ describe('S11 E2E: Agent Control Center Full Demo Flow', () => {
       'prepare_cart',
       { items: [{ productId: 'premium_cake', quantity: 1 }] },
       { dietary: [] },
-      { sessionId: 'e2e-step1' }
+      { sessionId: sess.sessionId, userId: sess.userId }
     );
 
     // Verify BLOCK event was recorded
-    let events = policyStorage.getEvents(USER_ID);
+    let events = policyStorage.getEvents(sess.userId);
     expect(events).toHaveLength(1);
     expect(events[0].decision).toBe('BLOCK');
     expect(events[0].agent).toBe('AI_AGENT');
@@ -105,11 +107,11 @@ describe('S11 E2E: Agent Control Center Full Demo Flow', () => {
         ],
       },
       { dietary: [] },
-      { sessionId: 'e2e-step2' }
+      { sessionId: sess.sessionId, userId: sess.userId }
     );
 
     // Verify REQUIRE_CONFIRMATION event was recorded
-    events = policyStorage.getEvents(USER_ID);
+    events = policyStorage.getEvents(sess.userId);
     const confirmationEvent = events.find(
       (e) => e.decision === 'REQUIRE_CONFIRMATION'
     );
@@ -119,9 +121,9 @@ describe('S11 E2E: Agent Control Center Full Demo Flow', () => {
     // ── Step 3: User confirms → order creation via API ──
     const createRes = await request(app)
       .post('/api/orders/create')
+      .set(sess.headers)
       .set('Idempotency-Key', 'e2e-order-key')
       .send({
-        sessionId: 'e2e-step2',
         items: [{ productId: 'veg_breakfast', quantity: 1 }, { productId: 'coffee', quantity: 1 }],
       });
 
@@ -129,9 +131,9 @@ describe('S11 E2E: Agent Control Center Full Demo Flow', () => {
     expect(mockCreateOrder).toHaveBeenCalledTimes(1);
 
     // ── Step 4: PayPal capture → PAID ──
-    const captureRes = await request(app).post(
-      `/api/orders/${createRes.body.orderId}/capture`
-    );
+    const captureRes = await request(app)
+      .post(`/api/orders/${createRes.body.orderId}/capture`)
+      .set(sess.headers);
     expect(captureRes.status).toBe(200);
     expect(captureRes.body.paypalStatus).toBe('COMPLETED');
     expect(captureRes.body.status).toBe('PAID');
@@ -183,7 +185,7 @@ describe('S11 E2E: Agent Control Center Full Demo Flow', () => {
     // ── Step 7: userId filtering on stats ──
     const filteredStatsRes = await request(app)
       .get('/api/policy-events/stats')
-      .query({ userId: USER_ID });
+      .query({ userId: sess.userId });
     expect(filteredStatsRes.status).toBe(200);
     expect(filteredStatsRes.body.totalRequests).toBe(3);
 
@@ -199,8 +201,9 @@ describe('S11 E2E: Agent Control Center Full Demo Flow', () => {
     // Create an order (ALLOW) but do NOT capture it → still PAYMENT_PENDING
     const createRes = await request(app)
       .post('/api/orders/create')
+      .set(sess.headers)
       .set('Idempotency-Key', 'e2e-no-capture')
-      .send({ sessionId: 'e2e-nc', items: [{ productId: 'coffee', quantity: 1 }] });
+      .send({ items: [{ productId: 'coffee', quantity: 1 }] });
 
     expect(createRes.status).toBe(200);
 

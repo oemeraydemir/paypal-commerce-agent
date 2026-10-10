@@ -4,8 +4,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_app/providers/chat_provider.dart';
 import 'package:flutter_app/providers/checkout_provider.dart';
 import 'package:flutter_app/services/api_service.dart';
+import 'package:flutter_app/services/session_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+
+/// Like the helper in `api_service_test.dart`: answers `POST /api/sessions`
+/// with a valid, server-shaped session so authenticated provider flows can run.
+MockClient withSession(Future<http.Response> Function(http.Request) handler) {
+  return MockClient((request) async {
+    if (request.method == 'POST' && request.url.path == '/api/sessions') {
+      return http.Response(
+        jsonEncode({
+          'sessionId': 'sess-abc',
+          'sessionToken': 'tok-xyz',
+          'expiresAt': '2099-01-01T00:00:00.000Z',
+        }),
+        201,
+      );
+    }
+    return handler(request);
+  });
+}
 
 void main() {
   group('CheckoutProvider', () {
@@ -15,7 +34,8 @@ void main() {
         var orderCount = 0;
         final api = ApiService(
           baseUrl: 'http://localhost:3000',
-          client: MockClient((request) async {
+          storage: InMemorySessionStorage(),
+          client: withSession((request) async {
             if (request.url.path == '/api/orders/create') {
               orderCount++;
               return http.Response(
@@ -40,6 +60,12 @@ void main() {
                   'paypalCaptureId': 'unknown',
                   'paypalStatus': 'PENDING',
                 }),
+                200,
+              );
+            }
+            if (request.url.path.endsWith('/cancel')) {
+              return http.Response(
+                jsonEncode({'orderId': 'order-1', 'status': 'ORDER_CANCELLED'}),
                 200,
               );
             }
@@ -69,7 +95,7 @@ void main() {
         expect(checkout.error, contains('existing PayPal order'));
 
         expect(
-          checkout.handlePayPalReturn(
+          await checkout.handlePayPalReturn(
             Uri.parse(
               'paypalcommerceagent://checkout/cancel?token=paypal-order-1',
             ),
@@ -88,7 +114,8 @@ void main() {
         final capturedRequests = <http.Request>[];
         final api = ApiService(
           baseUrl: 'http://localhost:3000',
-          client: MockClient((request) async {
+          storage: InMemorySessionStorage(),
+          client: withSession((request) async {
             capturedRequests.add(request);
             if (request.url.path == '/api/ai/chat') {
               return http.Response(
@@ -196,7 +223,7 @@ void main() {
         );
 
         expect(
-          checkout.handlePayPalReturn(
+          await checkout.handlePayPalReturn(
             Uri.parse(
               'paypalcommerceagent://checkout/success?token=another-order',
             ),
@@ -205,7 +232,7 @@ void main() {
         );
         expect(checkout.paypalApproved, isFalse);
         expect(
-          checkout.handlePayPalReturn(
+          await checkout.handlePayPalReturn(
             Uri.parse(
               'paypalcommerceagent://checkout/success?token=paypal-order-1',
             ),
@@ -225,5 +252,219 @@ void main() {
         );
       },
     );
+  });
+
+  group('Sprint A1.2 regression (F2/F3/F4)', () {
+    test(
+      'F2: PayPal cancel return reaches the backend and preserves the cart',
+      () async {
+        var cancelCalls = 0;
+        final api = ApiService(
+          baseUrl: 'http://localhost:3000',
+          storage: InMemorySessionStorage(),
+          client: withSession((request) async {
+            if (request.url.path == '/api/orders/create') {
+              return http.Response(
+                jsonEncode({
+                  'orderId': 'order-1',
+                  'paypalOrderId': 'paypal-xyz',
+                  'status': 'PAYMENT_PENDING',
+                  'origin': 'MANUAL',
+                  'totalMinor': 500,
+                  'totalFormatted': 'EUR 5.00',
+                  'currency': 'EUR',
+                  'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
+                }),
+                200,
+              );
+            }
+            if (request.url.path == '/api/orders/order-1/cancel') {
+              cancelCalls++;
+              return http.Response(
+                jsonEncode({'orderId': 'order-1', 'status': 'ORDER_CANCELLED'}),
+                200,
+              );
+            }
+            return http.Response('Not found', 404);
+          }),
+        );
+        final chat = ChatProvider(api);
+        final checkout = CheckoutProvider(
+          api,
+          chat,
+          launchApproval: (_) async => true,
+        );
+        addTearDown(checkout.dispose);
+        addTearDown(api.dispose);
+
+        checkout.addProduct('coffee');
+        await checkout.startCheckout();
+        expect(checkout.created?.paypalOrderId, 'paypal-xyz');
+
+        final handled = await checkout.handlePayPalReturn(
+          Uri.parse('paypalcommerceagent://checkout/cancel?token=paypal-xyz'),
+        );
+        expect(handled, isTrue);
+        expect(cancelCalls, 1); // backend cancel was actually called
+        expect(checkout.created, isNull); // pending order cleared on success
+        expect(checkout.cart, {'coffee': 1}); // cart preserved
+        expect(checkout.error, isNull);
+      },
+    );
+
+    test('F2: unrelated/stale cancel link does NOT call the backend', () async {
+      var cancelCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://localhost:3000',
+        storage: InMemorySessionStorage(),
+        client: withSession((request) async {
+          if (request.url.path == '/api/orders/create') {
+            return http.Response(
+              jsonEncode({
+                'orderId': 'order-1',
+                'paypalOrderId': 'paypal-xyz',
+                'status': 'PAYMENT_PENDING',
+                'origin': 'MANUAL',
+                'totalMinor': 500,
+                'totalFormatted': 'EUR 5.00',
+                'currency': 'EUR',
+                'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
+              }),
+              200,
+            );
+          }
+          if (request.url.path.contains('/cancel')) {
+            cancelCalls++;
+            return http.Response(
+              jsonEncode({'orderId': 'order-1', 'status': 'ORDER_CANCELLED'}),
+              200,
+            );
+          }
+          return http.Response('Not found', 404);
+        }),
+      );
+      final chat = ChatProvider(api);
+      final checkout = CheckoutProvider(
+        api,
+        chat,
+        launchApproval: (_) async => true,
+      );
+      addTearDown(checkout.dispose);
+      addTearDown(api.dispose);
+
+      checkout.addProduct('coffee');
+      await checkout.startCheckout();
+
+      final handled = await checkout.handlePayPalReturn(
+        Uri.parse('paypalcommerceagent://checkout/cancel?token=wrong-token'),
+      );
+      // A mismatched token is NOT handled: the UI surfaces the mismatch
+      // message and no backend call is made.
+      expect(handled, isFalse);
+      expect(cancelCalls, 0); // no backend call for a mismatched link
+      expect(checkout.created, isNotNull); // pending order preserved
+      expect(checkout.error, isNotNull); // user informed
+    });
+
+    test(
+      'F3: capture 409 ALREADY_CAPTURED reflects paid without losing state',
+      () async {
+        final api = ApiService(
+          baseUrl: 'http://localhost:3000',
+          storage: InMemorySessionStorage(),
+          client: withSession((request) async {
+            if (request.url.path == '/api/orders/create') {
+              return http.Response(
+                jsonEncode({
+                  'orderId': 'order-1',
+                  'paypalOrderId': 'paypal-1',
+                  'status': 'PAYMENT_PENDING',
+                  'origin': 'MANUAL',
+                  'totalMinor': 500,
+                  'totalFormatted': 'EUR 5.00',
+                  'currency': 'EUR',
+                  'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
+                }),
+                200,
+              );
+            }
+            if (request.url.path.contains('/capture')) {
+              return http.Response(
+                jsonEncode({'error': 'Order already captured'}),
+                409,
+              );
+            }
+            return http.Response('Not found', 404);
+          }),
+        );
+        final chat = ChatProvider(api);
+        final checkout = CheckoutProvider(
+          api,
+          chat,
+          launchApproval: (_) async => true,
+        );
+        addTearDown(checkout.dispose);
+        addTearDown(api.dispose);
+
+        checkout.addProduct('coffee');
+        await checkout.startCheckout();
+        checkout.confirmApprovalInBrowser();
+
+        await checkout.completeCheckout();
+        // Definitive: the order is paid, not a generic failure.
+        expect(checkout.captured?.status, 'PAID');
+        expect(checkout.created, isNull);
+        expect(checkout.error, isNull);
+      },
+    );
+
+    test('F4: the idempotency key is stable across the 401 retry', () async {
+      final capturedKeys = <String>[];
+      var createCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://localhost:3000',
+        storage: InMemorySessionStorage(),
+        client: withSession((request) async {
+          if (request.url.path == '/api/orders/create') {
+            createCalls++;
+            capturedKeys.add(request.headers['idempotency-key'] ?? '');
+            // Force a 401 on the first attempt to exercise the transport retry
+            // inside ApiService; the SAME key must be sent on the retry.
+            if (createCalls == 1) {
+              return http.Response('unauthorized', 401);
+            }
+            return http.Response(
+              jsonEncode({
+                'orderId': 'order-$createCalls',
+                'paypalOrderId': 'paypal-$createCalls',
+                'status': 'PAYMENT_PENDING',
+                'origin': 'MANUAL',
+                'totalMinor': 500,
+                'totalFormatted': 'EUR 5.00',
+                'currency': 'EUR',
+                'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
+              }),
+              200,
+            );
+          }
+          return http.Response('Not found', 404);
+        }),
+      );
+      final chat = ChatProvider(api);
+      final checkout = CheckoutProvider(
+        api,
+        chat,
+        launchApproval: (_) async => true,
+      );
+      addTearDown(checkout.dispose);
+      addTearDown(api.dispose);
+
+      checkout.addProduct('coffee');
+      await checkout.startCheckout();
+      // Retry happened (401 + refresh), but the key was reused.
+      expect(createCalls, 2);
+      expect(capturedKeys[0], isNotEmpty);
+      expect(capturedKeys[0], capturedKeys[1]);
+    });
   });
 }

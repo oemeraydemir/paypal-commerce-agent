@@ -7,6 +7,7 @@ import { OrderService } from '../../src/orders/service';
 import { getDemoUserId } from '../../src/policy/default-policy';
 import { policyStorage } from '../../src/policy/storage';
 import { dailySpendTracker } from '../../src/policy/daily-spend-tracker';
+import { newSession, resetSessionState, TestSession } from '../helpers/session';
 
 jest.mock('../../src/paypal/client', () => ({
   paypalClient: {
@@ -24,6 +25,7 @@ const mockCreateOrder = paypalClient.createOrder as jest.Mock;
 const mockCaptureOrder = paypalClient.captureOrder as jest.Mock;
 
 const USER_ID = getDemoUserId();
+let sess: TestSession;
 
 const CREATED_PAYPAL = {
   id: 'MOCK_PAYPAL_ORDER_ID',
@@ -47,12 +49,15 @@ async function postCreate(
 ) {
   return request(app)
     .post('/api/orders/create')
+    .set(sess.headers)
     .set('Idempotency-Key', key)
-    .send({ sessionId, items });
+    .send({ items });
 }
 
 describe('Policy Events API', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    resetSessionState();
+    sess = await newSession(app);
     jest.clearAllMocks();
     orderService.reset();
     policyStorage.reset();
@@ -137,7 +142,9 @@ describe('Policy Events API', () => {
 
       expect(resAll.status).toBe(200);
       expect(resAll.body.total).toBe(1);
-      expect(resAll.body.events[0].userId).toBe(USER_ID);
+      // B1: the internal userId must NOT be exposed on the public endpoint.
+      expect(resAll.body.events[0]).not.toHaveProperty('userId');
+      expect(resAll.body.events[0].sessionId).toBeDefined();
 
       expect(resOther.status).toBe(200);
       expect(resOther.body.total).toBe(0);
@@ -213,7 +220,8 @@ describe('Policy Events API', () => {
       const event = res.body.events[0];
       expect(event).toHaveProperty('id');
       expect(event).toHaveProperty('timestamp');
-      expect(event).toHaveProperty('userId');
+      // B1: userId is intentionally NOT exposed; the masked sessionId is.
+      expect(event).not.toHaveProperty('userId');
       expect(event).toHaveProperty('sessionId');
       expect(event).toHaveProperty('cartId');
       expect(event).toHaveProperty('orderId');
@@ -317,7 +325,7 @@ describe('Policy Events API', () => {
       expect(stats.body.spentMinor).toBe(0);
 
       // Capture → PAID
-      const captureRes = await request(app).post(`/api/orders/${createRes.body.orderId}/capture`);
+      const captureRes = await request(app).post(`/api/orders/${createRes.body.orderId}/capture`).set(sess.headers);
       expect(captureRes.status).toBe(200);
 
       // Stats AFTER capture: order is PAID, spent = 300
@@ -334,11 +342,11 @@ describe('Policy Events API', () => {
       );
       expect(createRes.status).toBe(200);
 
-      const captureRes = await request(app).post(`/api/orders/${createRes.body.orderId}/capture`);
+      const captureRes = await request(app).post(`/api/orders/${createRes.body.orderId}/capture`).set(sess.headers);
       expect(captureRes.status).toBe(200);
 
       // Manually add a second policy event referencing the same paid order.
-      const originalEvents = policyStorage.getEvents(USER_ID);
+      const originalEvents = policyStorage.getEvents(sess.userId); // events are per-session user now
       const originalEvent = originalEvents.find((e) => e.orderId === createRes.body.orderId);
       expect(originalEvent).toBeDefined();
 

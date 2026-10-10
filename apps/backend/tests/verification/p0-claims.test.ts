@@ -3,8 +3,10 @@
  *
  * CLAIM 1 (reservation lifecycle) was fixed in Phase-1 Step 1: its tests now
  * assert the CORRECTED behaviour (they used to characterize the leak).
- * CLAIMS 2-5 still characterize CURRENT behaviour and are flipped when
- * Steps 2-5 land.
+ * CLAIMS 2 and 3 (authentication / rate limit / shared global budget) were
+ * fixed in Phase-1 Step 2 (server-issued sessions): they now assert the
+ * CORRECTED behaviour. CLAIMS 4-5 still characterize CURRENT behaviour and are
+ * flipped when their steps land.
  */
 import request from 'supertest';
 import { createApp } from '../../src/app';
@@ -18,6 +20,9 @@ import { dailySpendTracker } from '../../src/policy/daily-spend-tracker';
 import { defaultPolicy, getDemoUserId } from '../../src/policy/default-policy';
 import catalog from '../../src/catalog/data.json';
 import { reconcileExpiredReservations } from '../../src/orders/payment-lifecycle';
+import { newSession, resetSessionState, TestSession } from '../helpers/session';
+import { aiChatLimiters } from '../../src/routes/ai';
+import { sessionStore } from '../../src/session';
 
 jest.mock('../../src/paypal/client', () => ({
   paypalClient: {
@@ -36,12 +41,13 @@ const captureOrder = paypalClient.captureOrder as jest.Mock;
 const getOrder = (paypalClient as any).getOrder as jest.Mock;
 const verifySig = (paypalClient as any).verifyWebhookSignature as jest.Mock;
 const mockChat = aiClient.chat as jest.Mock;
-const USER = getDemoUserId();
+let USER = getDemoUserId(); // reassigned to the per-test session's user
+let sess: TestSession;
 
 let seq = 0;
 const nextPayPalId = () => `PP-ORDER-${++seq}`;
 
-async function create(sessionId: string, items: any[]) {
+async function create(label: string, items: any[], who: TestSession = sess) {
   const ppId = nextPayPalId();
   createOrder.mockResolvedValueOnce({
     id: ppId,
@@ -50,8 +56,9 @@ async function create(sessionId: string, items: any[]) {
   });
   const res = await request(app)
     .post('/api/orders/create')
-    .set('Idempotency-Key', `k-${sessionId}-${++seq}`)
-    .send({ sessionId, items });
+    .set(who.headers)
+    .set('Idempotency-Key', `k-${label}-${++seq}`)
+    .send({ items });
   return { res, ppId };
 }
 
@@ -77,7 +84,10 @@ const COMPLETED = {
   purchaseUnits: [{ payments: { captures: [{ id: 'CAP-1' }] } }],
 };
 
-beforeEach(() => {
+beforeEach(async () => {
+  resetSessionState();
+  sess = await newSession(app);
+  USER = sess.userId;
   jest.clearAllMocks();
   createOrder.mockReset();
   captureOrder.mockReset();
@@ -118,7 +128,7 @@ describe('CLAIM 1 - reservation lifecycle (FIXED in Phase-1 Step 1)', () => {
 
     // A DENIED event for an order that is already PAID must not un-spend it.
     const paid = await create('s1a-paid', [{ productId: 'coffee', quantity: 1 }]);
-    expect((await request(app).post(`/api/orders/${paid.res.body.orderId}/capture`)).status).toBe(200);
+    expect((await request(app).post(`/api/orders/${paid.res.body.orderId}/capture`).set(sess.headers)).status).toBe(200);
     expect(dailySpendTracker.getSpentToday(USER)).toBe(300);
     expect((await webhook('PAYMENT.CAPTURE.DENIED', paid.ppId)).status).toBe(200);
     expect(orderService.getById(paid.res.body.orderId)!.status).toBe(OrderStatus.PAID);
@@ -162,7 +172,7 @@ describe('CLAIM 1 - reservation lifecycle (FIXED in Phase-1 Step 1)', () => {
   test('1d ambiguous capture (502) keeps the reservation; reconcile never releases on lookup failure, then settles on COMPLETED', async () => {
     const { res } = await create('s1d', [{ productId: 'coffee', quantity: 2 }]);
     captureOrder.mockRejectedValueOnce(new Error('ECONNRESET'));
-    const cap = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
+    const cap = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
     expect(cap.status).toBe(502);
     expect(dailySpendTracker.getPendingReservations(USER)).toBe(600);
     expect(orderService.getById(res.body.orderId)!.status).toBe(OrderStatus.PAYMENT_PENDING);
@@ -185,7 +195,7 @@ describe('CLAIM 1 - reservation lifecycle (FIXED in Phase-1 Step 1)', () => {
   test('1e capture returning PENDING keeps the reservation; the COMPLETED webhook then confirms it', async () => {
     const { res, ppId } = await create('s1e', [{ productId: 'coffee', quantity: 2 }]);
     captureOrder.mockResolvedValueOnce({ ...COMPLETED, status: 'PENDING' });
-    const cap = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
+    const cap = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
     expect(cap.status).toBe(200);
     expect(dailySpendTracker.getPendingReservations(USER)).toBe(600);
     await webhook('PAYMENT.CAPTURE.COMPLETED', ppId);
@@ -203,24 +213,24 @@ describe('CLAIM 1 - reservation lifecycle (FIXED in Phase-1 Step 1)', () => {
     expect(orderService.getById(id)!.status).toBe(OrderStatus.PAYMENT_PENDING); // GET never mutates
 
     getOrder.mockRejectedValueOnce(new Error('PayPal down'));
-    const unverifiable = await request(app).post(`/api/orders/${id}/cancel`);
+    const unverifiable = await request(app).post(`/api/orders/${id}/cancel`).set(sess.headers);
     expect(unverifiable.status).toBe(502);
     expect(dailySpendTracker.getPendingReservations(USER)).toBe(600); // not released blindly
 
     getOrder.mockResolvedValueOnce(paypalOrder('APPROVED'));
-    const cancelled = await request(app).post(`/api/orders/${id}/cancel`);
+    const cancelled = await request(app).post(`/api/orders/${id}/cancel`).set(sess.headers);
     expect(cancelled.status).toBe(200);
     expect(cancelled.body.status).toBe(OrderStatus.ORDER_CANCELLED);
     expect(dailySpendTracker.getPendingReservations(USER)).toBe(0);
 
     // Idempotent.
-    expect((await request(app).post(`/api/orders/${id}/cancel`)).status).toBe(200);
+    expect((await request(app).post(`/api/orders/${id}/cancel`).set(sess.headers)).status).toBe(200);
   });
 
   test('1f-2 cancel is refused (and settled as PAID) when PayPal says the money was already captured', async () => {
     const { res } = await create('s1f2', [{ productId: 'coffee', quantity: 2 }]);
     getOrder.mockResolvedValueOnce(paypalOrder('COMPLETED', 'COMPLETED'));
-    const cancel = await request(app).post(`/api/orders/${res.body.orderId}/cancel`);
+    const cancel = await request(app).post(`/api/orders/${res.body.orderId}/cancel`).set(sess.headers);
     expect(cancel.status).toBe(409);
     expect(orderService.getById(res.body.orderId)!.status).toBe(OrderStatus.PAID);
     expect(dailySpendTracker.getSpentToday(USER)).toBe(600);
@@ -230,14 +240,14 @@ describe('CLAIM 1 - reservation lifecycle (FIXED in Phase-1 Step 1)', () => {
   test('1g capture before buyer approval is RECOVERABLE: order stays pending, retry after approval succeeds', async () => {
     const { res } = await create('s1g', [{ productId: 'coffee', quantity: 2 }]);
     captureOrder.mockRejectedValueOnce({ details: [{ issue: 'ORDER_NOT_APPROVED' }] });
-    const first = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
+    const first = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
     expect(first.status).toBe(400);
     expect(first.body.details).toMatchObject({ paypalIssue: 'ORDER_NOT_APPROVED', retryable: true });
     expect(orderService.getById(res.body.orderId)!.status).toBe(OrderStatus.PAYMENT_PENDING);
     expect(dailySpendTracker.getPendingReservations(USER)).toBe(600); // kept
 
     // Buyer now approves in PayPal; the app retries capture:
-    const retry = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
+    const retry = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
     expect(retry.status).toBe(200);
     expect(retry.body.status).toBe(OrderStatus.PAID);
     expect(dailySpendTracker.getSpentToday(USER)).toBe(600);
@@ -245,64 +255,184 @@ describe('CLAIM 1 - reservation lifecycle (FIXED in Phase-1 Step 1)', () => {
   });
 });
 
-describe('CLAIM 2 - rate limit and authentication', () => {
-  test('2a rate limit is keyed by client-supplied sessionId: same id throttled, fresh ids never', async () => {
+describe('CLAIM 2 - rate limit and authentication (FIXED in Phase-1 Step 2)', () => {
+  test('2a state-changing routes reject requests without a valid server-issued session', async () => {
+    const items = [{ productId: 'coffee', quantity: 1 }];
+    // No credentials at all.
+    expect((await request(app).post('/api/ai/chat').send({ message: 'hi' })).status).toBe(401);
+    expect((await request(app).post('/api/orders/create').send({ items })).status).toBe(401);
+    // Client-invented session id (the old attack): id alone is not enough.
+    const forged = { 'X-Session-Id': 'fresh-1', Authorization: 'Bearer nope' };
+    expect((await request(app).post('/api/ai/chat').set(forged).send({ message: 'hi' })).status).toBe(401);
+    // Real id, wrong token.
+    const wrongToken = { 'X-Session-Id': sess.sessionId, Authorization: 'Bearer wrong-token' };
+    expect((await request(app).post('/api/orders/create').set(wrongToken).send({ items })).status).toBe(401);
+    // Real credentials but a body sessionId that is not theirs.
+    const mismatch = await request(app)
+      .post('/api/ai/chat').set(sess.headers).send({ sessionId: 'someone-else', message: 'hi' });
+    expect(mismatch.status).toBe(403);
+    expect(mockChat).not.toHaveBeenCalled(); // no OpenAI spend for any rejected request
+  });
+
+  test('2b rate limit cannot be dodged with fresh session ids (per-session, per-IP, global)', async () => {
+    // Per-session ceiling (10/min).
     for (let i = 0; i < 10; i++) {
-      const r = await request(app).post('/api/ai/chat').send({ sessionId: 'same', message: 'hi' });
+      const r = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'hi' });
       expect(r.status).toBe(200);
     }
-    const eleventh = await request(app).post('/api/ai/chat').send({ sessionId: 'same', message: 'hi' });
+    const eleventh = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'hi' });
     expect(eleventh.status).toBe(429);
+    expect(eleventh.body.scope).toBe('session');
 
+    // Many NEW sessions from the same client: the per-IP ceiling (30/min) stops it.
+    // (Session creation is itself capped per IP -- see 2c -- so lift that cap here
+    // to isolate the AI per-IP ceiling.)
+    const savedCreateCap = sessionStore.options.createPerIpPerHour;
+    sessionStore.options.createPerIpPerHour = 1000;
+    aiChatLimiters.perSession.reset();
+    aiChatLimiters.perIp.reset();
     let ok = 0;
+    let firstLimited: any;
     for (let i = 0; i < 40; i++) {
-      const r = await request(app).post('/api/ai/chat').send({ sessionId: `fresh-${i}`, message: 'hi' });
+      const other = await newSession(app);
+      const r = await request(app).post('/api/ai/chat').set(other.headers).send({ message: 'hi' });
       if (r.status === 200) ok++;
+      else if (!firstLimited) firstLimited = r;
     }
-    expect(ok).toBe(40); // 40 OpenAI calls from one client in one burst, zero throttling
-    expect(mockChat).toHaveBeenCalledTimes(50);
+    sessionStore.options.createPerIpPerHour = savedCreateCap;
+    expect(ok).toBe(30);
+    expect(firstLimited.status).toBe(429);
+    expect(firstLimited.body.scope).toBe('ip');
+    expect(mockChat).toHaveBeenCalledTimes(10 + 30); // OpenAI spend is bounded
+
+    // Global ceiling holds even if the per-IP ceiling were not reached.
+    aiChatLimiters.perSession.reset();
+    aiChatLimiters.perIp.reset();
+    aiChatLimiters.global.reset();
+    const savedGlobal = aiChatLimiters.global.limit;
+    aiChatLimiters.global.limit = 2;
+    try {
+      const g1 = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'hi' });
+      const g2 = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'hi' });
+      const g3 = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'hi' });
+      expect([g1.status, g2.status, g3.status]).toEqual([200, 200, 429]);
+      expect(g3.body.scope).toBe('global');
+    } finally {
+      aiChatLimiters.global.limit = savedGlobal;
+    }
   });
 
-  test('2b /api/orders and policy-events need no credentials and expose sessionIds', async () => {
-    await create('victim-session-123', [{ productId: 'coffee', quantity: 1 }]);
-    const list = await request(app).get('/api/orders'); // no auth headers at all
+  test('2c session creation itself is bounded per IP and by total capacity', async () => {
+    const saved = { ...sessionStore.options };
+    try {
+      sessionStore.reset();
+      sessionStore.options.createPerIpPerHour = 3;
+      for (let i = 0; i < 3; i++) expect((await request(app).post('/api/sessions')).status).toBe(201);
+      const limited = await request(app).post('/api/sessions');
+      expect(limited.status).toBe(429);
+
+      sessionStore.reset();
+      sessionStore.options.createPerIpPerHour = 100;
+      sessionStore.options.maxActive = 2;
+      expect((await request(app).post('/api/sessions')).status).toBe(201);
+      expect((await request(app).post('/api/sessions')).status).toBe(201);
+      expect((await request(app).post('/api/sessions')).status).toBe(503);
+    } finally {
+      Object.assign(sessionStore.options, saved);
+    }
+  });
+
+  test('2d public /api/orders and /api/policy-events never expose real session ids', async () => {
+    await create('victim', [{ productId: 'coffee', quantity: 1 }]);
+    const list = await request(app).get('/api/orders'); // public, read-only
     expect(list.status).toBe(200);
-    expect(list.body.orders[0].sessionId).toBe('victim-session-123');
+    expect(list.body.orders[0].sessionId).not.toBe(sess.sessionId);
+    expect(list.body.orders[0].sessionId).toMatch(/^sess_[0-9a-f]{8}$/);
     const ev = await request(app).get('/api/policy-events');
     expect(ev.status).toBe(200);
-    expect(JSON.stringify(ev.body)).toContain('victim-session-123');
+    expect(JSON.stringify(ev.body)).not.toContain(sess.sessionId);
+    expect(JSON.stringify(list.body)).not.toContain(sess.sessionId);
   });
 
-  test('2c capture needs no credentials and no session match', async () => {
-    const { res } = await create('owner-session', [{ productId: 'coffee', quantity: 1 }]);
-    // A caller who only learned the orderId (e.g. from GET /api/orders):
-    const cap = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
-    expect(cap.status).toBe(200);
+  test('2e another session cannot capture or cancel an order it does not own', async () => {
+    const { res } = await create('owner', [{ productId: 'coffee', quantity: 1 }]);
+    const attacker = await newSession(app);
+    // The attacker even learned the orderId (e.g. from the public list).
+    const cap = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(attacker.headers);
+    expect(cap.status).toBe(404);
+    const can = await request(app).post(`/api/orders/${res.body.orderId}/cancel`).set(attacker.headers);
+    expect(can.status).toBe(404);
+    expect(captureOrder).not.toHaveBeenCalled();
+    expect(orderService.getById(res.body.orderId)!.status).toBe(OrderStatus.PAYMENT_PENDING);
+    // No credentials at all is rejected too.
+    expect((await request(app).post(`/api/orders/${res.body.orderId}/capture`)).status).toBe(401);
+    // The owner still can.
+    const own = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
+    expect(own.status).toBe(200);
     expect(orderService.getById(res.body.orderId)!.status).toBe(OrderStatus.PAID);
-    // NUANCE: PayPal itself refuses capture until the buyer approved (mocked here).
+  });
+
+  test('2f idempotency keys are scoped per session (no cross-session replay)', async () => {
+    const other = await newSession(app);
+    const mk = (who: TestSession) =>
+      request(app)
+        .post('/api/orders/create')
+        .set(who.headers)
+        .set('Idempotency-Key', 'shared-key')
+        .send({ items: [{ productId: 'coffee', quantity: 1 }] });
+    createOrder.mockResolvedValueOnce({ id: 'PP-A', status: 'CREATED', links: [{ rel: 'approve', href: 'https://sandbox.paypal.com/a' }] });
+    createOrder.mockResolvedValueOnce({ id: 'PP-B', status: 'CREATED', links: [{ rel: 'approve', href: 'https://sandbox.paypal.com/b' }] });
+    const a = await mk(sess);
+    const b = await mk(other);
+    expect(a.status).toBe(200);
+    expect(b.status).toBe(200);
+    expect(b.body.orderId).not.toBe(a.body.orderId);
+    expect(b.body.approvalUrl).not.toBe(a.body.approvalUrl);
+    // PayPal-Request-Id differs per session even for an identical client key.
+    expect(createOrder.mock.calls[0][1]).not.toBe(createOrder.mock.calls[1][1]);
+  });
+
+  test('2g ending a session invalidates its token', async () => {
+    const end = await request(app).delete('/api/sessions/current').set(sess.headers);
+    expect(end.status).toBe(200);
+    const after = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'hi' });
+    expect(after.status).toBe(401);
   });
 });
 
-describe('CLAIM 3 - global shared daily limit', () => {
-  test('3a spend by one session blocks a completely different session', async () => {
+describe('CLAIM 3 - per-session policy and daily budget (FIXED in Phase-1 Step 2)', () => {
+  test('3a spend by one session does NOT block a different session', async () => {
     for (let i = 0; i < 5; i++) {
       const { res } = await create(`judge-A-${i}`, [{ productId: 'veg_breakfast', quantity: 2 }]); // 2000
       expect(res.status).toBe(200);
-      const cap = await request(app).post(`/api/orders/${res.body.orderId}/capture`);
+      const cap = await request(app).post(`/api/orders/${res.body.orderId}/capture`).set(sess.headers);
       expect(cap.status).toBe(200);
     }
-    expect(dailySpendTracker.getSpentToday(USER)).toBe(10000);
+    expect(dailySpendTracker.getSpentToday(sess.userId)).toBe(10000);
 
-    const other = await create('judge-B-brand-new-session', [{ productId: 'coffee', quantity: 1 }]); // 300
-    expect(other.res.status).toBe(403);
-    expect(JSON.stringify(other.res.body)).toContain('DAILY_LIMIT_EXCEEDED');
+    // Session A has used up ITS OWN daily limit ...
+    const again = await create('judge-A-more', [{ productId: 'coffee', quantity: 1 }]);
+    expect(again.res.status).toBe(403);
+    expect(JSON.stringify(again.res.body)).toContain('DAILY_LIMIT_EXCEEDED');
+
+    // ... but a brand-new visitor has a full, independent budget.
+    const judgeB = await newSession(app);
+    const other = await create('judge-B', [{ productId: 'coffee', quantity: 1 }], judgeB);
+    expect(other.res.status).toBe(200);
+    expect(dailySpendTracker.getSpentToday(judgeB.userId)).toBe(0);
+    expect(dailySpendTracker.getPendingReservations(judgeB.userId)).toBe(300);
   });
 
-  test('3b same single policy object is used for every session', async () => {
+  test('3b every session gets its own policy object', async () => {
+    const other = await newSession(app);
     await create('p-A', [{ productId: 'coffee', quantity: 1 }]);
-    await create('p-B', [{ productId: 'coffee', quantity: 1 }]);
+    await create('p-B', [{ productId: 'coffee', quantity: 1 }], other);
     const users = new Set(policyStorage.getEvents().map((e) => e.userId));
-    expect([...users]).toEqual([USER]);
+    expect(users).toEqual(new Set([sess.userId, other.userId]));
+    // Changing one user's policy does not touch the other's.
+    policyStorage.setPolicy({ ...policyStorage.getOrCreatePolicy(sess.userId), maxPerPurchaseMinor: 100 });
+    expect(policyStorage.getOrCreatePolicy(other.userId).maxPerPurchaseMinor).toBe(2000);
+    expect(policyStorage.getOrCreatePolicy(sess.userId)).not.toBe(policyStorage.getOrCreatePolicy(other.userId));
   });
 });
 
@@ -321,7 +451,7 @@ describe('CLAIM 4 - hardcoded policy text in ai/service.ts', () => {
         },
       }],
     }));
-    const res = await request(app).post('/api/ai/chat').send({ sessionId: 's4a', message: 'gift' });
+    const res = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'gift' });
     expect(res.status).toBe(200);
     // Real policy: max EUR 15.00, no alcohol rule. Message still says:
     expect(res.body.response).toContain('max €20.00 per purchase');

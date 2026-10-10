@@ -9,8 +9,13 @@ import { idempotency } from '../middleware/idempotency';
 import { currentBusiness } from '../config/business-config';
 import { OrderOrigin, OrderStatus, createCartId } from '../orders/domain';
 import { formatMoney } from '../utils/money';
-import { consumeAIPreparedSession } from '../ai/session-tracker';
-import { getDemoUserId, defaultPolicy } from '../policy/default-policy';
+import {
+  consumeAIPreparedSession,
+  peekAIPreparedSession,
+} from '../ai/session-tracker';
+import { createHash } from 'crypto';
+import { requireSession } from '../middleware/session-auth';
+import { publicSessionRef } from '../session';
 import { policyService } from '../policy/service';
 import { policyStorage } from '../policy/storage';
 import { dailySpendTracker } from '../policy/daily-spend-tracker';
@@ -32,17 +37,24 @@ const router = Router();
 const orderService = OrderService.getInstance();
 const catalogService = new CatalogService();
 
-router.post('/orders/create', idempotency, async (req, res, next) => {
+router.post('/orders/create', requireSession, idempotency, async (req, res, next) => {
   try {
     if (!env.isPayPalEnabled()) {
       throw new AppError(503, 'PayPal not configured');
     }
 
-    const { sessionId, items } = req.body;
-    const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
+    // sessionId/userId come from the authenticated session, never from the body.
+    const { sessionId, userId } = req.session!;
+    const { items } = req.body;
+    const clientKey = req.headers['idempotency-key'] as string | undefined;
+    // Session-scoped (and length-bounded) key: also used as PayPal-Request-Id so
+    // two sessions can never be deduplicated into each other's PayPal order.
+    const idempotencyKey = clientKey
+      ? createHash('sha256').update(`${sessionId}:${clientKey}`).digest('hex')
+      : undefined;
 
-    if (!sessionId || !Array.isArray(items)) {
-      throw new AppError(400, 'sessionId and items array required');
+    if (!Array.isArray(items)) {
+      throw new AppError(400, 'items array required');
     }
 
     // FIX #9 + #12: authoritative pricing, currency + quantity validation.
@@ -54,18 +66,16 @@ router.post('/orders/create', idempotency, async (req, res, next) => {
 
     // FIX #7: server decides the origin. Client never sends it.
     // If this session has a previously prepared AI cart, attribute as AI_AGENT.
-    const isAIPrepared = consumeAIPreparedSession(sessionId);
+    // Peek (do not consume) here so a BLOCKed request leaves the marker intact
+    // and is not mis-attributed as HUMAN on retry (B5).
+    const isAIPrepared = peekAIPreparedSession(sessionId);
     const origin = isAIPrepared ? OrderOrigin.AI_AGENT : OrderOrigin.HUMAN;
 
     // S10 (R2/R6): deterministic cart correlation shared by advisory and
     // authoritative PolicyEvents (sessionId + item selection).
-    const userId = getDemoUserId();
     const cartId = createCartId(sessionId, validatedItems);
-    let policy = policyStorage.getPolicy(userId);
-    if (!policy) {
-      policy = defaultPolicy;
-      policyStorage.setPolicy(defaultPolicy);
-    }
+    // Per-user policy + per-user daily budget: isolated from every other session.
+    const policy = policyStorage.getOrCreatePolicy(userId);
 
     // S10 (R9/R10): AUTHORITATIVE policy evaluation on an in-memory snapshot
     // BEFORE the order is persisted or PayPal is contacted. The client's
@@ -104,6 +114,11 @@ router.post('/orders/create', idempotency, async (req, res, next) => {
         suggestion: outcome.suggestion,
       });
     }
+
+    // B5: only consume the AI-prepared marker once we are actually proceeding
+    // past the authoritative BLOCK decision. A BLOCKed request leaves the marker
+    // intact, so a retry is still attributed AI_AGENT (and not silently HUMAN).
+    consumeAIPreparedSession(sessionId);
 
     // S10 (R12): reserve spend against the daily limit BEFORE PayPal. A failure
     // here is a policy enforcement failure (R20) and creates no PayPal order.
@@ -256,7 +271,7 @@ router.post('/orders/create', idempotency, async (req, res, next) => {
   }
 });
 
-router.post('/orders/:orderId/capture', async (req, res, next) => {
+router.post('/orders/:orderId/capture', requireSession, async (req, res, next) => {
   const { orderId } = req.params;
   let lockHeld = false;
   try {
@@ -266,7 +281,8 @@ router.post('/orders/:orderId/capture', async (req, res, next) => {
 
     const order = orderService.getById(orderId);
 
-    if (!order) {
+    // Ownership: another session's order is indistinguishable from a missing one.
+    if (!order || order.sessionId !== req.session!.sessionId) {
       throw new AppError(404, 'Order not found');
     }
 
@@ -390,14 +406,14 @@ router.post('/orders/:orderId/capture', async (req, res, next) => {
 // Explicit buyer/app cancellation of a not-yet-captured checkout. Releases the
 // daily-spend reservation, but only after PayPal confirms nothing was captured.
 // NOTE: like /capture this endpoint is not user-authenticated yet (Step 2).
-router.post('/orders/:orderId/cancel', async (req, res, next) => {
+router.post('/orders/:orderId/cancel', requireSession, async (req, res, next) => {
   const { orderId } = req.params;
   try {
     if (!env.isPayPalEnabled()) {
       throw new AppError(503, 'PayPal not configured');
     }
     const order = orderService.getById(orderId);
-    if (!order) {
+    if (!order || order.sessionId !== req.session!.sessionId) {
       throw new AppError(404, 'Order not found');
     }
     if (order.status === OrderStatus.PAID) {
@@ -477,15 +493,17 @@ router.get('/orders', (req, res, next) => {
 
     const orders = limited.map((order) => ({
       id: order.id,
-      sessionId: order.sessionId,
+      // Public, read-only endpoint: only a non-reversible label, never the real id.
+      sessionId: publicSessionRef(order.sessionId),
       status: order.status,
       origin: order.origin,
       totalMinor: order.totalMinor,
       totalFormatted: formatMoney(order.totalMinor, order.currency, currentBusiness.locale),
       currency: order.currency,
       itemCount: order.items.length,
-      paypalOrderId: order.paypalOrderId ?? null,
-      paypalCaptureId: order.paypalCaptureId ?? null,
+      // Public, read-only endpoint: do NOT expose the real PayPal order/capture
+      // identifiers (B1). They remain available on the authenticated create
+      // response and server-side only.
       createdAt: order.createdAt.toISOString(),
       updatedAt: order.updatedAt.toISOString(),
       items: order.items.map((item) => ({

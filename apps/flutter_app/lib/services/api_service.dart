@@ -2,10 +2,11 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/order.dart';
 import 'package:flutter_app/models/product.dart';
 import 'package:flutter_app/models/shopper_preferences.dart';
+import 'package:flutter_app/models/cart.dart';
+import 'package:flutter_app/services/session_service.dart';
 
 /// Raised when the backend responds with a non-2xx status.
 class ApiException implements Exception {
@@ -25,6 +26,11 @@ class ApiException implements Exception {
 /// initiated server-side. This preserves the security boundary established in
 /// the backend (the AI agent prepares carts; the app asks the server to create
 /// and capture orders after explicit user confirmation).
+///
+/// Session auth: the backend issues an anonymous session via `POST /api/sessions`
+/// and requires `X-Session-Id` + `Authorization: Bearer <token>` on every
+/// state-changing route. This client mints/stores that identity through an
+/// injectable [SessionStorage] and attaches the headers automatically.
 class ApiService {
   static const Duration _requestTimeout = Duration(seconds: 15);
 
@@ -32,6 +38,7 @@ class ApiService {
   ///
   /// Override with `--dart-define=API_BASE_URL=...` for a deployed backend,
   /// desktop, web, or a physical device. Android Emulator uses `10.0.2.2`.
+  /// No production URL is hardcoded in source (requirement 10).
   static const String defaultBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:3000',
@@ -39,14 +46,141 @@ class ApiService {
 
   final http.Client _client;
   final String _baseUrl;
+  final SessionStorage _storage;
 
-  ApiService({http.Client? client, String? baseUrl})
-    : _client = client ?? http.Client(),
-      _baseUrl = (baseUrl ?? defaultBaseUrl).replaceFirst(RegExp(r'/$'), '');
+  /// Single-flight guard for session creation (F5). When non-null, a creation
+  /// is already in flight and concurrent callers await this future instead of
+  /// minting a second session for the same logical identity.
+  Future<void>? _sessionCreation;
 
-  Map<String, String> get _headers => {'Content-Type': 'application/json'};
+  ApiService({
+    http.Client? client,
+    String? baseUrl,
+    required SessionStorage storage,
+  }) : _client = client ?? http.Client(),
+       _baseUrl = (baseUrl ?? defaultBaseUrl).replaceFirst(RegExp(r'/$'), ''),
+       _storage = storage;
 
   Uri _url(String path) => Uri.parse('$_baseUrl$path');
+
+  /// Ensures a server-issued session exists, minting one via `POST /api/sessions`
+  /// when the store is empty. Throws [SessionException] on failure so callers
+  /// fail clearly instead of silently proceeding unauthenticated (requirement 7).
+  /// Reads the session identity as a single atomic snapshot so callers never
+  /// observe a half-written or cleared identity split across two awaits (F5).
+  Future<({String? id, String? token})> _readSessionSnapshot() async {
+    final id = await _storage.getSessionId();
+    final token = await _storage.getToken();
+    return (id: id, token: token);
+  }
+
+  /// Ensures a server-issued session exists. Concurrent first requests share a
+  /// single session-creation future (single-flight) so we never mint two
+  /// sessions for one logical identity (F5).
+  Future<void> _ensureSession() async {
+    final snapshot = await _readSessionSnapshot();
+    final hasValid =
+        snapshot.id != null &&
+        snapshot.id!.isNotEmpty &&
+        snapshot.token != null &&
+        snapshot.token!.isNotEmpty;
+    if (hasValid) return;
+
+    // Single-flight: if a creation is already in flight, await the shared future
+    // instead of starting a second one.
+    if (_sessionCreation != null) {
+      await _sessionCreation;
+      final after = await _readSessionSnapshot();
+      final stillValid =
+          after.id != null &&
+          after.id!.isNotEmpty &&
+          after.token != null &&
+          after.token!.isNotEmpty;
+      if (stillValid) return;
+      // The shared creation failed; fall through to retry ourselves.
+    }
+
+    final creation = _createSession();
+    _sessionCreation = creation;
+    try {
+      await creation;
+    } finally {
+      // Clear the guard only for our own future so a concurrent caller still
+      // attached to it is not orphaned, and so a later call can retry if this
+      // one failed.
+      if (identical(_sessionCreation, creation)) {
+        _sessionCreation = null;
+      }
+    }
+  }
+
+  Future<void> _createSession() async {
+    final response = await _client
+        .post(
+          _url('/api/sessions'),
+          headers: {'Content-Type': 'application/json'},
+        )
+        .timeout(_requestTimeout);
+
+    if (response.statusCode != 201) {
+      throw const SessionException('session creation failed');
+    }
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    // The backend field is `sessionToken` (not `token`).
+    final sessionId = data['sessionId'];
+    final token = data['sessionToken'];
+    if (sessionId is! String ||
+        sessionId.isEmpty ||
+        token is! String ||
+        token.isEmpty) {
+      throw const SessionException('malformed session response');
+    }
+
+    await _storage.saveSession(sessionId: sessionId, token: token);
+  }
+
+  Future<Map<String, String>> _authHeaders() async {
+    final snapshot = await _readSessionSnapshot();
+    final headers = <String, String>{'Content-Type': 'application/json'};
+    if (snapshot.id != null && snapshot.id!.isNotEmpty) {
+      headers['X-Session-Id'] = snapshot.id!;
+    }
+    if (snapshot.token != null && snapshot.token!.isNotEmpty) {
+      headers['Authorization'] = 'Bearer ${snapshot.token}';
+    }
+    return headers;
+  }
+
+  /// Runs an authenticated request, refreshing the session once on a 401.
+  ///
+  /// The [request] closure is invoked with fresh headers on every attempt, so
+  /// any idempotency key or body is preserved across the retry. There is exactly
+  /// one retry — no infinite loop.
+  Future<http.Response> _executeWithAuth(
+    Future<http.Response> Function(Map<String, String> headers) request,
+  ) async {
+    Future<http.Response> attempt() async {
+      await _ensureSession();
+      final headers = await _authHeaders();
+      return request(headers);
+    }
+
+    var response = await attempt().timeout(_requestTimeout);
+    if (response.statusCode == 401) {
+      await _storage.clear();
+      // Force a fresh session on the retry rather than reusing the invalidated
+      // one. This also prevents a stale concurrent request from clearing a newer
+      // valid session (F5).
+      _sessionCreation = null;
+      response = await attempt().timeout(_requestTimeout);
+    }
+    return response;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public, unauthenticated endpoints (independent of secure session storage).
+  // ---------------------------------------------------------------------------
 
   Future<List<Product>> getCatalog() async {
     final res = await _client
@@ -67,61 +201,81 @@ class ApiService {
     return HealthStatus.fromJson(body);
   }
 
+  // ---------------------------------------------------------------------------
+  // Authenticated endpoints.
+  // ---------------------------------------------------------------------------
+
   Future<ChatResponse> sendChat({
-    required String sessionId,
     required String message,
     ShopperPreferences? preferences,
   }) async {
-    final res = await _client
-        .post(
-          _url('/api/ai/chat'),
-          headers: _headers,
-          body: jsonEncode({
-            'sessionId': sessionId,
-            'message': message,
-            if (preferences != null) 'preferences': preferences.toJson(),
-          }),
-        )
-        .timeout(_requestTimeout);
+    final res = await _executeWithAuth((headers) async {
+      final sessionId = await _storage.getSessionId();
+      return _client.post(
+        _url('/api/ai/chat'),
+        headers: headers,
+        body: jsonEncode({
+          'sessionId': sessionId,
+          'message': message,
+          if (preferences != null) 'preferences': preferences.toJson(),
+        }),
+      );
+    });
     _ensureOk(res, 'sendChat');
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return ChatResponse.fromJson(body);
   }
 
-  Future<void> deleteChat(String sessionId) async {
-    final res = await _client
-        .delete(_url('/api/ai/chat/$sessionId'))
-        .timeout(_requestTimeout);
+  Future<void> deleteChat() async {
+    final existing = await _storage.getSessionId();
+    if (existing == null || existing.isEmpty) return; // nothing to clear
+    final res = await _executeWithAuth((headers) async {
+      // Read the (possibly refreshed) session id *inside* the closure so a 401
+      // retry uses the current session, never the stale id captured before the
+      // retry (F1).
+      final sessionId = await _storage.getSessionId();
+      if (sessionId == null || sessionId.isEmpty) {
+        return http.Response('', 204);
+      }
+      return _client.delete(_url('/api/ai/chat/$sessionId'), headers: headers);
+    });
     // 404 just means there was nothing to clear.
     if (res.statusCode >= 400 && res.statusCode != 404) {
       throw ApiException(res.statusCode, _errMsg(res));
     }
   }
 
-  Future<void> deletePreparedCart(String sessionId) async {
-    final res = await _client
-        .delete(_url('/api/ai/cart/$sessionId'))
-        .timeout(_requestTimeout);
+  Future<void> deletePreparedCart() async {
+    final existing = await _storage.getSessionId();
+    if (existing == null || existing.isEmpty) return;
+    final res = await _executeWithAuth((headers) async {
+      final sessionId = await _storage.getSessionId();
+      if (sessionId == null || sessionId.isEmpty) {
+        return http.Response('', 204);
+      }
+      return _client.delete(_url('/api/ai/cart/$sessionId'), headers: headers);
+    });
     _ensureOk(res, 'deletePreparedCart');
   }
 
   Future<OrderCreateResult> createOrder({
-    required String sessionId,
     required List<OrderItem> items,
     String? idempotencyKey,
   }) async {
-    final headers = <String, String>{..._headers};
-    if (idempotencyKey != null) headers['Idempotency-Key'] = idempotencyKey;
-    final res = await _client
-        .post(
-          _url('/api/orders/create'),
-          headers: headers,
-          body: jsonEncode({
-            'sessionId': sessionId,
-            'items': items.map((e) => e.toJson()).toList(),
-          }),
-        )
-        .timeout(_requestTimeout);
+    final res = await _executeWithAuth((headers) async {
+      if (idempotencyKey != null) {
+        headers['Idempotency-Key'] = idempotencyKey;
+      }
+      final sessionId = await _storage.getSessionId();
+      return _client.post(
+        _url('/api/orders/create'),
+        headers: headers,
+        body: jsonEncode({
+          'sessionId': sessionId,
+          'items': items.map((e) => e.toJson()).toList(),
+        }),
+      );
+    });
     _ensureOk(res, 'createOrder');
     return OrderCreateResult.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
@@ -129,11 +283,27 @@ class ApiService {
   }
 
   Future<OrderCaptureResult> captureOrder(String orderId) async {
-    final res = await _client
-        .post(_url('/api/orders/$orderId/capture'), headers: _headers)
-        .timeout(_requestTimeout);
+    final res = await _executeWithAuth(
+      (headers) =>
+          _client.post(_url('/api/orders/$orderId/capture'), headers: headers),
+    );
     _ensureOk(res, 'captureOrder');
     return OrderCaptureResult.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// Cancels a not-yet-captured order. Backed by `POST /api/orders/:orderId/cancel`
+  /// (confirmed in the backend routes). The server enforces ownership and refuses
+  /// to cancel already-paid orders, so this is payment-safe. The cart is never
+  /// cleared here (the caller decides that). Does not invent a response contract.
+  Future<OrderCancelResult> cancelOrder(String orderId) async {
+    final res = await _executeWithAuth(
+      (headers) =>
+          _client.post(_url('/api/orders/$orderId/cancel'), headers: headers),
+    );
+    _ensureOk(res, 'cancelOrder');
+    return OrderCancelResult.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
     );
   }
@@ -158,6 +328,20 @@ class ApiService {
   }
 
   void dispose() => _client.close();
+}
+
+/// Result of `POST /api/orders/:orderId/cancel`.
+class OrderCancelResult {
+  final String orderId;
+  final String status;
+
+  const OrderCancelResult({required this.orderId, required this.status});
+
+  factory OrderCancelResult.fromJson(Map<String, dynamic> json) =>
+      OrderCancelResult(
+        orderId: json['orderId'] as String,
+        status: json['status'] as String,
+      );
 }
 
 /// Response of `POST /api/ai/chat`.

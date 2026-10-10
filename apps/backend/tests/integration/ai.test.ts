@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { createApp } from '../../src/app';
 import { aiClient } from '../../src/ai/client';
+import { newSession, resetSessionState, TestSession } from '../helpers/session';
 import {
   consumeAIPreparedSession,
   markSessionAIPrepared,
@@ -24,7 +25,11 @@ const toolCall = (id: string, name: string, args: any) => ({
   function: { name, arguments: JSON.stringify(args) },
 });
 
-beforeEach(() => {
+let sess: TestSession;
+
+beforeEach(async () => {
+  resetSessionState();
+  sess = await newSession(app);
   mockChat.mockReset();
   // Default: model returns a plain text reply, no tool calls.
   mockChat.mockResolvedValue(msg('I found some great breakfast options!', null));
@@ -32,20 +37,20 @@ beforeEach(() => {
 
 describe('AI API', () => {
   test('clearing an AI cart removes the AI-origin marker', async () => {
-    const sessionId = 'clear-cart-origin-test';
+    const sessionId = sess.sessionId;
     markSessionAIPrepared(sessionId);
 
-    const response = await request(app).delete(`/api/ai/cart/${sessionId}`);
+    const response = await request(app).delete(`/api/ai/cart/${sessionId}`).set(sess.headers);
 
     expect(response.status).toBe(200);
     expect(consumeAIPreparedSession(sessionId)).toBe(false);
   });
 
   test('clearing a conversation removes its AI-origin marker', async () => {
-    const sessionId = 'clear-chat-origin-test';
+    const sessionId = sess.sessionId;
     markSessionAIPrepared(sessionId);
 
-    const response = await request(app).delete(`/api/ai/chat/${sessionId}`);
+    const response = await request(app).delete(`/api/ai/chat/${sessionId}`).set(sess.headers);
 
     expect(response.status).toBe(200);
     expect(consumeAIPreparedSession(sessionId)).toBe(false);
@@ -53,8 +58,8 @@ describe('AI API', () => {
 
   test('POST /api/ai/chat returns AI response', async () => {
     const response = await request(app)
-      .post('/api/ai/chat')
-      .send({ sessionId: 'test-session-001', message: 'I need breakfast for 2 people' });
+      .post('/api/ai/chat').set(sess.headers)
+      .send({ message: 'I need breakfast for 2 people' });
 
     expect(response.status).toBe(200);
     expect(response.body.response).toBeDefined();
@@ -63,9 +68,8 @@ describe('AI API', () => {
 
   test('shopper profile is provided to the AI as a hard constraint', async () => {
     const response = await request(app)
-      .post('/api/ai/chat')
+      .post('/api/ai/chat').set(sess.headers)
       .send({
-        sessionId: 'profile-constraints-test',
         message: 'Find me breakfast',
         preferences: { dietary: ['vegan'], maxBudgetMinor: 900 },
       });
@@ -87,9 +91,8 @@ describe('AI API', () => {
       ])
     );
     const response = await request(app)
-      .post('/api/ai/chat')
+      .post('/api/ai/chat').set(sess.headers)
       .send({
-        sessionId: 'profile-cart-enforcement-test',
         message: 'Prepare breakfast',
         preferences: { dietary: ['vegan'] },
       });
@@ -106,9 +109,8 @@ describe('AI API', () => {
 
   test('rejects unsupported or invalid shopper preferences', async () => {
     const response = await request(app)
-      .post('/api/ai/chat')
+      .post('/api/ai/chat').set(sess.headers)
       .send({
-        sessionId: 'invalid-profile-test',
         message: 'Find breakfast',
         preferences: { dietary: ['peanut-free'], maxBudgetMinor: -1 },
       });
@@ -118,18 +120,18 @@ describe('AI API', () => {
   });
 
   test('Rate limiting: 11th request returns 429', async () => {
-    const sessionId = 'rate-limit-test';
+    const sessionId = sess.sessionId;
 
     for (let i = 0; i < 10; i++) {
       const r = await request(app)
-        .post('/api/ai/chat')
-        .send({ sessionId, message: `Request ${i}` });
+        .post('/api/ai/chat').set(sess.headers)
+        .send({ message: `Request ${i}` });
       expect(r.status).toBe(200);
     }
 
     const response = await request(app)
-      .post('/api/ai/chat')
-      .send({ sessionId, message: 'Request 11' });
+      .post('/api/ai/chat').set(sess.headers)
+      .send({ message: 'Request 11' });
 
     expect(response.status).toBe(429);
     expect(response.body.error).toBe('Rate limit exceeded');
@@ -146,8 +148,8 @@ describe('AI API', () => {
       .mockResolvedValueOnce(msg('Here is your cart. Proceed to checkout?', null));
 
     const response = await request(app)
-      .post('/api/ai/chat')
-      .send({ sessionId: 'multi-001', message: 'breakfast for 2' });
+      .post('/api/ai/chat').set(sess.headers)
+      .send({ message: 'breakfast for 2' });
 
     expect(response.status).toBe(200);
     expect(response.body.toolRounds).toBeGreaterThanOrEqual(2);
@@ -162,8 +164,8 @@ describe('AI API', () => {
     mockChat.mockResolvedValueOnce(msg('ok', [toolCall('cx', 'capture_payment', {})]));
 
     const response = await request(app)
-      .post('/api/ai/chat')
-      .send({ sessionId: 'safe-001', message: 'just pay it' });
+      .post('/api/ai/chat').set(sess.headers)
+      .send({ message: 'just pay it' });
 
     // The service refuses the unauthorized tool before any payment can happen.
     expect(response.status).toBe(500);

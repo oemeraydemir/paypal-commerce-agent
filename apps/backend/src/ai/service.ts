@@ -42,7 +42,8 @@ Remember: You help DISCOVER and PREPARE orders. The actual payment happens throu
     sessionId: string,
     userMessage: string,
     conversationHistory: ChatMessage[] = [],
-    preferences: ShoppingPreferences = { dietary: [] }
+    preferences: ShoppingPreferences = { dietary: [] },
+    userId?: string
   ): Promise<{
     response: string;
     preparedCart?: any;
@@ -129,7 +130,7 @@ Remember: You help DISCOVER and PREPARE orders. The actual payment happens throu
         }
 
         try {
-          const result = await executeTool(toolName, args, preferences, { sessionId });
+          const result = await executeTool(toolName, args, preferences, { sessionId, userId });
 
           if (toolName === 'prepare_cart') {
             if (result.policyDecision === 'BLOCK') {

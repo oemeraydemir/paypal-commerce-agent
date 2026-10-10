@@ -6,7 +6,7 @@ import { OrderOrigin, createCartId } from '../orders/domain';
 import { policyService } from '../policy/service';
 import { policyStorage } from '../policy/storage';
 import { dailySpendTracker } from '../policy/daily-spend-tracker';
-import { defaultPolicy, getDemoUserId } from '../policy/default-policy';
+import { getDemoUserId } from '../policy/default-policy';
 import {
   buildEvaluationOrder,
   buildPolicyContext,
@@ -30,6 +30,9 @@ export interface ShoppingPreferences {
 // compatible — existing callers that omit it still type-check.
 export interface ToolExecutionContext {
   sessionId?: string;
+  // Server-derived owner of the session (never client supplied). Falls back to
+  // the single demo user only for direct, non-HTTP unit calls.
+  userId?: string;
 }
 
 function meetsDietaryPreferences(
@@ -175,14 +178,10 @@ export async function executeTool(
       // evaluated, an advisory PolicyEvent is stored, and the metadata is
       // returned to the AI/tool caller. A BLOCK must NOT reserve spend or call
       // PayPal.
-      const userId = getDemoUserId();
+      const userId = context?.userId ?? getDemoUserId();
       const sessionId = context?.sessionId;
       const cartId = createCartId(sessionId ?? '', validatedItems);
-      let policy = policyStorage.getPolicy(userId);
-      if (!policy) {
-        policy = defaultPolicy;
-        policyStorage.setPolicy(defaultPolicy);
-      }
+      const policy = policyStorage.getOrCreatePolicy(userId);
       const policyContext = buildPolicyContext(
         userId,
         currentBusiness.businessId,

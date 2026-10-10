@@ -1,0 +1,58 @@
+﻿{
+    "health":  {
+                   "status":  200,
+                   "startedUtc":  "2026-10-09T17:39:33.8633886Z",
+                   "endedUtc":  "2026-10-09T17:39:56.3899095Z"
+               },
+    "catalog":  {
+                    "status":  200,
+                    "startedUtc":  "2026-10-09T17:40:15.9721517Z",
+                    "endedUtc":  "2026-10-09T17:40:16.2072684Z"
+                },
+    "webhookHealth":  {
+                          "status":  200,
+                          "startedUtc":  "2026-10-09T17:40:13.7471934Z",
+                          "endedUtc":  "2026-10-09T17:40:14.0639016Z"
+                      },
+    "dashboard":  {
+                      "startedUtc":  "2026-10-09T17:40:14.2211259Z",
+                      "status":  200,
+                      "markerPresent":  true,
+                      "endedUtc":  "2026-10-09T17:40:14.5226695Z"
+                  },
+    "policyEvents":  {
+                         "status":  200,
+                         "startedUtc":  "2026-10-09T17:40:14.9751967Z",
+                         "total":  0,
+                         "endedUtc":  "2026-10-09T17:40:15.2218324Z"
+                     },
+    "policyStats":  {
+                        "status":  200,
+                        "startedUtc":  "2026-10-09T17:40:14.5961896Z",
+                        "endedUtc":  "2026-10-09T17:40:14.9528357Z",
+                        "totalRequests":  0
+                    },
+    "appLaunch":  {
+                      "screenshot":  "app-launch.png",
+                      "startedUtc":  "2026-10-09T17:40:36.2225362Z",
+                      "launchCommandExitCode":  0
+                  },
+    "catalogUi":  {
+                      "result":  "BLOCKED",
+                      "startedUtc":  "2026-10-09T17:40:38Z",
+                      "screenshot":  "catalog-load-failed.png",
+                      "endedUtc":  "2026-10-09T17:40:43Z"
+                  },
+    "scenario1":  {
+                      "result":  "NOT_TESTED",
+                      "reason":  "Release APK is compiled with 10.0.2.2 instead of production API URL."
+                  },
+    "scenario2":  {
+                      "result":  "NOT_TESTED",
+                      "reason":  "Release APK is compiled with 10.0.2.2 instead of production API URL."
+                  },
+    "paypalRedirect":  {
+                           "result":  "NOT_TESTED",
+                           "reason":  "Would require creating a production payment/order; production payment endpoints were not accessed."
+                       }
+}

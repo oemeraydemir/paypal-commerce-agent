@@ -1,0 +1,1 @@
+﻿Render runtime logs were not fetched: no authenticated Render log API/CLI access was available. Public application endpoints do not expose service logs.

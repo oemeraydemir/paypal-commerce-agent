@@ -9,6 +9,7 @@ import { getDemoUserId } from '../../src/policy/default-policy';
 import { webhookService } from '../../src/paypal/webhook-service';
 import { captureLock } from '../../src/orders/capture-lock';
 import { reconcileExpiredReservations } from '../../src/orders/payment-lifecycle';
+import { newSession, resetSessionState, TestSession } from '../helpers/session';
 
 // PayPal is mocked: these tests prove OUR lifecycle logic against simulated
 // PayPal responses. They do NOT replace a real PayPal Sandbox run.
@@ -24,7 +25,8 @@ jest.mock('../../src/paypal/client', () => ({
 const app = createApp();
 const orderService = OrderService.getInstance();
 const pp = paypalClient as unknown as Record<'createOrder' | 'captureOrder' | 'getOrder' | 'verifyWebhookSignature', jest.Mock>;
-const USER = getDemoUserId();
+let USER = getDemoUserId(); // reassigned to the per-test session's user
+let sess: TestSession;
 const DAY = 24 * 60 * 60 * 1000;
 const HOUR = 60 * 60 * 1000;
 
@@ -46,9 +48,9 @@ async function create(sessionId: string, items = [{ productId: 'coffee', quantit
     links: [{ rel: 'approve', href: 'https://sandbox.paypal.com/approve' }],
   });
   const res = await request(app)
-    .post('/api/orders/create')
+    .post('/api/orders/create').set(sess.headers)
     .set('Idempotency-Key', `lc-${sessionId}-${++seq}`)
-    .send({ sessionId, items });
+    .send({ items });
   expect(res.status).toBe(200);
   return { id: res.body.orderId as string, ppId };
 }
@@ -74,7 +76,10 @@ const waitFor = async (cond: () => boolean) => {
   expect(cond()).toBe(true);
 };
 
-beforeEach(() => {
+beforeEach(async () => {
+  resetSessionState();
+  sess = await newSession(app);
+  USER = sess.userId;
   Object.values(pp).forEach((m) => m.mockReset());
   pp.verifyWebhookSignature.mockResolvedValue({ verification_status: 'SUCCESS' });
   pp.captureOrder.mockResolvedValue(COMPLETED);
@@ -102,7 +107,7 @@ describe('reconcileExpiredReservations', () => {
     expect(orderService.getById(id)!.status).toBe(OrderStatus.ORDER_CANCELLED);
     expect(dailySpendTracker.getPendingReservations(USER)).toBe(0);
 
-    const cap = await request(app).post(`/api/orders/${id}/capture`);
+    const cap = await request(app).post(`/api/orders/${id}/capture`).set(sess.headers);
     expect(cap.status).toBe(400);
     expect(pp.captureOrder).not.toHaveBeenCalled();
   });
@@ -194,7 +199,7 @@ describe('races and replays', () => {
     pp.captureOrder.mockReset();
     pp.captureOrder.mockReturnValueOnce(new Promise((r) => (resolveCapture = r)));
 
-    const capturePromise = request(app).post(`/api/orders/${id}/capture`).then((r) => r);
+    const capturePromise = request(app).post(`/api/orders/${id}/capture`).set(sess.headers).then((r) => r);
     await waitFor(() => pp.captureOrder.mock.calls.length === 1);
 
     expect((await webhook('PAYMENT.CAPTURE.COMPLETED', ppId)).status).toBe(200);
@@ -213,7 +218,7 @@ describe('races and replays', () => {
     let resolveCapture!: (v: any) => void;
     pp.captureOrder.mockReset();
     pp.captureOrder.mockReturnValueOnce(new Promise((r) => (resolveCapture = r)));
-    const capturePromise = request(app).post(`/api/orders/${id}/capture`).then((r) => r);
+    const capturePromise = request(app).post(`/api/orders/${id}/capture`).set(sess.headers).then((r) => r);
     await waitFor(() => pp.captureOrder.mock.calls.length === 1);
 
     await webhook('PAYMENT.CAPTURE.COMPLETED', ppId);
@@ -228,10 +233,10 @@ describe('races and replays', () => {
     let resolveCapture!: (v: any) => void;
     pp.captureOrder.mockReset();
     pp.captureOrder.mockReturnValueOnce(new Promise((r) => (resolveCapture = r)));
-    const first = request(app).post(`/api/orders/${id}/capture`).then((r) => r);
+    const first = request(app).post(`/api/orders/${id}/capture`).set(sess.headers).then((r) => r);
     await waitFor(() => pp.captureOrder.mock.calls.length === 1);
 
-    const second = await request(app).post(`/api/orders/${id}/capture`);
+    const second = await request(app).post(`/api/orders/${id}/capture`).set(sess.headers);
     expect(second.status).toBe(409);
     expect(second.body.error).toMatch(/in progress/i);
 
@@ -246,12 +251,12 @@ describe('races and replays', () => {
     const { id } = await create('lost-response');
     pp.captureOrder.mockReset();
     pp.captureOrder.mockRejectedValueOnce(new Error('ECONNRESET'));
-    expect((await request(app).post(`/api/orders/${id}/capture`)).status).toBe(502);
+    expect((await request(app).post(`/api/orders/${id}/capture`).set(sess.headers)).status).toBe(502);
     expect(dailySpendTracker.getSpentToday(USER)).toBe(0);
 
     pp.captureOrder.mockRejectedValueOnce({ details: [{ issue: 'ORDER_ALREADY_CAPTURED' }] });
     pp.getOrder.mockResolvedValueOnce(COMPLETED);
-    const retry = await request(app).post(`/api/orders/${id}/capture`);
+    const retry = await request(app).post(`/api/orders/${id}/capture`).set(sess.headers);
     expect(retry.status).toBe(409);
     expect(retry.body.details).toEqual({ settled: true });
     expect(orderService.getById(id)!.status).toBe(OrderStatus.PAID);
@@ -259,7 +264,7 @@ describe('races and replays', () => {
     expect(dailySpendTracker.getPendingReservations(USER)).toBe(0);
 
     // Further retries are idempotent.
-    const again = await request(app).post(`/api/orders/${id}/capture`);
+    const again = await request(app).post(`/api/orders/${id}/capture`).set(sess.headers);
     expect(again.status).toBe(409);
     expect(dailySpendTracker.getSpentToday(USER)).toBe(600);
   });
@@ -268,7 +273,7 @@ describe('races and replays', () => {
     const { id } = await create('lock-release');
     pp.captureOrder.mockReset();
     pp.captureOrder.mockRejectedValueOnce(new Error('boom'));
-    expect((await request(app).post(`/api/orders/${id}/capture`)).status).toBe(502);
+    expect((await request(app).post(`/api/orders/${id}/capture`).set(sess.headers)).status).toBe(502);
     expect(captureLock.isHeld(id)).toBe(false);
   });
 });

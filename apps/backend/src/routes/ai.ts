@@ -1,71 +1,89 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { aiService } from '../ai/service';
-import { markSessionAIPrepared } from '../ai/session-tracker';
+import { markSessionAIPrepared, clearAIPreparedSession } from '../ai/session-tracker';
 import { AppError } from '../middleware/error-handler';
+import { requireSession } from '../middleware/session-auth';
+import { SlidingWindowLimiter } from '../middleware/rate-limit';
+import { sessionStore } from '../session';
 import { env } from '../config/environment';
-import { clearAIPreparedSession } from '../ai/session-tracker';
 import { z } from 'zod';
 
 const router = Router();
 
-// In-memory rate limiter (10 requests/minute/session) + conversation history.
-const rateLimitStore = new Map<string, number[]>();
+// Conversation history is in-memory, keyed by the AUTHENTICATED session id.
 const conversationHistory = new Map<string, any[]>();
 
 const WINDOW_MS = 60 * 1000;
-const MAX_REQUESTS = 10;
-const HISTORY_TTL_MS = 30 * 60 * 1000;
 const MAX_HISTORY = 20;
 const preferencesSchema = z.object({
   dietary: z.array(z.enum(['vegetarian', 'vegan', 'gluten-free'])).max(3).default([]),
   maxBudgetMinor: z.number().int().min(100).max(10000).optional(),
 }).strict();
 
-// FIX (consistency with S1): unref the cleanup timer so it never keeps the
-// test process / server alive.
+// Three independent ceilings. Sessions are server-issued, so the per-session
+// limit can no longer be dodged by inventing a new id; the per-IP and global
+// ceilings bound OpenAI spend even if many sessions are created.
+export const aiChatLimiters = {
+  perSession: new SlidingWindowLimiter(env.AI_CHAT_PER_SESSION_PER_MIN, WINDOW_MS),
+  perIp: new SlidingWindowLimiter(env.AI_CHAT_PER_IP_PER_MIN, WINDOW_MS),
+  global: new SlidingWindowLimiter(env.AI_CHAT_GLOBAL_PER_MIN, WINDOW_MS),
+};
+
+// Test isolation only.
+export function resetAiRouteState(): void {
+  conversationHistory.clear();
+  aiChatLimiters.perSession.reset();
+  aiChatLimiters.perIp.reset();
+  aiChatLimiters.global.reset();
+}
+
+// Free per-session state for sessions that no longer exist.
 const cleanupTimer = setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, requests] of rateLimitStore.entries()) {
-    if (requests.length === 0 || now - requests[requests.length - 1] > HISTORY_TTL_MS) {
-      rateLimitStore.delete(sessionId);
+  for (const sessionId of [...conversationHistory.keys()]) {
+    if (!sessionStore.has(sessionId)) {
       conversationHistory.delete(sessionId);
+      aiChatLimiters.perSession.forget(sessionId);
       clearAIPreparedSession(sessionId);
     }
   }
+  aiChatLimiters.perSession.prune();
+  aiChatLimiters.perIp.prune();
+  aiChatLimiters.global.prune();
 }, 5 * 60 * 1000);
 cleanupTimer.unref();
 
 function rateLimit(req: Request, res: Response, next: NextFunction) {
-  const sessionId = (req.body && req.body.sessionId) || (req.headers['x-session-id'] as string);
-  if (!sessionId) {
-    return res.status(400).json({ error: 'sessionId required' });
+  const sessionId = req.session!.sessionId;
+  const checks: Array<[string, SlidingWindowLimiter, string]> = [
+    ['session', aiChatLimiters.perSession, sessionId],
+    ['ip', aiChatLimiters.perIp, req.ip || 'unknown'],
+    ['global', aiChatLimiters.global, 'all'],
+  ];
+  for (const [scope, limiter, key] of checks) {
+    const result = limiter.hit(key);
+    if (!result.allowed) {
+      res.setHeader('Retry-After', String(result.retryAfter));
+      return res.status(429).json({
+        error: 'Rate limit exceeded',
+        scope,
+        message: `Maximum ${limiter.limit} requests per minute (${scope})`,
+        retryAfter: result.retryAfter,
+      });
+    }
   }
-
-  const now = Date.now();
-  const recent = (rateLimitStore.get(sessionId) || []).filter((t) => now - t < WINDOW_MS);
-  rateLimitStore.set(sessionId, recent);
-
-  if (recent.length >= MAX_REQUESTS) {
-    return res.status(429).json({
-      error: 'Rate limit exceeded',
-      message: `Maximum ${MAX_REQUESTS} requests per minute`,
-      retryAfter: Math.ceil((recent[0] + WINDOW_MS - now) / 1000),
-    });
-  }
-
-  recent.push(now);
   next();
 }
 
-router.post('/ai/chat', rateLimit, async (req, res, next) => {
+router.post('/ai/chat', requireSession, rateLimit, async (req, res, next) => {
   try {
     if (!env.isAIEnabled()) {
       throw new AppError(503, 'OpenAI not configured');
     }
 
-    const { sessionId, message } = req.body;
-    if (!sessionId || !message) {
-      throw new AppError(400, 'sessionId and message required');
+    const { sessionId, userId } = req.session!;
+    const { message } = req.body;
+    if (!message || typeof message !== 'string') {
+      throw new AppError(400, 'message required');
     }
     const preferencesResult = preferencesSchema.safeParse(req.body.preferences ?? {});
     if (!preferencesResult.success) {
@@ -77,7 +95,8 @@ router.post('/ai/chat', rateLimit, async (req, res, next) => {
       sessionId,
       message,
       history,
-      preferencesResult.data
+      preferencesResult.data,
+      userId
     );
 
     conversationHistory.set(sessionId, result.updatedHistory.slice(-MAX_HISTORY));
@@ -99,15 +118,22 @@ router.post('/ai/chat', rateLimit, async (req, res, next) => {
   }
 });
 
-router.delete('/ai/chat/:sessionId', (req, res) => {
+function requireOwnPathSession(req: Request, _res: Response, next: NextFunction) {
+  if (req.params.sessionId !== req.session!.sessionId) {
+    return next(new AppError(403, 'Not your session', { code: 'SESSION_MISMATCH' }));
+  }
+  next();
+}
+
+router.delete('/ai/chat/:sessionId', requireSession, requireOwnPathSession, (req, res) => {
   const { sessionId } = req.params;
   conversationHistory.delete(sessionId);
-  rateLimitStore.delete(sessionId);
+  aiChatLimiters.perSession.forget(sessionId);
   clearAIPreparedSession(sessionId);
   res.json({ message: 'Conversation history cleared' });
 });
 
-router.delete('/ai/cart/:sessionId', (req, res) => {
+router.delete('/ai/cart/:sessionId', requireSession, requireOwnPathSession, (req, res) => {
   clearAIPreparedSession(req.params.sessionId);
   res.json({ message: 'AI-prepared cart cleared' });
 });

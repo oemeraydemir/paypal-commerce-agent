@@ -20,6 +20,31 @@ export class PolicyStorage {
     return this.policies.get(userId);
   }
 
+  // Per-user policy: every user (session) gets its OWN copy of the default policy
+  // the first time it is needed, so limits and rules are never shared.
+  getOrCreatePolicy(userId: string): PurchasePolicy {
+    const existing = this.policies.get(userId);
+    if (existing) return existing;
+    const now = new Date();
+    const created: PurchasePolicy = {
+      ...defaultPolicy,
+      id: `policy-${userId}`,
+      userId,
+      allowedMerchantIds: [...defaultPolicy.allowedMerchantIds],
+      blockedCategoryIds: [...defaultPolicy.blockedCategoryIds],
+      requiredDietaryAttributes: [...defaultPolicy.requiredDietaryAttributes],
+      blockedDietaryAttributes: [...defaultPolicy.blockedDietaryAttributes],
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.policies.set(userId, created);
+    return created;
+  }
+
+  deletePolicy(userId: string): void {
+    this.policies.delete(userId);
+  }
+
   addEvent(event: PolicyEvent): void {
     this.events.push(event);
   }

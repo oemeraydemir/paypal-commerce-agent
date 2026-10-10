@@ -22,18 +22,11 @@ class ChatProvider extends ChangeNotifier {
   String? _error;
   String? get error => _error;
 
-  /// Stable per-app session id passed to every chat request (rate-limited
-  /// 10/min/session server-side).
-  final String sessionId = _newSessionId();
-
   PreparedCart? _lastPreparedCart;
   PreparedCart? get lastPreparedCart => _lastPreparedCart;
 
   /// True when the AI has prepared a cart the user can check out.
   bool get checkoutReady => _lastPreparedCart != null;
-
-  static String _newSessionId() =>
-      'sess_${DateTime.now().microsecondsSinceEpoch}';
 
   Future<void> sendMessage(
     String text, {
@@ -55,7 +48,6 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       final resp = await api.sendChat(
-        sessionId: sessionId,
         message: trimmed,
         preferences: preferences,
       );
@@ -95,7 +87,7 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> clearConversation() async {
     try {
-      await api.deleteChat(sessionId);
+      await api.deleteChat();
     } catch (e) {
       _error = e is ApiException
           ? 'Could not clear the conversation (${e.statusCode}): ${e.message}'
@@ -111,7 +103,7 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> clearPreparedCart() async {
     try {
-      await api.deletePreparedCart(sessionId);
+      await api.deletePreparedCart();
     } on ApiException catch (e) {
       _error = 'Could not clear the AI cart (${e.statusCode}): ${e.message}';
       notifyListeners();

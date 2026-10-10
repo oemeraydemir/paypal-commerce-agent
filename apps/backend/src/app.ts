@@ -13,12 +13,17 @@ import aiRoutes from './routes/ai';
 import webhookRoutes from './routes/webhooks';
 import dashboardRoutes from './routes/dashboard';
 import checkoutRoutes from './routes/checkout';
+import sessionRoutes from './routes/sessions';
 
 // CRITICAL FIX #1: createApp() builds the Express application with NO listen().
 // server.ts imports this and calls listen(). This separation prevents test
 // processes from binding a port / hanging.
 export function createApp() {
   const app = express();
+
+  // Behind a reverse proxy (Render) req.ip must be the real client address, or
+  // per-IP limits would throttle everybody together. 0 = trust nothing.
+  app.set('trust proxy', env.TRUST_PROXY_HOPS);
 
   app.use(helmet());
   app.use(
@@ -40,6 +45,7 @@ export function createApp() {
 
   app.use('/', dashboardRoutes);
   app.use('/api', checkoutRoutes);
+  app.use('/api', sessionRoutes);
   app.use('/api', healthRoutes);
   app.use('/api', catalogRoutes);
   app.use('/api', orderRoutes);

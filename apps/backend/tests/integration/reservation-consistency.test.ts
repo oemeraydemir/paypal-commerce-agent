@@ -11,6 +11,7 @@ import { OrderStatus } from '../../src/orders/domain';
 import { policyStorage } from '../../src/policy/storage';
 import { dailySpendTracker } from '../../src/policy/daily-spend-tracker';
 import { getDemoUserId } from '../../src/policy/default-policy';
+import { newSession, resetSessionState, TestSession } from '../helpers/session';
 import { webhookService } from '../../src/paypal/webhook-service';
 import { captureLock } from '../../src/orders/capture-lock';
 import { reconcileExpiredReservations } from '../../src/orders/payment-lifecycle';
@@ -27,7 +28,8 @@ jest.mock('../../src/paypal/client', () => ({
 const app = createApp();
 const orderService = OrderService.getInstance();
 const pp = paypalClient as unknown as Record<'createOrder' | 'captureOrder' | 'getOrder' | 'verifyWebhookSignature', jest.Mock>;
-const USER = getDemoUserId();
+let USER = getDemoUserId(); // reassigned to the per-test session's user
+let sess: TestSession;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
@@ -58,9 +60,9 @@ async function create(sessionId: string) {
     links: [{ rel: 'approve', href: 'https://sandbox.paypal.com/approve' }],
   });
   const res = await request(app)
-    .post('/api/orders/create')
+    .post('/api/orders/create').set(sess.headers)
     .set('Idempotency-Key', `cs-${sessionId}-${++seq}`)
-    .send({ sessionId, items: [{ productId: 'coffee', quantity: 2 }] }); // 600 minor
+    .send({ items: [{ productId: 'coffee', quantity: 2 }] }); // 600 minor
   expect(res.status).toBe(200);
   return { id: res.body.orderId as string, ppId };
 }
@@ -85,7 +87,10 @@ const status = (id: string) => orderService.getById(id)!.status;
 const spent = () => dailySpendTracker.getSpentToday(USER);
 const pending = () => dailySpendTracker.getPendingReservations(USER);
 
-beforeEach(() => {
+beforeEach(async () => {
+  resetSessionState();
+  sess = await newSession(app);
+  USER = sess.userId;
   jest.restoreAllMocks();
   Object.values(pp).forEach((m) => m.mockReset());
   pp.verifyWebhookSignature.mockResolvedValue({ verification_status: 'SUCCESS' });
@@ -138,7 +143,7 @@ describe('B3 capture and reconciliation running at the same time', () => {
     const sweep = reconcileExpiredReservations({ now: Date.now() + DAY });
     await waitFor(() => pp.getOrder.mock.calls.length === 1);
 
-    const cap = await request(app).post(`/api/orders/${id}/capture`);
+    const cap = await request(app).post(`/api/orders/${id}/capture`).set(sess.headers);
     expect(cap.status).toBe(200);
     expect(spent()).toBe(600);
 
@@ -159,7 +164,7 @@ describe('B3 capture and reconciliation running at the same time', () => {
 
     const sweep = reconcileExpiredReservations({ now: Date.now() + DAY });
     await waitFor(() => pp.getOrder.mock.calls.length === 1);
-    const capReq = request(app).post(`/api/orders/${id}/capture`).then((r) => r);
+    const capReq = request(app).post(`/api/orders/${id}/capture`).set(sess.headers).then((r) => r);
     await waitFor(() => pp.captureOrder.mock.calls.length === 1);
 
     lookup.resolve(ppOrder('CREATED'));
@@ -177,7 +182,7 @@ describe('B3 capture and reconciliation running at the same time', () => {
     const { id } = await create('b3c');
     pp.getOrder.mockResolvedValueOnce(ppOrder('CREATED'));
     await reconcileExpiredReservations({ now: Date.now() + DAY });
-    const cap = await request(app).post(`/api/orders/${id}/capture`);
+    const cap = await request(app).post(`/api/orders/${id}/capture`).set(sess.headers);
     expect(cap.status).toBe(400);
     expect(pp.captureOrder).not.toHaveBeenCalled();
     expect([status(id), spent(), pending()]).toEqual([OrderStatus.ORDER_CANCELLED, 0, 0]);
@@ -231,7 +236,7 @@ describe('B4 PayPal lookup fails: reservation is kept', () => {
   test('a failing lookup also blocks the explicit cancel endpoint from releasing', async () => {
     const { id } = await create('b4-cancel');
     pp.getOrder.mockRejectedValue(new Error('down'));
-    expect((await request(app).post(`/api/orders/${id}/cancel`)).status).toBe(502);
+    expect((await request(app).post(`/api/orders/${id}/cancel`).set(sess.headers)).status).toBe(502);
     expect([status(id), pending()]).toEqual([OrderStatus.PAYMENT_PENDING, 600]);
   });
 });
@@ -243,7 +248,7 @@ describe('B5 ORDER_ALREADY_CAPTURED is verified against the PayPal order', () =>
     const { id } = await create('b5a');
     alreadyCaptured();
     pp.getOrder.mockResolvedValueOnce(COMPLETED);
-    const r = await request(app).post(`/api/orders/${id}/capture`);
+    const r = await request(app).post(`/api/orders/${id}/capture`).set(sess.headers);
     expect([r.status, r.body.details]).toEqual([409, { settled: true }]);
     expect([status(id), spent(), pending()]).toEqual([OrderStatus.PAID, 600, 0]);
     expect(pp.getOrder).toHaveBeenCalledTimes(1);
@@ -257,7 +262,7 @@ describe('B5 ORDER_ALREADY_CAPTURED is verified against the PayPal order', () =>
     const { id } = await create('b5b');
     alreadyCaptured();
     arrange();
-    const r = await request(app).post(`/api/orders/${id}/capture`);
+    const r = await request(app).post(`/api/orders/${id}/capture`).set(sess.headers);
     expect([r.status, r.body.details]).toEqual([409, { settled: false }]);
     expect([status(id), spent(), pending()]).toEqual([OrderStatus.PAYMENT_PENDING, 0, 600]);
   });
@@ -329,7 +334,7 @@ describe('C1 APPROVED reservations and the 24h hard age', () => {
     expect(late.released).toBe(1);
     expect([status(id), spent(), pending()]).toEqual([OrderStatus.ORDER_CANCELLED, 0, 0]);
 
-    expect((await request(app).post(`/api/orders/${id}/capture`)).status).toBe(400);
+    expect((await request(app).post(`/api/orders/${id}/capture`).set(sess.headers)).status).toBe(400);
     expect(pp.captureOrder).not.toHaveBeenCalled();
 
     // Defensive path (e.g. a capture that raced the release): PayPal reports it completed.
@@ -348,7 +353,7 @@ describe('C3 a late response or event never moves PAID backwards', () => {
     const capture = deferred();
     pp.captureOrder.mockReset();
     pp.captureOrder.mockReturnValueOnce(capture.promise);
-    const req = request(app).post(`/api/orders/${id}/capture`).then((r) => r);
+    const req = request(app).post(`/api/orders/${id}/capture`).set(sess.headers).then((r) => r);
     await waitFor(() => pp.captureOrder.mock.calls.length === 1);
 
     await webhook('PAYMENT.CAPTURE.COMPLETED', ppId);
@@ -359,9 +364,9 @@ describe('C3 a late response or event never moves PAID backwards', () => {
 
   test('late DENIED webhook, late cancel request and a stale sweep all leave a PAID order untouched', async () => {
     const { id, ppId } = await create('c3b');
-    expect((await request(app).post(`/api/orders/${id}/capture`)).status).toBe(200);
+    expect((await request(app).post(`/api/orders/${id}/capture`).set(sess.headers)).status).toBe(200);
     expect((await webhook('PAYMENT.CAPTURE.DENIED', ppId)).status).toBe(200);
-    expect((await request(app).post(`/api/orders/${id}/cancel`)).status).toBe(409);
+    expect((await request(app).post(`/api/orders/${id}/cancel`).set(sess.headers)).status).toBe(409);
     pp.getOrder.mockResolvedValue(ppOrder('CREATED'));
     await reconcileExpiredReservations({ now: Date.now() + 30 * DAY });
     expect([status(id), spent(), pending()]).toEqual([OrderStatus.PAID, 600, 0]);

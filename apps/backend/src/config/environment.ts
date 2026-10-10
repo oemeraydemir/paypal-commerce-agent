@@ -15,6 +15,20 @@ const baseSchema = z.object({
   RESERVATION_TTL_MS: z.coerce.number().int().positive().default(30 * 60 * 1000),
   RESERVATION_MAX_AGE_MS: z.coerce.number().int().positive().default(24 * 60 * 60 * 1000),
   RESERVATION_SWEEP_INTERVAL_MS: z.coerce.number().int().positive().default(60 * 1000),
+  // Server-issued anonymous sessions + abuse limits (P0 isolation).
+  SESSION_IDLE_TTL_MS: z.coerce.number().int().positive().default(2 * 60 * 60 * 1000),
+  SESSION_MAX_AGE_MS: z.coerce.number().int().positive().default(24 * 60 * 60 * 1000),
+  SESSION_MAX_ACTIVE: z.coerce.number().int().positive().default(1000),
+  SESSION_CREATE_PER_IP_PER_HOUR: z.coerce.number().int().positive().default(30),
+  AI_CHAT_PER_SESSION_PER_MIN: z.coerce.number().int().positive().default(10),
+  AI_CHAT_PER_IP_PER_MIN: z.coerce.number().int().positive().default(30),
+  AI_CHAT_GLOBAL_PER_MIN: z.coerce.number().int().positive().default(120),
+  // Number of reverse-proxy hops to trust for req.ip (Render = 1). 0 = none.
+  TRUST_PROXY_HOPS: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(process.env.NODE_ENV === 'production' ? 1 : 0),
 });
 
 const paypalSchema = z.object({

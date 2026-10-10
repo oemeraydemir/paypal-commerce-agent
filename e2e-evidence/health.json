@@ -1,0 +1,1 @@
+{"status":"ok","timestamp":"2026-10-09T17:39:54.853Z","service":"paypal-commerce-agent-backend","version":"1.0.0","environment":"production","uptime":9.338158852,"paypal":{"enabled":true,"environment":"sandbox"},"ai":{"enabled":true}}

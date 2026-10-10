@@ -73,9 +73,11 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _handlePayPalReturn(Uri uri) {
+  Future<void> _handlePayPalReturn(Uri uri) async {
     if (uri.scheme != 'paypalcommerceagent') return;
-    final handled = context.read<CheckoutProvider>().handlePayPalReturn(uri);
+    final handled = await context.read<CheckoutProvider>().handlePayPalReturn(
+      uri,
+    );
     if (!handled && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

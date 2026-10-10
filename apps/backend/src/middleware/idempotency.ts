@@ -26,11 +26,14 @@ const cleanupTimer = setInterval(() => {
 cleanupTimer.unref();
 
 export function idempotency(req: Request, res: Response, next: NextFunction) {
-  const idempotencyKey = req.headers['idempotency-key'] as string | undefined;
+  const rawKey = req.headers['idempotency-key'] as string | undefined;
 
-  if (!idempotencyKey) {
+  if (!rawKey) {
     return next();
   }
+  // Scope the key to the authenticated session so one session can never be
+  // served (or collide with) another session's cached response.
+  const idempotencyKey = req.session ? `${req.session.sessionId}:${rawKey}` : rawKey;
 
   const currentFingerprint = createRequestFingerprint(req.body);
 

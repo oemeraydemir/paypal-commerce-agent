@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -70,6 +72,20 @@ class CheckoutProvider extends ChangeNotifier {
 
   bool _paypalApproved = false;
   bool get paypalApproved => _paypalApproved;
+
+  /// Stable per-checkout-attempt idempotency key sent as `Idempotency-Key` (F4).
+  /// One key per logical attempt; reused across transport retries, regenerated
+  /// for the next attempt.
+  String? _idempotencyKey;
+
+  String _newIdempotencyKey() {
+    final rand = Random();
+    final entropy = List<int>.generate(
+      8,
+      (_) => rand.nextInt(256),
+    ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return 'co-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-$entropy';
+  }
 
   void setError(String message) {
     _error = message;
@@ -176,23 +192,32 @@ class CheckoutProvider extends ChangeNotifier {
   bool get canCheckout => cart.isNotEmpty;
 
   /// Accept only a PayPal return link for the order currently awaiting approval.
-  bool handlePayPalReturn(Uri uri) {
+  ///
+  /// On a valid cancellation return, the cancellation is now propagated to the
+  /// backend (`POST /api/orders/:orderId/cancel`) so the server releases the
+  /// daily-spend reservation; the local cart is preserved and the pending order
+  /// is only cleared once the backend confirms (F2). Stale or unrelated deep
+  /// links are not acted on and the local state is left recoverable.
+  Future<bool> handlePayPalReturn(Uri uri) async {
     if (uri.scheme != 'paypalcommerceagent' || uri.host != 'checkout') {
       return false;
     }
     final token = uri.queryParameters['token'];
-    if (_created == null || token != _created!.paypalOrderId) {
-      _error = 'This PayPal approval link does not match the pending order.';
+    if (_created == null) {
+      // Nothing pending locally; ignore a return link with no matching order.
+      _statusMessage = 'No pending order to handle.';
       notifyListeners();
+      return true;
+    }
+    if (token != _created!.paypalOrderId) {
+      _error = 'This PayPal return link does not match the pending order.';
+      notifyListeners();
+      // Not handled: the UI surfaces a "does not match your pending order"
+      // message and no backend call is made (F2).
       return false;
     }
     if (uri.path == '/cancel') {
-      _paypalApproved = false;
-      _created = null;
-      _error = null;
-      _statusMessage =
-          'Payment was cancelled in PayPal. Your cart is unchanged.';
-      notifyListeners();
+      await _cancelViaBackend();
       return true;
     }
     if (uri.path != '/success') return false;
@@ -202,6 +227,35 @@ class CheckoutProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
     return true;
+  }
+
+  /// Propagates a PayPal cancellation to the backend. The local cart is kept and
+  /// the pending order is only cleared when the server confirms the cancel; on
+  /// failure the recoverable pending order is preserved and the error is shown
+  /// (F2/F3). This never marks the order as paid.
+  Future<void> _cancelViaBackend() async {
+    final orderId = _created!.orderId;
+    _busy = true;
+    _error = null;
+    notifyListeners();
+    try {
+      await api.cancelOrder(orderId);
+      // Backend confirmed: safe to drop the pending order. Cart is preserved.
+      _created = null;
+      _paypalApproved = false;
+      _statusMessage =
+          'Payment was cancelled in PayPal. Your cart is unchanged.';
+    } on ApiException catch (e) {
+      // Keep the recoverable pending order so the user can retry; surface error.
+      _error = 'Cancel failed (${e.statusCode}): ${e.message}';
+      _statusMessage = null;
+    } catch (e) {
+      _error = e.toString();
+      _statusMessage = null;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   /// Recovery when the external browser cannot open the app's return link.
@@ -239,9 +293,13 @@ class CheckoutProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // One stable key per logical checkout attempt (F4). It is reused if the
+      // request is transparently retried (e.g. on a 401 session refresh inside
+      // ApiService) and regenerated on the next startCheckout call.
+      _idempotencyKey = _newIdempotencyKey();
       final result = await api.createOrder(
-        sessionId: chat.sessionId,
         items: items,
+        idempotencyKey: _idempotencyKey,
       );
       final approvalUrl = result.approvalUrl;
       final approvalUri = approvalUrl == null
@@ -342,8 +400,88 @@ class CheckoutProvider extends ChangeNotifier {
         _error = 'PayPal did not complete the payment. Your cart is unchanged; review checkout to try again.';
       }
     } on ApiException catch (e) {
-      _error = 'Capture failed (${e.statusCode}): ${e.message}';
+      // F3: recover from stale/ambiguous pending orders without losing state.
+      final msg = e.message.toLowerCase();
+      if (e.statusCode == 409 && msg.contains('already captured')) {
+        // Definitive: the order is already paid. Reflect that and clear the
+        // pending state. We do not invent a capture id, and this is NOT treated
+        // as a cancellation.
+        _captured = OrderCaptureResult(
+          orderId: _created!.orderId,
+          status: 'PAID',
+          paypalCaptureId: 'unknown',
+          paypalStatus: 'COMPLETED',
+        );
+        _created = null;
+        _paypalApproved = false;
+        _statusMessage = 'Payment was already completed for this order.';
+      } else if (e.statusCode == 502 || e.statusCode == 409) {
+        // Ambiguous transport / capture-in-progress: preserve the recoverable
+        // pending order and let the user retry.
+        _error =
+            'Capture could not be confirmed (${e.statusCode}): ${e.message}';
+        _statusMessage = null;
+      } else {
+        _error = 'Capture failed (${e.statusCode}): ${e.message}';
+        _statusMessage = null;
+      }
+    } catch (e) {
+      _error = e.toString();
       _statusMessage = null;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Cancels the current pending PayPal order via the backend
+  /// (`POST /api/orders/:orderId/cancel`). The server enforces ownership and
+  /// refuses to cancel already-captured orders, so this is payment-safe. The
+  /// cart is intentionally preserved so the shopper can retry.
+  Future<void> cancelCheckout([String? orderId]) async {
+    if (_busy) return;
+    final target = orderId ?? _created?.orderId;
+    if (target == null) {
+      _error = 'No pending order to cancel.';
+      notifyListeners();
+      return;
+    }
+    _busy = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final result = await api.cancelOrder(target);
+      _created = null;
+      _paypalApproved = false;
+      _statusMessage = 'Order cancelled (status: ${result.status}).';
+    } on ApiException catch (e) {
+      // F3: do not treat every error as an ordinary cancellation. Preserve
+      // recoverable state and classify specific outcomes.
+      final msg = e.message.toLowerCase();
+      if (e.statusCode == 409 && msg.contains('already captured')) {
+        // The order is actually paid; reflect that instead of leaving a stale
+        // pending order. Not marked cancelled.
+        _captured = OrderCaptureResult(
+          orderId: target,
+          status: 'PAID',
+          paypalCaptureId: 'unknown',
+          paypalStatus: 'COMPLETED',
+        );
+        _created = null;
+        _paypalApproved = false;
+        _statusMessage = 'This order was already paid.';
+      } else if (e.statusCode == 404) {
+        // Order no longer exists on the server: safe to drop the local pending
+        // reference (nothing to cancel).
+        _created = null;
+        _paypalApproved = false;
+        _statusMessage = 'The order no longer exists; nothing to cancel.';
+      } else {
+        // 502 (could not verify PayPal state) or other: keep the recoverable
+        // pending order so the user can retry.
+        _error = 'Cancel failed (${e.statusCode}): ${e.message}';
+        _statusMessage = null;
+      }
     } catch (e) {
       _error = e.toString();
       _statusMessage = null;
