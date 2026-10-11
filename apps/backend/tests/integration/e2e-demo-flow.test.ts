@@ -223,13 +223,23 @@ describe('S11 E2E: Agent Control Center Full Demo Flow', () => {
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.text).toContain('Agent Control Center');
     expect(res.text).toContain('ag-grid-community@31.0.0');
-    expect(res.text).toContain('escapeHtml');
     expect(res.text).toContain('eventModal');
     expect(res.text).toContain('Demo-only');
-    expect(res.text).toContain('policy-events');
     expect(res.text).toContain('decision-AUTO_ALLOW');
     expect(res.text).toContain('decision-BLOCK');
     expect(res.text).toContain('decision-REQUIRE_CONFIRMATION');
-    expect(res.text).toContain('setInterval');
+    // Sprint 6 CSP hardening: the dashboard's executable logic lives in a
+    // same-origin external script (/dashboard.js) instead of an inline block,
+    // so the HTML references it and carries no inline <script>.
+    expect(res.text).toContain('<script src="/dashboard.js"></script>');
+    expect(res.text).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/);
+
+    // The JS logic (escapeHtml, polling setInterval, policy-events fetches) now
+    // executes from the external same-origin file permitted by CSP script-src.
+    const js = await request(app).get('/dashboard.js');
+    expect(js.status).toBe(200);
+    expect(js.text).toContain('escapeHtml');
+    expect(js.text).toContain('setInterval');
+    expect(js.text).toContain('policy-events');
   });
 });

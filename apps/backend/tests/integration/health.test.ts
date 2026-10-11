@@ -17,6 +17,56 @@ describe('Health endpoint (integration)', () => {
     expect(res.body.ai).toHaveProperty('enabled');
   });
 
+  it('GET /api/health exposes buildCommit=unknown when RENDER_GIT_COMMIT is absent', async () => {
+    const original = process.env.RENDER_GIT_COMMIT;
+    delete process.env.RENDER_GIT_COMMIT;
+    try {
+      const res = await request(app).get('/api/health');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('buildCommit');
+      expect(res.body.buildCommit).toBe('unknown');
+    } finally {
+      if (original === undefined) {
+        delete process.env.RENDER_GIT_COMMIT;
+      } else {
+        process.env.RENDER_GIT_COMMIT = original;
+      }
+    }
+  });
+
+  it('GET /api/health returns the RENDER_GIT_COMMIT value when present', async () => {
+    const original = process.env.RENDER_GIT_COMMIT;
+    // Synthetic, non-secret commit SHA used only to prove pass-through.
+    process.env.RENDER_GIT_COMMIT = 'c8c5a4085100f75f05e4dca2d20f2087f8b17ef2';
+    try {
+      const res = await request(app).get('/api/health');
+      expect(res.status).toBe(200);
+      expect(res.body.buildCommit).toBe('c8c5a4085100f75f05e4dca2d20f2087f8b17ef2');
+    } finally {
+      if (original === undefined) {
+        delete process.env.RENDER_GIT_COMMIT;
+      } else {
+        process.env.RENDER_GIT_COMMIT = original;
+      }
+    }
+  });
+
+  it('GET /api/health buildCommit falls back to unknown for empty RENDER_GIT_COMMIT', async () => {
+    const original = process.env.RENDER_GIT_COMMIT;
+    process.env.RENDER_GIT_COMMIT = '';
+    try {
+      const res = await request(app).get('/api/health');
+      expect(res.status).toBe(200);
+      expect(res.body.buildCommit).toBe('unknown');
+    } finally {
+      if (original === undefined) {
+        delete process.env.RENDER_GIT_COMMIT;
+      } else {
+        process.env.RENDER_GIT_COMMIT = original;
+      }
+    }
+  });
+
   it('GET /api/catalog/search filters by free-text query', async () => {
     const res = await request(app)
       .get('/api/catalog/search')

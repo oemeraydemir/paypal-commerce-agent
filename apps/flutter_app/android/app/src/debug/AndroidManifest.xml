@@ -4,4 +4,11 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- DEBUG-ONLY cleartext allowance: emulator development talks to the
+         local backend at http://10.0.2.2:3000. This attribute is merged into
+         DEBUG builds only; the release build type does NOT include the debug
+         source set, so the release merged manifest forbids cleartext HTTP.
+    -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

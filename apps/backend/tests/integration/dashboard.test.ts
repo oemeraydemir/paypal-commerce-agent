@@ -110,9 +110,22 @@ describe('Sprint 6 dashboard and orders API', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toContain('text/html');
     expect(response.text).toContain('ag-grid-community@31.0.0');
-    expect(response.text).toContain('escapeHtml');
+    // Dashboard logic lives in a same-origin external script (CSP: script-src
+    // 'self'), NOT inline, so the HTML must not contain an inline <script> block.
+    expect(response.text).toContain('<script src="/dashboard.js"></script>');
+    expect(response.text).not.toMatch(/<script>(?!\s*<\/script>)/);
     expect(response.text).toContain('eventModal');
     expect(response.text).toContain('Demo-only');
+  });
+
+  test('GET /dashboard.js serves the dashboard logic as same-origin JS', async () => {
+    const response = await request(app).get('/dashboard.js');
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('javascript');
+    // The functions previously inline now execute from this external file.
+    expect(response.text).toContain('function escapeHtml');
+    expect(response.text).toContain('eventModal');
+    expect(response.text).toContain('/api/policy-events?limit=100');
   });
 
   test('GET /dashboard redirects to /dashboard.html', async () => {

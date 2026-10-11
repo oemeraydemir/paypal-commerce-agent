@@ -269,7 +269,7 @@ describe('B5 ORDER_ALREADY_CAPTURED is verified against the PayPal order', () =>
 });
 
 describe('B6 server restart: real payment webhook for an order that no longer exists', () => {
-  test('KNOWN LIMITATION: the payment cannot be reconciled; it is acknowledged, loudly logged, and NOT booked', async () => {
+  test('B6 server restart: real payment webhook for an order that no longer exists is kept retryable (503, not acknowledged)', async () => {
     const { ppId } = await create('b6');
     // Simulated restart: every in-memory store is lost.
     orderService.reset();
@@ -277,14 +277,20 @@ describe('B6 server restart: real payment webhook for an order that no longer ex
     (webhookService as any).processedEvents.clear();
     const errorLog = jest.spyOn(console, 'error').mockImplementation(() => undefined);
 
+    // Money WAS captured at PayPal, but the order is gone (state loss). We must
+    // NOT acknowledge with a 2xx: PayPal stops retrying on any 2xx (verified —
+    // "Any non-2xx status code will cause PayPal to reattempt delivery up to 25
+    // times over the course of 3 days"). Returning 503 keeps the payment alive in
+    // PayPal's retry queue while an operator reconciles it from the loud log.
     const res = await webhook('PAYMENT.CAPTURE.COMPLETED', ppId, 'WH-RESTART');
-    expect(res.status).toBe(200); // acknowledged => PayPal will NOT retry
-    expect(res.body.message).toContain('order not found');
+    expect(res.status).toBe(503); // NOT 2xx => PayPal WILL retry for up to 3 days
+    expect(res.body.error).toMatch(/cannot be reconciled/i);
 
-    // The money moved at PayPal but is invisible to the app:
+    // The money moved at PayPal but is not booked to a (now missing) order:
     expect(orderService.getAll()).toHaveLength(0);
     expect(spent()).toBe(0);
-    expect(webhookService.isDuplicate('WH-RESTART')).toBe(true); // marked processed
+    // NOT marked processed, so a retry is processed again rather than swallowed:
+    expect(webhookService.isDuplicate('WH-RESTART')).toBe(false);
 
     // The only trace is the error log (so an operator can reconcile manually):
     const logged = errorLog.mock.calls.map((c) => String(c[0])).join('\n');

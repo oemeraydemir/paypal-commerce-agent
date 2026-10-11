@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import crypto from 'crypto';
 import path from 'path';
 import { env } from './config/environment';
 import { errorHandler } from './middleware/error-handler';
@@ -25,7 +26,35 @@ export function createApp() {
   // per-IP limits would throttle everybody together. 0 = trust nothing.
   app.set('trust proxy', env.TRUST_PROXY_HOPS);
 
-  app.use(helmet());
+  // Generate a per-response CSP nonce. The dynamically rendered PayPal
+  // checkout return/cancel pages inline a tiny redirect script that carries
+  // this nonce, so they can run without resorting to 'unsafe-inline'. The
+  // static dashboard loads its logic from same-origin /dashboard.js instead.
+  // Exposed to route handlers via res.locals.cspNonce.
+  app.use((_req, res, next) => {
+    res.locals.cspNonce = crypto.randomBytes(16).toString('base64');
+    next();
+  });
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        useDefaults: true,
+        directives: {
+          // Narrow script-src: same-origin (covers /dashboard.js and any
+          // same-origin bundle), the AG Grid CDN origin the dashboard requires,
+          // and this response's nonce for the checkout return/cancel inline
+          // redirect. No 'unsafe-inline', so attacker-injected script text
+          // still cannot run. All other directives keep Helmet's secure
+          // defaults (object-src 'none', etc.).
+          'script-src': [
+            "'self'",
+            'https://cdn.jsdelivr.net',
+            (_req: any, res: any) => `'nonce-${res.locals.cspNonce}'`,
+          ],
+        },
+      },
+    })
+  );
   app.use(
     cors({
       origin: env.CORS_ORIGIN, // CRITICAL FIX #6 (scope): environment-based single origin, no regex/array

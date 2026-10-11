@@ -287,15 +287,16 @@ describe('server restart (in-memory state lost)', () => {
     expect(dailySpendTracker.getSpentToday(USER)).toBe(600);
   });
 
-  test('after a full state loss, a COMPLETED webhook for an unknown order is acknowledged without crashing and without inventing spend', async () => {
+  test('after a full state loss, a COMPLETED webhook for an unknown order is kept retryable (503) and books no spend', async () => {
     const { ppId } = await create('restart-full');
     orderService.reset();
     dailySpendTracker.reset();
     (webhookService as any).processedEvents.clear();
 
     const res = await webhook('PAYMENT.CAPTURE.COMPLETED', ppId);
-    expect(res.status).toBe(200);
-    expect(res.body.message).toContain('order not found');
+    // Not 2xx: PayPal keeps retrying for up to 3 days so the real capture is not
+    // silently lost after an in-memory restart. No spend is invented here.
+    expect(res.status).toBe(503);
     expect(dailySpendTracker.getSpentToday(USER)).toBe(0);
     // KNOWN LIMITATION (documented, not fixed here): with in-memory storage the
     // payment is real at PayPal but invisible to this instance after a restart.

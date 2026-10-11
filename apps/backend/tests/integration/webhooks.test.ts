@@ -228,7 +228,97 @@ describe('Webhooks API', () => {
     expect(response.body.message).toContain('already processed');
   });
 
-  test('POST /api/webhooks/paypal handles unknown PayPal order gracefully', async () => {
+  test('POST /api/webhooks/paypal keeps a COMPLETED capture for an unknown order retryable (503, not marked processed)', async () => {
+    // Money was captured but the internal order is missing (simulating in-memory
+    // state loss on restart). The endpoint must NOT acknowledge with 2xx (PayPal
+    // stops retrying on any 2xx), so we expect 503 and the event left unmarked so
+    // PayPal will re-deliver while an operator reconciles it.
+    const payload = {
+      id: 'WH-UNKNOWN-CAPTURE-COMPLETED',
+      event_type: 'PAYMENT.CAPTURE.COMPLETED',
+      resource: {
+        id: 'CAPTURE-XYZ',
+        amount: { value: '6.00', currency_code: 'EUR' },
+        supplementary_data: {
+          related_ids: {
+            order_id: 'UNKNOWN-PAYPAL-ORDER-COMPLETED',
+          },
+        },
+      },
+    };
+
+    const first = await request(app)
+      .post('/api/webhooks/paypal')
+      .set('paypal-transmission-id', 'wh-unknown-completed-1')
+      .set('paypal-transmission-time', new Date().toISOString())
+      .set('paypal-transmission-sig', 'test-sig')
+      .set('paypal-cert-url', 'https://example.com/cert')
+      .set('paypal-auth-algo', 'SHA256withRSA')
+      .send(payload);
+
+    expect(first.status).toBe(503);
+
+    // Because it was NOT marked processed, the very same event id must be
+    // processed again (i.e. still 503) rather than short-circuiting as a
+    // duplicate — proving PayPal's retries are not silently swallowed.
+    const retry = await request(app)
+      .post('/api/webhooks/paypal')
+      .set('paypal-transmission-id', 'wh-unknown-completed-2')
+      .set('paypal-transmission-time', new Date().toISOString())
+      .set('paypal-transmission-sig', 'test-sig')
+      .set('paypal-cert-url', 'https://example.com/cert')
+      .set('paypal-auth-algo', 'SHA256withRSA')
+      .send(payload);
+
+    expect(retry.status).toBe(503);
+  });
+
+  test('POST /api/webhooks/paypal acknowledges a CAPTURE.DENIED for an unknown order (200, marked processed)', async () => {
+    // A definitive decline moves no money, so there is nothing to reconcile for a
+    // missing order: acknowledge with 200 and mark processed to stop retries.
+    const payload = {
+      id: 'WH-UNKNOWN-CAPTURE-DENIED',
+      event_type: 'PAYMENT.CAPTURE.DENIED',
+      resource: {
+        id: 'CAPTURE-DENIED-XYZ',
+        supplementary_data: {
+          related_ids: {
+            order_id: 'UNKNOWN-PAYPAL-ORDER-DENIED',
+          },
+        },
+      },
+    };
+
+    const response = await request(app)
+      .post('/api/webhooks/paypal')
+      .set('paypal-transmission-id', 'wh-unknown-denied-1')
+      .set('paypal-transmission-time', new Date().toISOString())
+      .set('paypal-transmission-sig', 'test-sig')
+      .set('paypal-cert-url', 'https://example.com/cert')
+      .set('paypal-auth-algo', 'SHA256withRSA')
+      .send(payload);
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toContain('order not found');
+
+    // Marked processed: a retry of the same event id is now a no-op.
+    const retry = await request(app)
+      .post('/api/webhooks/paypal')
+      .set('paypal-transmission-id', 'wh-unknown-denied-2')
+      .set('paypal-transmission-time', new Date().toISOString())
+      .set('paypal-transmission-sig', 'test-sig')
+      .set('paypal-cert-url', 'https://example.com/cert')
+      .set('paypal-auth-algo', 'SHA256withRSA')
+      .send(payload);
+
+    expect(retry.status).toBe(200);
+    expect(retry.body.message).toContain('already processed');
+  });
+
+  test('POST /api/webhooks/paypal acknowledges a non-payment event for an unknown order with 200', async () => {
+    // A CHECKOUT.ORDER.APPROVED for an order we don't have moves no money, so we
+    // acknowledge with 200 and stop retries (the COMPLETED-for-unknown-order case
+    // is intentionally different — see the 503 test above).
     const response = await request(app)
       .post('/api/webhooks/paypal')
       .set('paypal-transmission-id', 'test-id-6')
@@ -238,13 +328,9 @@ describe('Webhooks API', () => {
       .set('paypal-auth-algo', 'SHA256withRSA')
       .send({
         id: 'WH-TEST-005',
-        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        event_type: 'CHECKOUT.ORDER.APPROVED',
         resource: {
-          supplementary_data: {
-            related_ids: {
-              order_id: 'UNKNOWN-PAYPAL-ORDER',
-            },
-          },
+          id: 'UNKNOWN-PAYPAL-ORDER',
         },
       });
 

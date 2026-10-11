@@ -258,13 +258,11 @@ class CheckoutProvider extends ChangeNotifier {
     }
   }
 
-  /// Recovery when the external browser cannot open the app's return link.
-  ///
-  /// The backend still verifies PayPal approval before capturing payment.
+  /// Explains that the matching PayPal return link is required before capture.
+  /// A user assertion from the browser cannot authorize payment.
   void confirmApprovalInBrowser() {
-    _paypalApproved = true;
     _statusMessage =
-        'You confirmed approval. PayPal will verify it before capture.';
+        'Approval is not confirmed in AI Café yet. Return using PayPal’s link so this order can be validated.';
     _error = null;
     notifyListeners();
   }

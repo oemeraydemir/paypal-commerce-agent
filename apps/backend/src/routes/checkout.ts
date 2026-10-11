@@ -6,16 +6,29 @@ const router = Router();
 function checkoutReturn(status: 'success' | 'cancel') {
   return (req: Request, res: Response) => {
     const token = req.query.token;
-    if (typeof token !== 'string' || token.length === 0) {
+    if (typeof token !== 'string' || token.trim().length === 0) {
       throw new AppError(400, 'PayPal order token is required');
     }
 
-    const title = status === 'success' ? 'Payment approved' : 'Checkout cancelled';
+    const title = status === 'success' ? 'Return to AI Café' : 'Checkout cancelled';
     const message =
       status === 'success'
-        ? 'Return to AI Café to confirm and capture your payment.'
+        ? 'Continue in AI Café to validate the PayPal return and confirm capture. This page does not capture payment.'
         : 'No payment was captured. Return to AI Café to continue shopping.';
-    const appLink = `paypalcommerceagent://checkout/${status}?token=${encodeURIComponent(token)}`;
+    const appUrl = new URL(`paypalcommerceagent://checkout/${status}`);
+    appUrl.searchParams.set('token', token);
+    const appLink = appUrl.toString();
+    const htmlAppLink = appLink.replace(/[&<>"']/g, (character) => {
+      const entities: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      };
+      return entities[character];
+    });
+    const scriptAppLink = JSON.stringify(appLink);
 
     res
       .status(200)
@@ -27,12 +40,19 @@ function checkoutReturn(status: 'success' | 'cancel') {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="referrer" content="no-referrer">
     <title>${title} · AI Café</title>
+    <script${res.locals.cspNonce ? ` nonce="${res.locals.cspNonce}"` : ''}>
+      window.location.replace(${scriptAppLink});
+      window.setTimeout(function () {
+        document.getElementById('fallback-message').hidden = false;
+      }, 1200);
+    </script>
   </head>
   <body>
     <main>
       <h1>${title}</h1>
       <p>${message}</p>
-      <a href="${appLink}">Return to AI Café</a>
+      <p id="fallback-message">If AI Café did not open automatically, use this link:</p>
+      <a href="${htmlAppLink}">Return to AI Café</a>
     </main>
   </body>
 </html>`);

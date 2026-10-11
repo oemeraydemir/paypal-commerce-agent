@@ -9,6 +9,12 @@ router.get('/health', (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     service: 'paypal-commerce-agent-backend',
     version: '1.0.0',
+    // Populated by Render at runtime with the deployed commit SHA. It is not
+    // part of Render's official "default" env var list (which warns unlisted
+    // RENDER_* vars are internal and may change), so we expose it defensively
+    // and fall back to 'unknown' when absent (local/test) rather than assuming
+    // it is always set. Never hardcoded; never exposes credentials.
+    buildCommit: process.env.RENDER_GIT_COMMIT || 'unknown',
     environment: env.NODE_ENV,
     uptime: process.uptime(),
     paypal: {

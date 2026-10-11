@@ -1,0 +1,148 @@
+{
+  "base": "http://localhost:3000",
+  "chrome": "Chrome/154.0.8037.98",
+  "navStatus": 200,
+  "navUrl": "http://localhost:3000/dashboard.html",
+  "redirectChain": [
+    "302 http://localhost:3000/dashboard"
+  ],
+  "cspHeader": "script-src 'self' https://cdn.jsdelivr.net 'nonce-50pbss7T4jzPfZy4Efa+Fw==';default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
+  "gridRendered": true,
+  "dom": {
+    "hasAgRoot": true,
+    "hasAgHeader": true,
+    "agHeaderCells": 8,
+    "hasCenterCols": true,
+    "agRowCount": 3,
+    "firstRowText": "11.10.2026, 19:06:47 server cart_a78…70b99290 5476f34e…f9c20486 AUTO_ALLOW 3,00 € Policy check passed —",
+    "badgeCount": 3,
+    "totalRequests": "3",
+    "allowed": "2",
+    "blocked": "1",
+    "spent": "€0.00",
+    "lastUpdated": "Updated 22:36:45",
+    "windowCsp": []
+  },
+  "polling": {
+    "count": 4,
+    "gapsMs": [
+      4999,
+      5010,
+      4988
+    ],
+    "avgGapMs": 4999
+  },
+  "network": {
+    "dashboardJs": [
+      {
+        "url": "http://localhost:3000/dashboard.js",
+        "status": 200,
+        "type": "application/javascript; charset=UTF-8"
+      }
+    ],
+    "agGrid": [
+      {
+        "url": "https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/styles/ag-theme-alpine.css",
+        "failed": "net::ERR_BLOCKED_BY_ORB"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/styles/ag-grid.css",
+        "failed": "net::ERR_BLOCKED_BY_ORB"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js",
+        "status": 200,
+        "type": "application/javascript; charset=utf-8"
+      }
+    ],
+    "policyEvents": [
+      {
+        "url": "http://localhost:3000/api/policy-events?limit=100",
+        "status": 200,
+        "type": "application/json; charset=utf-8"
+      },
+      {
+        "url": "http://localhost:3000/api/policy-events/stats",
+        "status": 200,
+        "type": "application/json; charset=utf-8"
+      },
+      {
+        "url": "http://localhost:3000/api/policy-events?limit=100",
+        "status": 304
+      },
+      {
+        "url": "http://localhost:3000/api/policy-events/stats",
+        "status": 304
+      },
+      {
+        "url": "http://localhost:3000/api/policy-events?limit=100",
+        "status": 304
+      },
+      {
+        "url": "http://localhost:3000/api/policy-events/stats",
+        "status": 304
+      },
+      {
+        "url": "http://localhost:3000/api/policy-events?limit=100",
+        "status": 304
+      },
+      {
+        "url": "http://localhost:3000/api/policy-events/stats",
+        "status": 304
+      }
+    ],
+    "failed": [
+      {
+        "url": "https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/styles/ag-theme-alpine.css",
+        "failed": "net::ERR_BLOCKED_BY_ORB"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/styles/ag-grid.css",
+        "failed": "net::ERR_BLOCKED_BY_ORB"
+      }
+    ]
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "cspViolationConsole": [],
+  "pageErrors": [],
+  "checkoutReturn": {
+    "httpStatus": 200,
+    "inlineScriptNoncePresent": true,
+    "headerNoncePresent": true,
+    "nonceMatchesHeader": true,
+    "inlineScriptExecuted": true,
+    "schemeRedirectAttempt": [
+      "Failed to launch 'paypalcommerceagent://checkout/success?token=SMOKE_TOKEN_123' because the scheme does not have a registered handler."
+    ],
+    "cspViolations": [],
+    "cspBlockedInlineConsole": [],
+    "consoleErrors": [
+      "Failed to launch 'paypalcommerceagent://checkout/success?token=SMOKE_TOKEN_123' because the scheme does not have a registered handler."
+    ],
+    "pageErrors": [
+      "TypeError: Cannot set properties of null (setting 'hidden')"
+    ],
+    "navErr": null
+  },
+  "checkoutCancel": {
+    "httpStatus": 200,
+    "inlineScriptNoncePresent": true,
+    "headerNoncePresent": true,
+    "nonceMatchesHeader": true,
+    "inlineScriptExecuted": true,
+    "schemeRedirectAttempt": [
+      "Not allowed to launch 'paypalcommerceagent://checkout/cancel?token=SMOKE_TOKEN_123' because a user gesture is required."
+    ],
+    "cspViolations": [],
+    "cspBlockedInlineConsole": [],
+    "consoleErrors": [
+      "Not allowed to launch 'paypalcommerceagent://checkout/cancel?token=SMOKE_TOKEN_123' because a user gesture is required."
+    ],
+    "pageErrors": [
+      "TypeError: Cannot set properties of null (setting 'hidden')"
+    ],
+    "navErr": null
+  }
+}

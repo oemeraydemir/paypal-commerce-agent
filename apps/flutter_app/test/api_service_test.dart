@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_app/services/api_service.dart';
+import 'package:flutter_app/models/product.dart';
 import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/services/session_service.dart';
 import 'package:http/http.dart' as http;
@@ -382,8 +383,8 @@ void main() {
             if (request.url.path == '/api/ai/chat') {
               return http.Response(
                 jsonEncode({
-                  'sessionId': 'sess-shared',
-                  'response': 'hi',
+                'sessionId': 'sess-shared',
+                'response': 'hi',
                   'checkoutReady': false,
                   'toolRounds': 0,
                   'messageCount': 1,
@@ -409,5 +410,63 @@ void main() {
         api.dispose();
       },
     );
+  });
+
+  group('ApiService release API base URL (Sprint A1.9A)', () {
+    test('release build uses an explicit HTTPS URL', () {
+      expect(
+        ApiService.resolveBaseUrl(
+          isRelease: true,
+          url: 'https://api.example.com/',
+        ),
+        'https://api.example.com/',
+      );
+    });
+
+    test('release build rejects a missing URL (no silent emulator fallback)', () {
+      expect(
+        () => ApiService.resolveBaseUrl(isRelease: true, url: ''),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('API_BASE_URL must be supplied'),
+        )),
+      );
+    });
+
+    test('release build rejects cleartext HTTP', () {
+      expect(
+        () => ApiService.resolveBaseUrl(
+          isRelease: true,
+          url: 'http://10.0.2.2:3000',
+        ),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('must be an https:// URL'),
+        )),
+      );
+    });
+
+    test('debug build keeps the emulator development URL', () {
+      expect(
+        ApiService.resolveBaseUrl(isRelease: false, url: 'http://10.0.2.2:3000'),
+        'http://10.0.2.2:3000',
+      );
+    });
+
+    test('constructor still honors an explicit baseUrl (DI preserved)', () async {
+      // Session-auth + DI contract unchanged: an injected baseUrl bypasses
+      // resolveBaseUrl entirely, exactly as before this sprint.
+      final api = ApiService(
+        baseUrl: 'https://injected.example.com',
+        storage: InMemorySessionStorage(),
+        client: MockClient((_) async => http.Response('{}', 200)),
+      );
+      addTearDown(api.dispose);
+      // A resolve against the public endpoint must target the injected host.
+      final res = await api.getCatalog();
+      expect(res, isA<List<Product>>());
+    });
   });
 }

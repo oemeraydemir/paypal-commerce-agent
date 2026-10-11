@@ -757,7 +757,7 @@ class _CheckoutStatus extends StatelessWidget {
                 onPressed: checkout.busy
                     ? null
                     : () => checkout.confirmApprovalInBrowser(),
-                child: const Text('I already approved'),
+                child: const Text('Approval return not received?'),
               ),
             ],
           ),

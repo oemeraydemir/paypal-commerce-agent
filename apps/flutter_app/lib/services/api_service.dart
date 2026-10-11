@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:http/http.dart' as http;
 
 import 'package:flutter_app/models/order.dart';
@@ -36,13 +37,51 @@ class ApiService {
 
   /// Base URL of the commerce-agent backend.
   ///
-  /// Override with `--dart-define=API_BASE_URL=...` for a deployed backend,
-  /// desktop, web, or a physical device. Android Emulator uses `10.0.2.2`.
-  /// No production URL is hardcoded in source (requirement 10).
+  /// Supply the backend address at build time with
+  /// `--dart-define=API_BASE_URL=https://your-backend.example`. The emulator
+  /// development host (`http://10.0.2.2:3000`) is only used for **debug**
+  /// builds and is injected as the `defaultValue` below. Release builds must
+  /// pass an explicit HTTPS URL — see [resolveBaseUrl], which rejects the
+  /// emulator/cleartext default in release so a production build can never
+  /// silently talk to an unintended host.
   static const String defaultBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
     defaultValue: 'http://10.0.2.2:3000',
   );
+
+  /// Resolves the base URL for the current build mode.
+  ///
+  /// - **Debug/profile:** returns [defaultBaseUrl] (the emulator host by
+  ///   default). HTTP is permitted because it is guarded by a debug-only
+  ///   cleartext allowance in the Android manifest.
+  /// - **Release:** requires an explicit HTTPS `API_BASE_URL`. A missing or
+  ///   insecure (http://) value throws a [StateError] instead of silently
+  ///   falling back to the emulator host.
+  ///
+  /// [isRelease] and [url] are exposed purely so tests can exercise the
+  /// release branch without a compile-time `--dart-define`; production code
+  /// uses the real [kReleaseMode] and [defaultBaseUrl] by default.
+  static String resolveBaseUrl({bool isRelease = kReleaseMode, String? url}) {
+    final resolved = url ?? defaultBaseUrl;
+    if (isRelease) {
+      if (resolved.isEmpty) {
+        throw StateError(
+          'API_BASE_URL must be supplied for release builds via '
+          '--dart-define=API_BASE_URL=https://<backend>',
+        );
+      }
+      final uri = Uri.tryParse(resolved);
+      if (uri == null || uri.scheme != 'https') {
+        throw StateError(
+          'API_BASE_URL must be an https:// URL in release builds '
+          '(got scheme "${uri?.scheme ?? 'none'}"). '
+          'Refusing to send credentials over cleartext transport.',
+        );
+      }
+      return resolved;
+    }
+    return resolved.isNotEmpty ? resolved : 'http://10.0.2.2:3000';
+  }
 
   final http.Client _client;
   final String _baseUrl;
@@ -58,7 +97,7 @@ class ApiService {
     String? baseUrl,
     required SessionStorage storage,
   }) : _client = client ?? http.Client(),
-       _baseUrl = (baseUrl ?? defaultBaseUrl).replaceFirst(RegExp(r'/$'), ''),
+       _baseUrl = (baseUrl ?? resolveBaseUrl()).replaceFirst(RegExp(r'/$'), ''),
        _storage = storage;
 
   Uri _url(String path) => Uri.parse('$_baseUrl$path');

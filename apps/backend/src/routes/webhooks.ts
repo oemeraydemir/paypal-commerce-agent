@@ -67,18 +67,32 @@ router.post('/webhooks/paypal', rawBodyMiddleware, async (req: Request, res: Res
 
     const order = orderService.getByPayPalOrderId(paypalOrderId);
     if (!order) {
-      if (
-        event.event_type === 'PAYMENT.CAPTURE.COMPLETED' ||
-        event.event_type === 'PAYMENT.CAPTURE.DENIED'
-      ) {
-        // A payment outcome we cannot attach to any order (typically: the
-        // in-memory state was lost on restart). The event is acknowledged so
-        // PayPal stops retrying, but the money movement is NOT reflected in
-        // this app. Make it impossible to miss in the logs.
+      if (event.event_type === 'PAYMENT.CAPTURE.COMPLETED') {
+        // Money WAS captured but we cannot attach it to any order (typically the
+        // in-memory state was lost on restart). This is the one case we must NOT
+        // acknowledge with a 2xx: PayPal stops retrying on any 2xx (verified —
+        // "Any non-2xx status code will cause PayPal to reattempt delivery up to
+        // 25 times over the course of 3 days"). If we returned 200 here, the paid
+        // money would become permanently invisible to the app (only a log line),
+        // so we deliberately do NOT mark the event processed and return a non-2xx
+        // to keep the payment alive in PayPal's retry queue for up to 3 days while
+        // an operator investigates the loud log and reconciles it.
         console.error(
           `UNRECONCILED_PAYMENT_EVENT type=${event.event_type} event=${event.id} ` +
             `paypalOrder=${paypalOrderId} capture=${event.resource?.id ?? 'n/a'} ` +
             `amount=${event.resource?.amount?.value ?? 'n/a'} ${event.resource?.amount?.currency_code ?? ''}`
+        );
+        return res.status(503).json({
+          error: 'Captured payment cannot be reconciled to an order; will retry',
+        });
+      }
+      if (event.event_type === 'PAYMENT.CAPTURE.DENIED') {
+        // A definitive decline carries no money movement, so there is nothing to
+        // reconcile or release for an unknown order. Acknowledge to stop retries;
+        // make it loud in the logs.
+        console.error(
+          `UNRECONCILED_PAYMENT_EVENT type=${event.event_type} event=${event.id} ` +
+            `paypalOrder=${paypalOrderId} capture=${event.resource?.id ?? 'n/a'}`
         );
       } else {
         console.warn(`No internal order found for PayPal Order ID: ${paypalOrderId}`);

@@ -32,6 +32,7 @@ void main() {
       'keeps pending payments from duplicating an order or emptying cart',
       () async {
         var orderCount = 0;
+        var captureCalls = 0;
         final api = ApiService(
           baseUrl: 'http://localhost:3000',
           storage: InMemorySessionStorage(),
@@ -53,6 +54,7 @@ void main() {
               );
             }
             if (request.url.path.endsWith('/capture')) {
+              captureCalls++;
               return http.Response(
                 jsonEncode({
                   'orderId': 'order-1',
@@ -87,8 +89,11 @@ void main() {
         await checkout.completeCheckout();
 
         expect(checkout.captured, isNull);
+        expect(checkout.paypalApproved, isFalse);
         expect(checkout.hasPendingOrder, isTrue);
         expect(checkout.cart, {'coffee': 1});
+        expect(checkout.statusMessage, contains('Approval is not confirmed'));
+        expect(captureCalls, 0);
 
         await checkout.startCheckout();
         expect(orderCount, 1);
@@ -408,7 +413,15 @@ void main() {
 
         checkout.addProduct('coffee');
         await checkout.startCheckout();
-        checkout.confirmApprovalInBrowser();
+        // Approve via the REAL PayPal return deep link (token matches the pending
+        // paypalOrderId). The insecure "I already approved" browser fallback no
+        // longer authorizes capture (RECOVERY-02), so a test that wants to reach
+        // capture must drive the genuine approval path.
+        final approved = await checkout.handlePayPalReturn(
+          Uri.parse('paypalcommerceagent://checkout/success?token=paypal-1'),
+        );
+        expect(approved, isTrue);
+        expect(checkout.paypalApproved, isTrue);
 
         await checkout.completeCheckout();
         // Definitive: the order is paid, not a generic failure.
