@@ -85,6 +85,10 @@ const COMPLETED = {
 };
 
 beforeEach(async () => {
+  // Restore real timers FIRST: a preceding test (e.g. 1c-unit) may leave fake
+  // timers installed, and a session minted under a stale fake clock would be
+  // idle-expired once the real clock returns (401 instead of the intended 502).
+  jest.useRealTimers();
   resetSessionState();
   sess = await newSession(app);
   USER = sess.userId;
@@ -92,7 +96,6 @@ beforeEach(async () => {
   createOrder.mockReset();
   captureOrder.mockReset();
   getOrder.mockReset();
-  jest.useRealTimers();
   orderService.reset();
   policyStorage.reset();
   dailySpendTracker.reset();

@@ -371,65 +371,69 @@ void main() {
       expect(checkout.error, isNotNull); // user informed
     });
 
-    test(
-      'F3: capture 409 ALREADY_CAPTURED reflects paid without losing state',
-      () async {
-        final api = ApiService(
-          baseUrl: 'http://localhost:3000',
-          storage: InMemorySessionStorage(),
-          client: withSession((request) async {
-            if (request.url.path == '/api/orders/create') {
-              return http.Response(
-                jsonEncode({
-                  'orderId': 'order-1',
-                  'paypalOrderId': 'paypal-1',
-                  'status': 'PAYMENT_PENDING',
-                  'origin': 'MANUAL',
-                  'totalMinor': 500,
-                  'totalFormatted': 'EUR 5.00',
-                  'currency': 'EUR',
-                  'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
-                }),
-                200,
-              );
-            }
-            if (request.url.path.contains('/capture')) {
-              return http.Response(
-                jsonEncode({'error': 'Order already captured'}),
-                409,
-              );
-            }
-            return http.Response('Not found', 404);
-          }),
-        );
-        final chat = ChatProvider(api);
-        final checkout = CheckoutProvider(
-          api,
-          chat,
-          launchApproval: (_) async => true,
-        );
-        addTearDown(checkout.dispose);
-        addTearDown(api.dispose);
+    test('F3: capture 409 ALREADY_CAPTURED reflects paid only when the backend '
+        'verified a COMPLETED capture (details.settled == true)', () async {
+      final api = ApiService(
+        baseUrl: 'http://localhost:3000',
+        storage: InMemorySessionStorage(),
+        client: withSession((request) async {
+          if (request.url.path == '/api/orders/create') {
+            return http.Response(
+              jsonEncode({
+                'orderId': 'order-1',
+                'paypalOrderId': 'paypal-1',
+                'status': 'PAYMENT_PENDING',
+                'origin': 'MANUAL',
+                'totalMinor': 500,
+                'totalFormatted': 'EUR 5.00',
+                'currency': 'EUR',
+                'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
+              }),
+              200,
+            );
+          }
+          if (request.url.path.contains('/capture')) {
+            // Recovery 07.1: a verified, server-settled conflict. The backend
+            // only sends `settled: true` after confirming a real PayPal
+            // COMPLETED capture (settleFromPayPal), so PAID is justified here.
+            return http.Response(
+              jsonEncode({
+                'error': 'Order already captured',
+                'details': {'settled': true},
+              }),
+              409,
+            );
+          }
+          return http.Response('Not found', 404);
+        }),
+      );
+      final chat = ChatProvider(api);
+      final checkout = CheckoutProvider(
+        api,
+        chat,
+        launchApproval: (_) async => true,
+      );
+      addTearDown(checkout.dispose);
+      addTearDown(api.dispose);
 
-        checkout.addProduct('coffee');
-        await checkout.startCheckout();
-        // Approve via the REAL PayPal return deep link (token matches the pending
-        // paypalOrderId). The insecure "I already approved" browser fallback no
-        // longer authorizes capture (RECOVERY-02), so a test that wants to reach
-        // capture must drive the genuine approval path.
-        final approved = await checkout.handlePayPalReturn(
-          Uri.parse('paypalcommerceagent://checkout/success?token=paypal-1'),
-        );
-        expect(approved, isTrue);
-        expect(checkout.paypalApproved, isTrue);
+      checkout.addProduct('coffee');
+      await checkout.startCheckout();
+      // Approve via the REAL PayPal return deep link (token matches the pending
+      // paypalOrderId). The insecure "I already approved" browser fallback no
+      // longer authorizes capture (RECOVERY-02), so a test that wants to reach
+      // capture must drive the genuine approval path.
+      final approved = await checkout.handlePayPalReturn(
+        Uri.parse('paypalcommerceagent://checkout/success?token=paypal-1'),
+      );
+      expect(approved, isTrue);
+      expect(checkout.paypalApproved, isTrue);
 
-        await checkout.completeCheckout();
-        // Definitive: the order is paid, not a generic failure.
-        expect(checkout.captured?.status, 'PAID');
-        expect(checkout.created, isNull);
-        expect(checkout.error, isNull);
-      },
-    );
+      await checkout.completeCheckout();
+      // Definitive + verified: the order is paid, not a generic failure.
+      expect(checkout.captured?.status, 'PAID');
+      expect(checkout.created, isNull);
+      expect(checkout.error, isNull);
+    });
 
     test('F4: the idempotency key is stable across the 401 retry', () async {
       final capturedKeys = <String>[];

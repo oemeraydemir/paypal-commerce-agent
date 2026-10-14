@@ -398,12 +398,20 @@ class CheckoutProvider extends ChangeNotifier {
         _error = 'PayPal did not complete the payment. Your cart is unchanged; review checkout to try again.';
       }
     } on ApiException catch (e) {
-      // F3: recover from stale/ambiguous pending orders without losing state.
+      // F3/Recovery 07.1: recover from stale/ambiguous pending orders WITHOUT
+      // fabricating a payment outcome. A 409 "already captured" is only proof of
+      // payment when the backend has independently verified a real PayPal
+      // COMPLETED capture and signalled it via `details.settled == true`. Any
+      // other conflict (bare idempotent 409, unverified/failed reconciliation)
+      // is unresolved: keep the pending order so the user can retry and the
+      // webhook/reconciler can settle it. Never invent `PAID`/`COMPLETED`.
       final msg = e.message.toLowerCase();
-      if (e.statusCode == 409 && msg.contains('already captured')) {
-        // Definitive: the order is already paid. Reflect that and clear the
-        // pending state. We do not invent a capture id, and this is NOT treated
-        // as a cancellation.
+      if (e.statusCode == 409 &&
+          msg.contains('already captured') &&
+          e.settled == true) {
+        // Trusted, verified completion. Reflect PAID and clear the pending
+        // state. We still do not invent a capture id (the server did not return
+        // one on this conflict), and this is NOT treated as a cancellation.
         _captured = OrderCaptureResult(
           orderId: _created!.orderId,
           status: 'PAID',
@@ -414,8 +422,8 @@ class CheckoutProvider extends ChangeNotifier {
         _paypalApproved = false;
         _statusMessage = 'Payment was already completed for this order.';
       } else if (e.statusCode == 502 || e.statusCode == 409) {
-        // Ambiguous transport / capture-in-progress: preserve the recoverable
-        // pending order and let the user retry.
+        // Ambiguous transport / capture-in-progress / unverified 409: preserve
+        // the recoverable pending order and let the user retry.
         _error =
             'Capture could not be confirmed (${e.statusCode}): ${e.message}';
         _statusMessage = null;
@@ -453,12 +461,17 @@ class CheckoutProvider extends ChangeNotifier {
       _paypalApproved = false;
       _statusMessage = 'Order cancelled (status: ${result.status}).';
     } on ApiException catch (e) {
-      // F3: do not treat every error as an ordinary cancellation. Preserve
-      // recoverable state and classify specific outcomes.
+      // F3/Recovery 07.1: do not treat every error as an ordinary cancellation.
+      // Preserve recoverable state and classify specific outcomes. A 409
+      // "already captured" only proves payment when the backend verified a real
+      // PayPal COMPLETED capture (`details.settled == true`); otherwise it is
+      // unresolved and the pending order must be kept, never fabricated as PAID.
       final msg = e.message.toLowerCase();
-      if (e.statusCode == 409 && msg.contains('already captured')) {
-        // The order is actually paid; reflect that instead of leaving a stale
-        // pending order. Not marked cancelled.
+      if (e.statusCode == 409 &&
+          msg.contains('already captured') &&
+          e.settled == true) {
+        // The order is actually paid (server-verified); reflect that instead of
+        // leaving a stale pending order. Not marked cancelled.
         _captured = OrderCaptureResult(
           orderId: target,
           status: 'PAID',
@@ -475,8 +488,9 @@ class CheckoutProvider extends ChangeNotifier {
         _paypalApproved = false;
         _statusMessage = 'The order no longer exists; nothing to cancel.';
       } else {
-        // 502 (could not verify PayPal state) or other: keep the recoverable
-        // pending order so the user can retry.
+        // 502 (could not verify PayPal state), an unverified 409, or any other
+        // ambiguous outcome: keep the recoverable pending order so the user can
+        // retry and the webhook/reconciler can settle it.
         _error = 'Cancel failed (${e.statusCode}): ${e.message}';
         _statusMessage = null;
       }

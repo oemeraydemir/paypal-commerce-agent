@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI Café · Shop by intent, approve every payment</title>
+<meta name="description" content="An AI shopping agent prepares your cart. You approve the payment on PayPal. The agent never touches your money.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%98%95%3C/text%3E%3C/svg%3E">
+<style>
+:root{--bg:#f7f3ee;--card:#fff;--ink:#241b14;--mut:#7a6c5f;--line:#e6ddd2;--brand:#0070ba;--brand-ink:#fff;--ok:#1f7a45;--warn:#a65b00;--bad:#b3261e;--r:14px}
+@media(prefers-color-scheme:dark){:root{--bg:#17120e;--card:#221b15;--ink:#f3ebe2;--mut:#a89888;--line:#3a2f26;--ok:#5fd18d;--warn:#f0b05a;--bad:#ff8a80}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
+header h1{margin:0;font-size:20px}
+header .tag{color:var(--mut);flex:1;min-width:200px}
+.pill{font-size:12px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
+.pill.on{color:var(--ok);border-color:var(--ok)}.pill.off{color:var(--bad);border-color:var(--bad)}
+a{color:var(--brand)}
+main{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:16px;max-width:1100px;margin:16px auto;padding:0 16px}
+@media(max-width:820px){main{grid-template-columns:1fr}}
+section{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+h2{margin:0 0 10px;font-size:16px}
+#banner{max-width:1100px;margin:12px auto 0;padding:0 16px}
+#banner div{padding:12px 14px;border-radius:var(--r);border:1px solid var(--line);background:var(--card)}
+#banner .ok{border-color:var(--ok)}#banner .bad{border-color:var(--bad)}
+#log{height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 2px}
+.msg{max-width:88%;padding:9px 12px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.u{align-self:flex-end;background:var(--brand);color:var(--brand-ink)}
+.msg.a{align-self:flex-start;background:var(--bg);border:1px solid var(--line)}
+.msg.s{align-self:center;color:var(--mut);font-size:13px}
+form{display:flex;gap:8px;margin-top:10px}
+input,select,button{font:inherit;color:inherit}
+input[type=text],input[type=number],select{flex:1;min-width:0;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg)}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 13px}
+button.primary{background:var(--brand);border-color:var(--brand);color:var(--brand-ink);font-weight:600}
+button:disabled{opacity:.5;cursor:not-allowed}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+.chips button{font-size:13px;padding:6px 10px;border-radius:99px}
+.prefs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;color:var(--mut);font-size:13px;align-items:center}
+.prefs select,.prefs input{flex:0 1 130px;padding:6px 8px}
+#catalog{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.prod{border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;flex-direction:column;gap:4px}
+.prod b{font-size:14px}.prod small{color:var(--mut)}
+.prod .row{display:flex;justify-content:space-between;align-items:center;margin-top:auto}
+.item{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.item .n{flex:1;min-width:0}.item .q{display:flex;align-items:center;gap:6px}
+.item .q button{padding:2px 9px}
+.total{display:flex;justify-content:space-between;font-weight:700;margin:12px 0 4px;font-size:17px}
+.policy{font-size:12.5px;margin:8px 0;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
+.policy.AUTO_ALLOW{border-color:var(--ok)}.policy.REQUIRE_CONFIRMATION{border-color:var(--warn)}.policy.BLOCK{border-color:var(--bad)}
+.mut{color:var(--mut)}.full{width:100%}
+footer{max-width:1100px;margin:8px auto 28px;padding:0 16px;color:var(--mut);font-size:12.5px}
+</style>
+</head>
+<body>
+<header>
+  <h1>☕ AI Café</h1>
+  <span class="tag">Shop by intent. Review every item. Approve every payment.</span>
+  <span id="b-ai" class="pill">AI …</span>
+  <span id="b-pp" class="pill">PayPal …</span>
+  <a href="/dashboard.html">Agent Control Center →</a>
+</header>
+<div id="banner" hidden></div>
+<main>
+  <section aria-label="AI shopping assistant">
+    <h2>Ask the café agent</h2>
+    <div id="log" role="log" aria-live="polite"></div>
+    <div class="chips" id="chips"></div>
+    <form id="chat-form">
+      <input id="msg" type="text" maxlength="500" placeholder="e.g. A vegetarian breakfast for two under €20" autocomplete="off" aria-label="Your request">
+      <button class="primary" id="send" type="submit">Send</button>
+    </form>
+    <div class="prefs">
+      <span>Shopper profile:</span>
+      <select id="diet" aria-label="Dietary preference">
+        <option value="">any diet</option><option>vegetarian</option><option>vegan</option><option>gluten-free</option>
+      </select>
+      <input id="budget" type="number" min="1" max="100" step="1" placeholder="max budget €" aria-label="Maximum budget in euros">
+    </div>
+  </section>
+  <section aria-label="Cart">
+    <h2>Your cart</h2>
+    <div id="cart"></div>
+    <div id="policy"></div>
+    <div class="total"><span>Total</span><span id="total">€0.00</span></div>
+    <button class="primary full" id="pay" disabled>Review &amp; pay with PayPal</button>
+    <p class="mut" style="font-size:12.5px;margin:8px 0 0">The agent can prepare a cart. Only you can authorize payment, in PayPal sandbox.</p>
+  </section>
+  <section style="grid-column:1/-1" aria-label="Menu">
+    <h2>Menu</h2>
+    <div id="catalog"></div>
+  </section>
+</main>
+<footer>Hackathon prototype · PayPal sandbox only · no real money moves. Dietary labels are informational, not an allergen guarantee.</footer>
+<script src="/app.js" defer></script>
+</body>
+</html>

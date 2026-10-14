@@ -29,6 +29,11 @@ function checkoutReturn(status: 'success' | 'cancel') {
       return entities[character];
     });
     const scriptAppLink = JSON.stringify(appLink);
+    // Browser clients (the hosted web storefront) have no custom-scheme handler, so desktop
+    // browsers are sent back to the web app instead, where the shopper confirms the capture.
+    const webLink = `/?paypal=${status}&token=${encodeURIComponent(token)}`;
+    const scriptWebLink = JSON.stringify(webLink);
+    const htmlWebLink = webLink.replace(/&/g, '&amp;');
 
     res
       .status(200)
@@ -41,10 +46,9 @@ function checkoutReturn(status: 'success' | 'cancel') {
     <meta name="referrer" content="no-referrer">
     <title>${title} · AI Café</title>
     <script${res.locals.cspNonce ? ` nonce="${res.locals.cspNonce}"` : ''}>
-      window.location.replace(${scriptAppLink});
-      window.setTimeout(function () {
-        document.getElementById('fallback-message').hidden = false;
-      }, 1200);
+      if (!/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        window.location.replace(${scriptWebLink});
+      }
     </script>
   </head>
   <body>
@@ -53,6 +57,7 @@ function checkoutReturn(status: 'success' | 'cancel') {
       <p>${message}</p>
       <p id="fallback-message">If AI Café did not open automatically, use this link:</p>
       <a href="${htmlAppLink}">Return to AI Café</a>
+      <p><a href="${htmlWebLink}">Continue in the browser instead</a></p>
     </main>
   </body>
 </html>`);

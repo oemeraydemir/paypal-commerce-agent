@@ -10,11 +10,24 @@ import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/services/session_service.dart';
 
 /// Raised when the backend responds with a non-2xx status.
+///
+/// [settled] mirrors the backend's `details.settled` flag on a capture/cancel
+/// conflict (HTTP 409 `Order already captured`). It is `true` **only** when the
+/// server has independently confirmed a real PayPal `COMPLETED` capture before
+/// reporting the conflict (see `apps/backend/src/orders/routes` +
+/// `payment-lifecycle.ts`). It is `null` whenever the server did not supply a
+/// verified flag — e.g. the bare idempotent 409 — in which case callers must
+/// treat the payment state as unresolved and never fabricate `PAID`.
 class ApiException implements Exception {
   final int statusCode;
   final String message;
 
-  ApiException(this.statusCode, this.message);
+  /// `true` only when the backend verified a completed PayPal capture; `null`
+  /// when the backend did not assert completion. Never trust a bare 409 message
+  /// on its own (see [checkout_provider.dart]).
+  final bool? settled;
+
+  ApiException(this.statusCode, this.message, {this.settled});
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -349,8 +362,32 @@ class ApiService {
 
   void _ensureOk(http.Response res, String op) {
     if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw ApiException(res.statusCode, _errMsg(res, op));
+      throw ApiException(
+        res.statusCode,
+        _errMsg(res, op),
+        settled: _settledFlag(res),
+      );
     }
+  }
+
+  /// Reads the backend's verified-completion flag from a 409 capture/cancel
+  /// conflict body (`{ error, details: { settled } }`). Returns `true`/`false`
+  /// only when the backend explicitly supplied a boolean; `null` otherwise so
+  /// the caller can distinguish "server did not assert completion" from a
+  /// verified `false`. See [ApiException.settled].
+  bool? _settledFlag(http.Response res) {
+    try {
+      final b = jsonDecode(res.body);
+      if (b is Map) {
+        final details = b['details'];
+        if (details is Map && details['settled'] is bool) {
+          return details['settled'] as bool;
+        }
+      }
+    } catch (_) {
+      // ignore parse errors, fall through to "not supplied"
+    }
+    return null;
   }
 
   String _errMsg(http.Response res, [String? op]) {
