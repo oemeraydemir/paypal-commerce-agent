@@ -28,7 +28,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final DateFormat _timeFormat = DateFormat('HH:mm');
 
-  late final Future<List<Product>> _catalogFuture;
+  late Future<List<Product>> _catalogFuture;
   late Future<HealthStatus> _healthFuture;
   late final StreamSubscription<Uri> _linkSubscription;
   List<Product> _catalog = <Product>[];
