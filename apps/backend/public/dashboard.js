@@ -1,316 +1,422 @@
-      (function () {
-        'use strict';
+(function () {
+  'use strict';
 
-        var VALID_DECISIONS = ['AUTO_ALLOW', 'REQUIRE_CONFIRMATION', 'BLOCK'];
+  var VALID_DECISIONS = ['AUTO_ALLOW', 'REQUIRE_CONFIRMATION', 'BLOCK'];
 
-        function escapeHtml(value) {
-          if (value == null) return '';
-          var raw = String(value);
-          return raw.replace(/[&<>"']/g, function (char) {
-            return {
-              '&': '&amp;',
-              '<': '&lt;',
-              '>': '&gt;',
-              '"': '&quot;',
-              "'": '&#39;'
-            }[char];
-          });
-        }
+  // ----- Theming API (AG Grid Community, v33) -----
+  var lightTheme = agGrid.themeQuartz;
+  var darkTheme = agGrid.themeQuartz.withParams({
+    backgroundColor: '#1b2530',
+    foregroundColor: '#dbe4ee',
+    chromeBackgroundColor: '#16202b',
+    headerBackgroundColor: '#16202b',
+    headerTextColor: '#9fb0c0',
+    borderColor: '#2c3a47',
+    oddRowBackgroundColor: '#1f2b37',
+    rowHoverColor: '#26333f',
+    accentColor: '#4f9cf9'
+  });
+  var dark = false;
 
-        function shortenId(id) {
-          if (!id) return '';
-          var str = String(id);
-          if (str.length <= 16) return str;
-          return str.slice(0, 8) + '…' + str.slice(-8);
-        }
+  function el(id) {
+    return document.getElementById(id);
+  }
 
-        function formatTimestamp(ts) {
-          if (!ts) return '—';
-          var d = new Date(ts);
-          return isNaN(d.getTime()) ? '—' : d.toLocaleString();
-        }
+  function shortenId(id) {
+    if (!id) return '';
+    var str = String(id);
+    if (str.length <= 16) return str;
+    return str.slice(0, 8) + '…' + str.slice(-8);
+  }
 
-        function formatViolations(violations) {
-          if (!violations || !violations.length) return '—';
-          return violations.map(function (v) {
-            return v.type || 'UNKNOWN';
-          }).join(', ');
-        }
+  function formatMoney(minor, currency) {
+    var cur = currency || 'EUR';
+    if (typeof minor !== 'number') return '—';
+    try {
+      return (minor / 100).toLocaleString(undefined, {
+        style: 'currency',
+        currency: cur,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      });
+    } catch (e) {
+      return (minor / 100).toFixed(2) + ' ' + cur;
+    }
+  }
 
-        function decisionRenderer(params) {
-          var value = (params.value || '').toUpperCase();
-          var normalized = VALID_DECISIONS.includes(value) ? value : 'AUTO_ALLOW';
-          var label = value;
-          if (value === 'REQUIRE_CONFIRMATION') label = 'REQUIRE CONFIRMATION';
-          return '<span class="badge decision-' + escapeHtml(normalized) + '">' + escapeHtml(label) + '</span>';
-        }
+  function formatMoneyFallback(minor) {
+    return formatMoney(minor, 'EUR');
+  }
 
-        function shortIdRenderer(params) {
-          var value = params.value || '';
-          if (!value) return '—';
-          var short = shortenId(value);
-          return '<span title="' + escapeHtml(value) + '">' + escapeHtml(short) + '</span>';
-        }
+  function formatTimestamp(value) {
+    if (!value) return '—';
+    var d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleString();
+  }
 
-        function violationsRenderer(params) {
-          var violations = params.value || [];
-          if (!violations.length) return '<span>—</span>';
+  // ----- DOM-based renderers (textContent only, no innerHTML) -----
+  function makeBadge(text, cls) {
+    var span = document.createElement('span');
+    span.className = 'badge ' + cls;
+    span.textContent = text;
+    return span;
+  }
 
-          var types = violations.map(function (v) {
-            return v.type || 'UNKNOWN';
-          });
-          var safeTypes = types.join('; ');
-          var fullInfo = violations.map(function (v) {
-            return (v.type || 'UNKNOWN') + ': ' + (v.message || v.rule || '');
-          }).join('\n');
+  function decisionChip(params) {
+    var value = (params.value || '').toUpperCase();
+    var normalized = VALID_DECISIONS.indexOf(value) >= 0 ? value : 'AUTO_ALLOW';
+    var label = value === 'REQUIRE_CONFIRMATION' ? 'REQUIRE CONFIRMATION' : value;
+    var cls = 'badge-allow';
+    if (normalized === 'REQUIRE_CONFIRMATION') cls = 'badge-confirm';
+    else if (normalized === 'BLOCK') cls = 'badge-block';
+    return makeBadge(label || '—', cls);
+  }
 
-          var tooltipText = escapeHtml(fullInfo);
-          return '<span class="tooltip-wrap" title="' + tooltipText + '">' + escapeHtml(safeTypes) + '</span>';
-        }
+  function statusChip(params) {
+    var value = (params.value || '').toUpperCase();
+    if (value === 'PAID') return makeBadge('PAID', 'badge-paid');
+    if (value === 'CANCELLED') return makeBadge('CANCELLED', 'badge-cancelled');
+    return makeBadge(value || '—', 'badge-neutral');
+  }
 
-        function timeRenderer(params) {
-          var value = params.value;
-          var short = formatTimestamp(value);
-          return '<span title="' + escapeHtml(value) + '">' + escapeHtml(short) + '</span>';
-        }
+  function originBadge(params) {
+    var value = (params.value || '').toUpperCase();
+    if (value === 'AI_AGENT') return makeBadge('AI', 'badge-ai');
+    return makeBadge('HUMAN', 'badge-human');
+  }
 
-        function moneyRenderer(params) {
-          var minor = params.data.amountMinor;
-          var currency = params.data.currency || 'EUR';
-          if (typeof minor !== 'number') return '—';
-          var formatted = (minor / 100).toLocaleString(undefined, {
-            style: 'currency',
-            currency: currency,
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-          });
-          return '<span title="' + escapeHtml(currency + ' ' + minor) + '">' + escapeHtml(formatted) + '</span>';
-        }
+  function shortIdRenderer(params) {
+    var span = document.createElement('span');
+    span.textContent = shortenId(params.value);
+    span.title = params.value || '';
+    return span;
+  }
 
-        function updateStats(stats) {
-          var total = Number(stats?.totalRequests || 0);
-          var allowed = Number(stats?.allowed || 0);
-          var blocked = Number(stats?.blocked || 0);
-          var spentFormatted = stats?.spentFormatted || formatMoneyFallback(0);
+  function violationsRenderer(params) {
+    var violations = params.value || [];
+    var span = document.createElement('span');
+    if (!violations.length) {
+      span.textContent = '—';
+      return span;
+    }
+    span.textContent = violations
+      .map(function (v) { return v.type || 'UNKNOWN'; })
+      .join(', ');
+    span.title = violations
+      .map(function (v) { return (v.type || 'UNKNOWN') + ': ' + (v.message || v.rule || ''); })
+      .join('\n');
+    return span;
+  }
 
-          document.getElementById('totalRequestsValue').textContent = String(total);
-          document.getElementById('totalRequestsSub').textContent =
-            total + ' total policy evaluations';
-          document.getElementById('allowedValue').textContent = String(allowed);
-          document.getElementById('allowedSub').textContent =
-            allowed + ' non-block evaluations';
-          document.getElementById('blockedValue').textContent = String(blocked);
-          document.getElementById('blockedSub').textContent =
-            blocked + ' policy violations';
-          document.getElementById('spentValue').textContent = escapeHtml(stripped(spentFormatted));
-          document.getElementById('spentSub').textContent =
-            (stats?.spentMinor || 0) + ' ' + (stats?.spentFormatted ? '' : 'minor units') + ' from paid orders';
-        }
+  function currencyFormatter(params) {
+    return formatMoney(params.value, params.data && params.data.currency);
+  }
 
-        function formatMoneyFallback(minor) {
-          return (Number(minor || 0) / 100).toLocaleString(undefined, {
-            style: 'currency',
-            currency: 'EUR',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-          });
-        }
+  function dateFormatter(params) {
+    return formatTimestamp(params.value);
+  }
 
-        function stripped(value) {
-          return value == null ? '' : String(value);
-        }
+  // ----- Grid state with change-tracking for applyTransaction -----
+  var state = {
+    orders: { api: null, rows: new Map() },
+    events: { api: null, rows: new Map() }
+  };
 
-        function setLastUpdated(text) {
-          document.getElementById('lastUpdatedText').textContent = text;
-        }
+  function normalizeOrder(o) {
+    return {
+      id: o.id,
+      createdAt: o.createdAt ? new Date(o.createdAt) : null,
+      origin: o.origin,
+      status: o.status,
+      itemCount: o.itemCount,
+      totalMinor: o.totalMinor,
+      currency: o.currency
+    };
+  }
 
-        var gridOptions = {
-          columnDefs: [
-            {
-              headerName: 'Time',
-              field: 'timestamp',
-              cellRenderer: timeRenderer,
-              minWidth: 180,
-              sort: 'desc'
-            },
-            {
-              headerName: 'Agent',
-              field: 'agent',
-              minWidth: 130,
-              cellRenderer: shortIdRenderer
-            },
-            {
-              headerName: 'Cart ID',
-              field: 'cartId',
-              minWidth: 160,
-              cellRenderer: shortIdRenderer
-            },
-            {
-              headerName: 'Order ID',
-              field: 'orderId',
-              minWidth: 160,
-              cellRenderer: shortIdRenderer
-            },
-            {
-              headerName: 'Decision',
-              field: 'decision',
-              minWidth: 160,
-              cellRenderer: decisionRenderer,
-              filter: true
-            },
-            {
-              headerName: 'Amount',
-              minWidth: 120,
-              cellRenderer: moneyRenderer
-            },
-            {
-              headerName: 'Reason',
-              field: 'reason',
-              minWidth: 220,
-              cellRenderer: function (params) {
-                var val = params.value || '—';
-                return '<span title="' + escapeHtml(val) + '">' + escapeHtml(val) + '</span>';
-              }
-            },
-            {
-              headerName: 'Violations',
-              field: 'violatedRules',
-              minWidth: 180,
-              cellRenderer: violationsRenderer,
-              filter: true
-            }
-          ],
-          defaultColDef: { flex: 1, minWidth: 120, sortable: true, resizable: true, filter: true },
-          getRowId: function (params) {
-            return params.data.id;
-          },
-          rowData: [],
-          onRowClicked: function (params) {
-            openModal(params.data);
-          }
-        };
+  function normalizeEvent(e) {
+    return {
+      id: e.id,
+      timestamp: e.timestamp ? new Date(e.timestamp) : null,
+      agent: e.agent,
+      cartId: e.cartId,
+      orderId: e.orderId,
+      decision: e.decision,
+      amountMinor: e.amountMinor,
+      currency: e.currency,
+      reason: e.reason,
+      violatedRules: e.violatedRules || []
+    };
+  }
 
-        var gridApi = agGrid.createGrid(
-          document.getElementById('eventGrid'),
-          gridOptions
-        );
+  function applyDiff(name, rows) {
+    var st = state[name];
+    var newMap = new Map();
+    var add = [];
+    var update = [];
+    var remove = [];
+    rows.forEach(function (r) { newMap.set(r.id, JSON.stringify(r)); });
+    rows.forEach(function (r) {
+      if (!st.rows.has(r.id)) add.push(r);
+      else if (st.rows.get(r.id) !== JSON.stringify(r)) update.push(r);
+    });
+    st.rows.forEach(function (_v, id) {
+      if (!newMap.has(id)) remove.push({ id: id });
+    });
+    if (add.length || update.length || remove.length) {
+      st.api.applyTransaction({ add: add, update: update, remove: remove });
+    }
+    st.rows = newMap;
+  }
 
-        var modal = document.getElementById('eventModal');
-        var modalBody = document.getElementById('eventModalBody');
-        var closeModalBtn = document.getElementById('closeModal');
+  // ----- KPI cards -----
+  function updateKpis(oStats, eStats) {
+    oStats = oStats || {};
+    eStats = eStats || {};
+    var total = oStats.total || 0;
+    var aiPct = oStats.aiAssistedPercentage != null ? oStats.aiAssistedPercentage : 0;
+    var aiCount = oStats.aiAssisted || 0;
+    var blocked = eStats.blocked || 0;
+    var revenue = oStats.revenueFormatted || formatMoneyFallback(oStats.revenueMinor || 0);
 
-        function openModal(event) {
-          if (!event) return;
+    el('totalOrdersValue').textContent = String(total);
+    el('totalOrdersSub').textContent = total + ' total orders';
+    el('aiShareValue').textContent = aiPct + '%';
+    el('aiShareSub').textContent = aiCount + ' AI-assisted of ' + total;
+    el('blockedValue').textContent = String(blocked);
+    el('blockedSub').textContent = 'policy violations';
+    el('revenueValue').textContent = revenue;
+    el('revenueSub').textContent = (oStats.revenueMinor || 0) + ' minor captured';
+  }
 
-          var details = [
-            { label: 'Event ID', value: event.id },
-            { label: 'Timestamp', value: event.timestamp },
-            { label: 'Session ID', value: event.sessionId || '—' },
-            { label: 'Cart ID', value: event.cartId },
-            { label: 'Order ID', value: event.orderId || '—' },
-            { label: 'Agent', value: event.agent },
-            { label: 'Amount', value: event.amountFormatted || event.amountMinor },
-            { label: 'Currency', value: event.currency },
-            { label: 'Decision', value: event.decision },
-            { label: 'Reason', value: event.reason || '—' }
-          ];
+  function setLastUpdated() {
+    el('lastUpdatedText').textContent = 'Updated ' + new Date().toLocaleTimeString();
+  }
 
-          var detailHtml = details
-            .map(function (detail) {
-              return '<div class="detail-item">' +
-                '<span class="label">' + escapeHtml(detail.label) + '</span>' +
-                '<div class="value">' + escapeHtml(detail.value) + '</div>' +
-                '</div>';
-            })
-            .join('');
+  // ----- Side panel (textContent only) -----
+  function openSidePanel(data, kind) {
+    var side = el('eventModal');
+    var body = el('sideBody');
+    body.textContent = '';
 
-          var violations = event.violatedRules || [];
-          var violationRows;
-          if (violations.length === 0) {
-            violationRows = '<tr><td colspan="4">—</td></tr>';
-          } else {
-            violationRows = violations
-              .map(function (v) {
-                return '<tr>' +
-                  '<td>' + escapeHtml(v.type || '—') + '</td>' +
-                  '<td>' + escapeHtml(v.rule || '—') + '</td>' +
-                  '<td>' + escapeHtml(JSON.stringify(v.expected)) + '</td>' +
-                  '<td>' + escapeHtml(v.message || '—') + '</td>' +
-                  '</tr>';
-              })
-              .join('');
-          }
+    if (!data) return;
 
-          var policySnapshot = event.policySnapshot || {};
-          var snapshotRows = Object.keys(policySnapshot)
-            .map(function (key) {
-              return '<tr>' +
-                '<td>' + escapeHtml(key) + '</td>' +
-                '<td>' + escapeHtml(JSON.stringify(policySnapshot[key])) + '</td>' +
-                '</tr>';
-            })
-            .join('') || '<tr><td colspan="2">No snapshot</td></tr>';
-
-          modalBody.innerHTML =
-            '<div class="detail-grid">' + detailHtml + '</div>' +
-            '<h4>Violations</h4>' +
-            '<table><thead><tr><th>Type</th><th>Rule</th><th>Expected</th><th>Message</th></tr></thead><tbody>' +
-            violationRows +
-            '</tbody></table>' +
-            '<h4 style="margin-top:18px;">Policy Snapshot</h4>' +
-            '<table><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>' +
-            snapshotRows +
-            '</tbody></table>';
-
-          modal.classList.add('visible');
-          modal.setAttribute('aria-hidden', 'false');
-        }
-
-        function closeModal() {
-          modal.classList.remove('visible');
-          modal.setAttribute('aria-hidden', 'true');
-        }
-
-        closeModalBtn.addEventListener('click', closeModal);
-        modal.addEventListener('click', function (event) {
-          if (event.target === modal) closeModal();
+    if (kind === 'orders') {
+      el('sideTitle').textContent = 'Order detail';
+      addDetail(body, 'Order ID', shortenId(data.id));
+      addDetail(body, 'Created', formatTimestamp(data.createdAt));
+      addBadgeDetail(body, 'Origin', originBadge({ value: data.origin }));
+      addBadgeDetail(body, 'Status', statusChip({ value: data.status }));
+      addDetail(body, 'Items', String(data.itemCount));
+      addDetail(body, 'Total', formatMoney(data.totalMinor, data.currency));
+      addDetail(body, 'Currency', data.currency || 'EUR');
+      var items = data.__items || [];
+      if (items.length) {
+        var title = document.createElement('div');
+        title.className = 'detail-group-title';
+        title.textContent = 'Line items';
+        body.appendChild(title);
+        items.forEach(function (it) {
+          addDetail(body, it.productId, it.quantity + ' × ' + formatMoney(it.lineTotalMinor, data.currency));
         });
-
-        function updateLastUpdated() {
-          setLastUpdated('Updated ' + new Date().toLocaleTimeString());
-        }
-
-        async function refreshData() {
-          var [eventsResponse, statsResponse] = await Promise.all([
-            fetch('/api/policy-events?limit=100'),
-            fetch('/api/policy-events/stats')
-          ]);
-
-          if (!eventsResponse.ok) {
-            throw new Error('Policy events request failed: ' + eventsResponse.status);
-          }
-          if (!statsResponse.ok) {
-            throw new Error('Stats request failed: ' + statsResponse.status);
-          }
-
-          var eventsPayload = await eventsResponse.json();
-          var statsPayload = await statsResponse.json();
-
-          gridApi.setGridOption('rowData', eventsPayload.events || []);
-          updateStats(statsPayload);
-          updateLastUpdated();
-        }
-
-        // 5-second polling (R10).
-        refreshData().catch(function (err) {
-          console.error(err);
-          setLastUpdated('Error loading data');
+      }
+    } else {
+      el('sideTitle').textContent = 'Policy event detail';
+      addDetail(body, 'Event ID', shortenId(data.id));
+      addDetail(body, 'Time', formatTimestamp(data.timestamp));
+      addDetail(body, 'Agent', data.agent || '—');
+      addDetail(body, 'Cart ID', shortenId(data.cartId));
+      addDetail(body, 'Order ID', shortenId(data.orderId));
+      addBadgeDetail(body, 'Decision', decisionChip({ value: data.decision }));
+      addDetail(body, 'Amount', formatMoney(data.amountMinor, data.currency));
+      addDetail(body, 'Currency', data.currency || 'EUR');
+      addDetail(body, 'Reason', data.reason || '—');
+      var v = data.violatedRules || [];
+      if (v.length) {
+        var vtitle = document.createElement('div');
+        vtitle.className = 'detail-group-title';
+        vtitle.textContent = 'Violated rules';
+        body.appendChild(vtitle);
+        v.forEach(function (rule) {
+          addDetail(body, rule.type || 'UNKNOWN', rule.message || rule.rule || '—');
         });
+      }
+    }
 
-        setInterval(function () {
-          refreshData().catch(function (err) {
-            console.error(err);
-            setLastUpdated('Error loading data');
-          });
-        }, 5000);
-      })();
+    side.classList.add('visible');
+    side.setAttribute('aria-hidden', 'false');
+    el('sideBackdrop').hidden = false;
+  }
+
+  function addDetail(parent, label, value) {
+    var item = document.createElement('div');
+    item.className = 'detail-item';
+    var l = document.createElement('span');
+    l.className = 'label';
+    l.textContent = label;
+    var v = document.createElement('div');
+    v.className = 'value';
+    v.textContent = value;
+    item.appendChild(l);
+    item.appendChild(v);
+    parent.appendChild(item);
+  }
+
+  function addBadgeDetail(parent, label, badgeEl) {
+    var item = document.createElement('div');
+    item.className = 'detail-item';
+    var l = document.createElement('span');
+    l.className = 'label';
+    l.textContent = label;
+    var v = document.createElement('div');
+    v.className = 'value';
+    v.appendChild(badgeEl);
+    item.appendChild(l);
+    item.appendChild(v);
+    parent.appendChild(item);
+  }
+
+  function closeSidePanel() {
+    var side = el('eventModal');
+    side.classList.remove('visible');
+    side.setAttribute('aria-hidden', 'true');
+    el('sideBackdrop').hidden = true;
+  }
+
+  // ----- Grid definitions -----
+  var ordersColumnDefs = [
+    { headerName: 'Order ID', field: 'id', pinned: 'left', minWidth: 200, cellRenderer: shortIdRenderer },
+    { headerName: 'Created', field: 'createdAt', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
+    { headerName: 'Origin', field: 'origin', cellRenderer: originBadge, filter: 'agTextColumnFilter', minWidth: 120 },
+    { headerName: 'Status', field: 'status', cellRenderer: statusChip, filter: 'agTextColumnFilter', minWidth: 130 },
+    { headerName: 'Items', field: 'itemCount', filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 100 },
+    { headerName: 'Total', field: 'totalMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
+    { headerName: 'Currency', field: 'currency', filter: 'agTextColumnFilter', minWidth: 110 }
+  ];
+
+  var eventsColumnDefs = [
+    { headerName: 'Time', field: 'timestamp', pinned: 'left', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
+    { headerName: 'Agent', field: 'agent', cellRenderer: originBadge, filter: 'agTextColumnFilter', minWidth: 120 },
+    { headerName: 'Cart ID', field: 'cartId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
+    { headerName: 'Order ID', field: 'orderId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
+    { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, filter: 'agTextColumnFilter', minWidth: 180 },
+    { headerName: 'Amount', field: 'amountMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
+    { headerName: 'Reason', field: 'reason', filter: 'agTextColumnFilter', minWidth: 220 },
+    { headerName: 'Violations', field: 'violatedRules', cellRenderer: violationsRenderer, filter: false, minWidth: 180 }
+  ];
+
+  var defaultColDef = {
+    flex: 1,
+    minWidth: 120,
+    sortable: true,
+    resizable: true,
+    filter: true,
+    enablePinning: true,
+    enableCellChangeFlash: true
+  };
+
+  var ordersApi = agGrid.createGrid(el('ordersGrid'), {
+    columnDefs: ordersColumnDefs,
+    defaultColDef: defaultColDef,
+    getRowId: function (params) { return params.data.id; },
+    pagination: true,
+    paginationPageSize: 15,
+    paginationPageSizeSelector: [15, 50, 100],
+    theme: lightTheme,
+    rowData: [],
+    onRowClicked: function (params) { openSidePanel(params.data, 'orders'); }
+  });
+  state.orders.api = ordersApi;
+
+  var eventsApi = agGrid.createGrid(el('eventsGrid'), {
+    columnDefs: eventsColumnDefs,
+    defaultColDef: defaultColDef,
+    getRowId: function (params) { return params.data.id; },
+    pagination: true,
+    paginationPageSize: 15,
+    paginationPageSizeSelector: [15, 50, 100],
+    theme: lightTheme,
+    rowData: [],
+    onRowClicked: function (params) { openSidePanel(params.data, 'events'); }
+  });
+  state.events.api = eventsApi;
+
+  // Attach line items onto order rows for the side panel (not shown in grid).
+  function attachOrderItems(orders, jsonOrders) {
+    orders.forEach(function (o, i) {
+      o.__items = (jsonOrders[i] && jsonOrders[i].items) || [];
+    });
+    return orders;
+  }
+
+  // ----- Refresh loop (5s) -----
+  async function refreshData() {
+    var oResp, oStatsResp, eResp, eStatsResp;
+    try {
+      oResp = await fetch('/api/orders');
+      oStatsResp = await fetch('/api/orders/stats');
+      eResp = await fetch('/api/policy-events?limit=100');
+      eStatsResp = await fetch('/api/policy-events/stats');
+    } catch (err) {
+      // Non-fatal: keep previous rows; surface via warn, not error.
+      console.warn('dashboard refresh skipped:', err && err.message);
+      return;
+    }
+
+    if (!oResp.ok || !eResp.ok) {
+      console.warn('dashboard refresh: upstream returned non-200');
+      return;
+    }
+
+    var oJson = await oResp.json();
+    var eJson = await eResp.json();
+    var ordersRaw = (oJson.orders || []).map(normalizeOrder);
+    attachOrderItems(ordersRaw, oJson.orders || []);
+    var eventsRaw = (eJson.events || []).map(normalizeEvent);
+
+    applyDiff('orders', ordersRaw);
+    applyDiff('events', eventsRaw);
+
+    var oStats = oStatsResp.ok ? await oStatsResp.json() : {};
+    var eStats = eStatsResp.ok ? await eStatsResp.json() : {};
+    updateKpis(oStats, eStats);
+    setLastUpdated();
+  }
+
+  // ----- Wiring -----
+  el('ordersQuickFilter').addEventListener('input', function (e) {
+    ordersApi.setGridOption('quickFilterText', e.target.value);
+  });
+  el('eventsQuickFilter').addEventListener('input', function (e) {
+    eventsApi.setGridOption('quickFilterText', e.target.value);
+  });
+  el('ordersCsvBtn').addEventListener('click', function () {
+    ordersApi.exportDataAsCsv({ fileName: 'orders.csv' });
+  });
+  el('eventsCsvBtn').addEventListener('click', function () {
+    eventsApi.exportDataAsCsv({ fileName: 'policy-events.csv' });
+  });
+
+  el('closeSide').addEventListener('click', closeSidePanel);
+  el('sideBackdrop').addEventListener('click', closeSidePanel);
+
+  el('themeToggle').addEventListener('click', function () {
+    dark = !dark;
+    var theme = dark ? darkTheme : lightTheme;
+    ordersApi.setGridOption('theme', theme);
+    eventsApi.setGridOption('theme', theme);
+    document.body.classList.toggle('dark', dark);
+    el('themeToggle').textContent = dark ? 'Light mode' : 'Dark mode';
+  });
+
+  refreshData().catch(function (err) {
+    console.warn('initial dashboard load failed:', err && err.message);
+  });
+
+  setInterval(function () {
+    refreshData().catch(function (err) {
+      console.warn('dashboard refresh failed:', err && err.message);
+    });
+  }, 5000);
+})();

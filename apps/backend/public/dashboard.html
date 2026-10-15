@@ -4,18 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Agent Control Center</title>
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/styles/ag-grid.css"
-    />
-    <link
-      rel="stylesheet"
-      href="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/styles/ag-theme-alpine.css"
-    />
     <style>
       :root {
         --bg: #f4f7fb;
         --panel: #ffffff;
+        --panel-2: #f8fafc;
         --border: #dfe7f1;
         --text: #1f2937;
         --muted: #6b7280;
@@ -34,6 +27,15 @@
         color: var(--text);
       }
 
+      body.dark {
+        --bg: #121a23;
+        --panel: #1b2530;
+        --panel-2: #16202b;
+        --border: #2c3a47;
+        --text: #dbe4ee;
+        --muted: #8da0b3;
+      }
+
       .demo-banner {
         background: #111827;
         color: #f9fafb;
@@ -46,7 +48,7 @@
       .page {
         max-width: 1400px;
         margin: 24px auto;
-        padding: 0 16px 32px;
+        padding: 0 16px 48px;
       }
 
       .header {
@@ -55,11 +57,15 @@
         align-items: center;
         gap: 16px;
         margin-bottom: 18px;
+        flex-wrap: wrap;
       }
 
-      h1 {
-        margin: 0;
-        font-size: 1.8rem;
+      h1 { margin: 0; font-size: 1.8rem; }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 14px;
       }
 
       .last-updated {
@@ -78,6 +84,16 @@
         display: inline-block;
       }
 
+      .theme-btn {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+
       .stats {
         display: grid;
         grid-template-columns: repeat(4, minmax(180px, 1fr));
@@ -90,7 +106,7 @@
         border: 1px solid var(--border);
         border-radius: 12px;
         padding: 16px;
-        min-height: 120px;
+        min-height: 110px;
       }
 
       .stat-label {
@@ -115,36 +131,55 @@
 
       .ops { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
       .ops:empty { display: none; }
-      .ops-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-      .ops-head h2 { margin: 0; font-size: 1.1rem; }
-      .ops-badge { font-size: 0.75rem; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--success); color: var(--success); }
-      .ops-muted { color: var(--muted); font-size: 0.9rem; margin: 8px 0; }
-      .ops-row { display: flex; gap: 8px; margin: 8px 0; }
-      .ops-row input { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
-      .ops-btn { background: var(--primary); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; font: inherit; cursor: pointer; }
-      .ops-btn:disabled { opacity: 0.6; cursor: wait; }
-      .ops-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-      .ops-chip { border: 1px solid var(--border); background: var(--bg); border-radius: 99px; padding: 5px 11px; font-size: 0.8rem; cursor: pointer; }
-      .ops-out { margin-top: 12px; }
-      .ops-answer { white-space: pre-wrap; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
-      .ops-err { padding: 10px 12px; border: 1px solid var(--danger); color: var(--danger); border-radius: 8px; }
-      .ops-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-      .ops-tool { font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--primary); color: var(--primary); }
-      .ops-tool.internal { border-color: var(--muted); color: var(--muted); }
-      .ops-tool.rejected, .ops-tool.fail { border-color: var(--danger); color: var(--danger); }
 
-      .grid-wrap {
+      .grid-section {
         background: var(--panel);
         border: 1px solid var(--border);
         border-radius: 12px;
-        padding: 10px;
+        padding: 14px;
+        margin-bottom: 18px;
       }
 
-      .ag-theme-alpine {
-        --ag-header-background-color: #f8fafc;
-        --ag-foreground-color: var(--text);
-        --ag-border-color: var(--border);
-        --ag-font-size: 13px;
+      .grid-section h2 {
+        margin: 0 0 4px;
+        font-size: 1.1rem;
+      }
+
+      .grid-toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 8px 0 12px;
+      }
+
+      .grid-toolbar input {
+        flex: 1;
+        min-width: 160px;
+        max-width: 360px;
+        padding: 8px 11px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font: inherit;
+        background: var(--panel-2);
+        color: var(--text);
+      }
+
+      .grid-toolbar button {
+        background: var(--primary);
+        color: #fff;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .grid-toolbar .hint { color: var(--muted); font-size: 0.85rem; }
+
+      #ordersGrid, #eventsGrid {
+        height: 460px;
+        width: 100%;
       }
 
       .badge {
@@ -152,134 +187,85 @@
         align-items: center;
         justify-content: center;
         border-radius: 999px;
-        padding: 4px 10px;
-        font-size: 0.76rem;
+        padding: 3px 10px;
+        font-size: 0.74rem;
         font-weight: 700;
         text-transform: uppercase;
+        letter-spacing: 0.02em;
       }
+      .badge-allow { background: rgba(31, 157, 98, 0.14); color: var(--success); }
+      .badge-confirm { background: rgba(217, 119, 6, 0.14); color: var(--warning); }
+      .badge-block { background: rgba(220, 38, 38, 0.14); color: var(--danger); }
+      .badge-paid { background: rgba(31, 157, 98, 0.14); color: var(--success); }
+      .badge-cancelled { background: rgba(107, 114, 128, 0.16); color: var(--muted); }
+      .badge-neutral { background: rgba(45, 108, 223, 0.12); color: var(--primary); }
+      .badge-ai { background: rgba(45, 108, 223, 0.16); color: var(--primary); }
+      .badge-human { background: rgba(107, 114, 128, 0.14); color: var(--muted); }
 
-      .decision-AUTO_ALLOW { background: rgba(31, 157, 98, 0.12); color: var(--success); }
-      .decision-REQUIRE_CONFIRMATION { background: rgba(217, 119, 6, 0.12); color: var(--warning); }
-      .decision-BLOCK { background: rgba(220, 38, 38, 0.12); color: var(--danger); }
-
-      .tooltip-wrap {
-        position: relative;
-        display: inline-block;
-        cursor: help;
-      }
-
-      .tooltip-wrap .tooltip-text {
-        visibility: hidden;
-        opacity: 0;
-        position: absolute;
-        bottom: 125%;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #1f2937;
-        color: #ffffff;
-        text-align: left;
-        border-radius: 6px;
-        padding: 8px 12px;
-        font-size: 0.8rem;
-        white-space: pre-wrap;
-        width: max-content;
-        max-width: 320px;
-        z-index: 1000;
-        transition: opacity 0.2s;
-        pointer-events: none;
-      }
-
-      .tooltip-wrap:hover .tooltip-text {
-        visibility: visible;
-        opacity: 1;
-      }
-
-      .modal {
+      .side-backdrop {
         position: fixed;
         inset: 0;
-        background: rgba(15, 23, 42, 0.52);
-        display: none;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
+        background: rgba(15, 23, 42, 0.4);
+        z-index: 900;
       }
-
-      .modal.visible { display: flex; }
-
-      .modal-content {
-        width: min(760px, 100%);
-        background: white;
-        border-radius: 16px;
-        box-shadow: 0 30px 70px rgba(15, 23, 42, 0.28);
-        max-height: 80vh;
-        overflow: auto;
+      .side-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: min(420px, 92vw);
+        background: var(--panel);
+        border-left: 1px solid var(--border);
+        box-shadow: -20px 0 60px rgba(15, 23, 42, 0.25);
+        transform: translateX(100%);
+        transition: transform 0.22s ease;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
       }
-
-      .modal-header {
+      .side-panel.visible { transform: translateX(0); }
+      .side-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         border-bottom: 1px solid var(--border);
-        padding: 18px 20px;
+        padding: 16px 18px;
       }
-
-      .modal-header h3 {
-        margin: 0;
-      }
-
-      .modal-close {
+      .side-header h3 { margin: 0; }
+      .side-close {
         border: none;
         background: transparent;
-        font-size: 1.3rem;
+        font-size: 1.4rem;
         cursor: pointer;
+        color: var(--text);
       }
-
-      .modal-body {
-        padding: 20px;
-      }
-
-      .detail-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(180px, 1fr));
-        gap: 12px 18px;
-        margin-bottom: 18px;
-      }
-
+      .side-body { padding: 18px; overflow: auto; }
       .detail-item {
-        background: #f8fafc;
+        background: var(--panel-2);
         border: 1px solid var(--border);
         border-radius: 10px;
         padding: 10px 12px;
+        margin-bottom: 10px;
       }
-
       .detail-item .label {
         display: block;
         color: var(--muted);
-        font-size: 0.74rem;
+        font-size: 0.72rem;
         text-transform: uppercase;
-        margin-bottom: 6px;
+        margin-bottom: 4px;
       }
-
-      .detail-item .value {
-        font-weight: 700;
-        word-break: break-word;
-      }
-
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-
-      th, td {
-        text-align: left;
-        border-bottom: 1px solid var(--border);
-        padding: 8px 6px;
-      }
-
-      th {
+      .detail-item .value { font-weight: 700; word-break: break-word; }
+      .detail-group-title {
+        margin: 16px 0 8px;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
         color: var(--muted);
-        font-size: 0.75rem;
-        text-transform: uppercase;
+      }
+
+      @media (max-width: 720px) {
+        .stats { grid-template-columns: repeat(2, 1fr); }
+        #ordersGrid, #eventsGrid { height: 380px; }
       }
     </style>
   </head>
@@ -291,22 +277,25 @@
     <div class="page">
       <div class="header">
         <h1>Agent Control Center</h1>
-        <div class="last-updated" id="lastUpdated">
-          <span class="dot"></span>
-          <span id="lastUpdatedText">Not yet refreshed</span>
+        <div class="header-right">
+          <div class="last-updated" id="lastUpdated">
+            <span class="dot"></span>
+            <span id="lastUpdatedText">Not yet refreshed</span>
+          </div>
+          <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle light/dark theme">Dark mode</button>
         </div>
       </div>
 
       <div class="stats" id="statsCards">
         <div class="stat-card">
-          <div class="stat-label">Requests</div>
-          <p id="totalRequestsValue" class="stat-value">0</p>
-          <div class="stat-sub" id="totalRequestsSub">total policy evaluations</div>
+          <div class="stat-label">Orders</div>
+          <p id="totalOrdersValue" class="stat-value">0</p>
+          <div class="stat-sub" id="totalOrdersSub">total orders</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Allowed</div>
-          <p id="allowedValue" class="stat-value">0</p>
-          <div class="stat-sub" id="allowedSub">non-block evaluations</div>
+          <div class="stat-label">AI-assisted share</div>
+          <p id="aiShareValue" class="stat-value">0%</p>
+          <div class="stat-sub" id="aiShareSub">of all orders</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Blocked</div>
@@ -314,30 +303,45 @@
           <div class="stat-sub" id="blockedSub">policy violations</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">Spent</div>
-          <p id="spentValue" class="stat-value">€0.00</p>
-          <div class="stat-sub" id="spentSub">captured from paid orders</div>
+          <div class="stat-label">Revenue</div>
+          <p id="revenueValue" class="stat-value">€0.00</p>
+          <div class="stat-sub" id="revenueSub">captured from paid orders</div>
         </div>
       </div>
 
       <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
 
-      <div class="grid-wrap">
-        <div id="eventGrid" class="ag-theme-alpine" style="height: 620px; width: 100%;"></div>
-      </div>
-    </div>
-
-    <div id="eventModal" class="modal" aria-hidden="true">
-      <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-        <div class="modal-header">
-          <h3 id="modalTitle">Policy Event Detail</h3>
-          <button type="button" class="modal-close" id="closeModal" aria-label="Close">&times;</button>
+      <section class="grid-section">
+        <h2>Orders</h2>
+        <div class="grid-toolbar">
+          <input type="text" id="ordersQuickFilter" placeholder="Quick filter orders…" aria-label="Quick filter orders" />
+          <button type="button" id="ordersCsvBtn">Export CSV</button>
+          <span class="hint">sort · filter · resize · pin · paginate</span>
         </div>
-        <div id="eventModalBody" class="modal-body"></div>
-      </div>
+        <div id="ordersGrid"></div>
+      </section>
+
+      <section class="grid-section">
+        <h2>Policy events</h2>
+        <div class="grid-toolbar">
+          <input type="text" id="eventsQuickFilter" placeholder="Quick filter policy events…" aria-label="Quick filter policy events" />
+          <button type="button" id="eventsCsvBtn">Export CSV</button>
+          <span class="hint">click a row for reason &amp; violated rules</span>
+        </div>
+        <div id="eventsGrid"></div>
+      </section>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
+    <div id="sideBackdrop" class="side-backdrop" hidden></div>
+    <aside id="eventModal" class="side-panel" aria-hidden="true" aria-label="Detail panel">
+      <div class="side-header">
+        <h3 id="sideTitle">Detail</h3>
+        <button type="button" class="side-close" id="closeSide" aria-label="Close">&times;</button>
+      </div>
+      <div id="sideBody" class="side-body"></div>
+    </aside>
+
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.0.0/dist/ag-grid-community.min.js"></script>
     <script src="/dashboard.js"></script>
     <script src="/ops-copilot.js" defer></script>
   </body>
