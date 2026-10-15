@@ -145,7 +145,7 @@ GET /api/policy-events/stats
 GET /dashboard.html  → 200, markerlar:
    Agent Control Center, setInterval, 5-second polling,
    decision-BLOCK, decision-AUTO_ALLOW, decision-REQUIRE_CONFIRMATION,
-   Demo-only, ag-grid-community@31.0.0
+   Demo-only, ag-grid-community@33.0.0
 ```
 
 **Not:** `PAYPAL_ENABLED=false` olduğu için `/api/orders/create` ve `/capture` `503 PayPal not configured` döndürür. Yani canlı HTTP üzerinden "order → capture → PAID" yalnızca gerçek credential'larla mümkündür (bkz. Bölüm 6 ve 7).

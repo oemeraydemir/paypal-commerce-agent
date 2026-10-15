@@ -85,7 +85,7 @@ This is enforced server-side and not by trusting client-supplied origin values. 
 - API: Node.js + TypeScript + Express
 - Payment: PayPal Orders API + webhooks
 - Client: Flutter app for chat and checkout
-- Dashboard: AG Grid 31.0.0 (CDN)
+- Dashboard: AG Grid 33.0.0 (CDN, Theming API)
 - Storage: in-memory singleton order service
 
 

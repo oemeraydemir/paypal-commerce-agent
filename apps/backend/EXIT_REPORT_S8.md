@@ -19,7 +19,7 @@ accuracy against the running code and ran the final validation gate.
 | `apps/backend/SUBMISSION.md` | ✅ Accurate: problem/solution, 3-layer safety innovation, PayPal integration notes, demo flow, placeholders for repo/URL/video. |
 | `apps/backend/DEPLOYMENT.md` | ✅ Present, referenced by README. |
 | `apps/backend/DEMO_CHECKLIST.md` | ✅ Present, referenced by README. |
-| `apps/backend/public/dashboard.html` | ✅ AG Grid **31.0.0** via CDN, served from `/public`, `/dashboard` redirects to it. |
+| `apps/backend/public/dashboard.html` | ✅ AG Grid **33.0.0** via CDN (Theming API), served from `/public`, `/dashboard` redirects to it. |
 | `apps/backend/src/utils/money.ts` | ✅ `formatMoney` uses `Intl.NumberFormat` — **no hardcoded currency symbol**. |
 | `apps/backend/src/routes/orders.ts` | ✅ AI order attribution enforced (`consumeAIPreparedSession` → `OrderOrigin.AI_AGENT`). |
 | `apps/backend/src/ai/session-tracker.ts` | ✅ `markSessionAIPrepared` set when AI cart `checkoutReady`; consumed at order create. |
@@ -69,7 +69,7 @@ webhook health, and webhook route availability (401 without signature headers).
 - **Name:** AI Café — Agentic Commerce with Human-Authorized PayPal Checkout
 - **Tagline:** AI helps you shop. You decide whether to pay. PayPal securely executes the payment.
 - **Innovation:** three-layer safety boundary (Catalog Authority, Payment Isolation, Human Confirmation).
-- **Stack:** Node.js + TypeScript + Express · OpenAI GPT-4o-mini (function calling) · PayPal Orders API + Webhooks · Flutter · AG Grid 31.0.0 (CDN).
+- **Stack:** Node.js + TypeScript + Express · OpenAI GPT-4o-mini (function calling) · PayPal Orders API + Webhooks · Flutter · AG Grid 33.0.0 (CDN, Theming API).
 - **Repo / Live / Video:** placeholders (`your-username`, `your-render-url`, `your-video-id`) — fill in during Adım 1.
 
 ## Known Limitations (unchanged from prior sprints)
