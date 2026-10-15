@@ -11,3 +11,6 @@ npm-debug.log*
 .idea/
 .vscode/
 .workbuddy-ai/
+
+# Testing-instructions doc holds placeholder buyer credentials — never commit the filled copy.
+docs/devpost-testing-instructions.md

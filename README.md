@@ -7,6 +7,36 @@ Tell the café assistant what you need and what you can spend. Its AI searches
 the live product catalog, prepares a cart using server-owned prices, and hands
 off to PayPal sandbox only after you choose to check out.
 
+## Live demo
+
+- **URL:** https://paypal-commerce-agent.onrender.com
+- The backend runs on a free-tier instance that sleeps when idle, so the
+  **first load may take up to 60 seconds**.
+
+## Quick start (3 steps, run locally)
+
+```bash
+git clone https://github.com/oemeraydemir/paypal-commerce-agent.git
+cd apps/backend && npm install
+npm run dev            # then open http://localhost:3000
+```
+
+(For a production-style run use `npm run build && npm start`.)
+
+## Explore without keys
+
+You can browse the 25-item menu, build a cart, watch the **server-side policy
+meter**, and open the **Agent Control Center** (`/dashboard.html`) with no
+OpenAI or PayPal credentials — only a live PayPal sandbox payment needs keys.
+See [Try it in your browser](#try-it-in-your-browser--no-emulator-needed)
+below for the scenario table.
+
+## License & architecture
+
+- **MIT License** — see [LICENSE](./LICENSE).
+- **Architecture** — see [apps/backend/ARCHITECTURE.md](./apps/backend/ARCHITECTURE.md).
+- **Older reports** — see [_ARCHIVE_OLD_REPORTS](./_ARCHIVE_OLD_REPORTS).
+
 ## Why this matters
 
 Shoppers should be able to describe an outcome instead of navigating filters
