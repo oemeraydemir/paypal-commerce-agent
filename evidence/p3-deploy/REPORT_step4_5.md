@@ -3,8 +3,9 @@
 **Live URL:** https://paypal-commerce-agent.onrender.com
 **Render service:** `paypal-commerce-agent-backend` (free plan)
 **Branch:** `fix/render-deployment`
-**Local HEAD == pushed SHA:** `d9f928a6e1318039e9f1ffd6c6c60329e4a936cb`
+**Deployed commit (verified via `/api/health` `buildCommit`):** `d9f928a6e1318039e9f1ffd6c6c60329e4a936cb`
 **Date:** 2026-10-15
+**Overall result:** ✅ **PASS** — Steps 1–4 verified end-to-end against the live sandbox service (real sandbox payment captured, webhook delivered and signature-verified).
 
 > No secret values or tokens are printed below. Session ids are masked (first 4 + last 4).
 
@@ -101,7 +102,33 @@ GET https://paypal-commerce-agent.onrender.com/api/webhooks/health  → 200 {"st
 ```
 → Render has `PAYPAL_WEBHOOK_ID` set, so the deployed app will verify webhook signatures.
 
-**Remaining to observe:** the two Render log lines for the Step 3 payment — one showing the order **marked PAID via webhook** and one showing a **duplicate ignored**. Render logs are owner-visible only, so these are pending an owner paste (redacted).
+**Live delivery observed** (owner-pasted Render logs; non-secret sandbox identifiers only — no credentials/tokens):
+
+```text
+Order ca398ad9-4cf1-4acf-aa9d-e7a36d7759b3 marked PAID via webhook (PayPal Order: 2L718454CX803590G)
+10.196.20.10 - - [15/Oct/2026:14:30:19 +0000] "POST /api/webhooks/paypal HTTP/1.1" 200 44 "-" "PayPal/AUHD-1.0-1"
+```
+
+| Assertion | Result |
+|---|---|
+| PayPal genuinely delivered the event (not a spoof) | ✅ `User-Agent: PayPal/AUHD-1.0-1` |
+| Signature verified against PayPal's API | ✅ (no `Invalid webhook signature`; request accepted) |
+| Order correlated by PayPal Order ID and marked PAID | ✅ `marked PAID via webhook` → `webhooks.ts:113` |
+| Endpoint acknowledged to stop retries | ✅ `HTTP 200` |
+
+**Duplicate-ignore — not exercised live (expected).** No `Duplicate webhook event:` line appeared, and none was due: PayPal only re-delivers an event when the endpoint answers **non-2xx** (see `webhooks.ts:70-79`), and this delivery was acknowledged `200` on the **first** attempt. The idempotency guard (`webhooks.ts:54-57` → `webhookService.isDuplicate`) therefore had no duplicate to reject in production. It is covered by automated tests instead:
+
+- `tests/integration/webhooks.test.ts` — asserts a re-delivered event returns `"already processed"` (lines 228, 315).
+- `tests/integration/reservation-consistency.test.ts` — same, plus `webhookService.isDuplicate('WH-RESTART') === false` (line 293).
+
+Fresh run of both suites (`npx jest --runInBand`):
+
+```
+Test Suites: 2 passed, 2 total
+Tests:       35 passed, 35 total
+```
+
+→ The duplicate-ignore path is proven by automated tests even though production delivered no duplicate.
 
 ---
 
@@ -112,5 +139,15 @@ GET https://paypal-commerce-agent.onrender.com/api/webhooks/health  → 200 {"st
 - **`E2E_SKIP_AI` not needed here** — no OpenAI calls were made in this task; the only paid AI surface (`/api/ops/ask`) is disabled (`enabled=false`).
 
 ## Git state
-- HEAD `d9f928a…` == remote tip. Working tree: only untracked evidence files.
-- This report is committed and pushed separately (fast-forward only).
+- **Deployed commit** `d9f928a6e1318039e9f1ffd6c6c60329e4a936cb` — verified equal to the pushed SHA at Step 1.
+- **Evidence commits** (fast-forward only, no force-push, no history rewrite): `66b2f5a` → `b0b533c` → `c8387eb` → final update.
+- No secrets were committed at any point; `apps/backend/.env` remains git-ignored.
+
+## Verdict
+
+| Step | Result |
+|---|---|
+| 1 — Warm-up + health assertion | ✅ PASS (`buildCommit` == deployed SHA, production, sandbox) |
+| 2 — HTTPS smoke | ✅ PASS (7/7) |
+| 3 — Live sandbox payment | ✅ PASS (PAID, €13.00, single capture) |
+| 4 — Webhook registration + delivery | ✅ PASS (verified registered; delivered, signature-verified, order marked PAID, HTTP 200) |
