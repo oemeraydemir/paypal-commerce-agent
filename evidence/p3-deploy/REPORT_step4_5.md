@@ -54,20 +54,36 @@ Policy defaults in effect: `maxPerPurchaseMinor=2000` (€20), `confirmationThre
 
 **Verification once done:** poll `GET /api/orders` and assert a **PAID** order exists with exactly **one** capture.
 
-## Step 4 — Webhook registration — ⛔ BLOCKED (local credentials)
+## Step 4 — Webhook registration — ✅ VERIFIED (registered, no duplicate created)
 
-`npm run register-webhook https://paypal-commerce-agent.onrender.com/api/webhooks/paypal` **could not be run**:
+Credentials were corrected in `apps/backend/.env` (real sandbox REST app: client id `AWI1…`, secret **80** chars).
 
-- The local `apps/backend/.env` still contains **placeholder** credentials (`PAYPAL_CLIENT_SECRET` length **8**, client id email-shaped), unchanged since `2026-10-15 11:47`.
-- Verified directly against PayPal sandbox OAuth: `POST https://api-m.sandbox.paypal.com/v1/oauth2/token` → **HTTP 401 `invalid_client` / "Client Authentication failed"**.
+**Credential re-verification (Node `fetch`):**
+```
+POST https://api-m.sandbox.paypal.com/v1/oauth2/token   → HTTP 200, access_token returned
+```
 
-The **live Render service** has valid credentials (health shows `paypal.enabled=true`), but those live only in Render's env vars and are not available to the local script.
+**Existing webhook verified via the PayPal API (read-only, `GET /v1/notifications/webhooks`):**
+```
+webhook count: 1
+- id=0SP24733RB703715E   url=https://paypal-commerce-agent.onrender.com/api/webhooks/paypal
+  events: CHECKOUT.ORDER.APPROVED, PAYMENT.CAPTURE.COMPLETED, PAYMENT.CAPTURE.DENIED
+```
+| Assertion | Result |
+|---|---|
+| id == `0SP24733RB703715E` | ✅ |
+| url == `https://paypal-commerce-agent.onrender.com/api/webhooks/paypal` | ✅ |
+| required event types present (all 3) | ✅ |
 
-**Unblock (either):**
-1. Put the **same real sandbox REST app credentials** used on Render into `apps/backend/.env` (`PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` ≥ 60 chars), then I run the script; **or**
-2. Run the script yourself and paste the returned **webhook id** (not a secret) here.
+**Deliberate decision:** `npm run register-webhook` was **not** executed. That script unconditionally calls `createWebhook`, so running it would have created a **duplicate** endpoint. The already-registered webhook was verified through the read-only list API instead.
 
-**Then:** set `PAYPAL_WEBHOOK_ID` in Render env vars and redeploy → make one more sandbox payment → paste the two relevant Render log lines ("marked PAID via webhook" and a duplicate-ignored line), redacted.
+**Live service wiring confirmed:**
+```
+GET https://paypal-commerce-agent.onrender.com/api/webhooks/health  → 200 {"status":"ok","webhookEnabled":true}
+```
+→ Render has `PAYPAL_WEBHOOK_ID` set, so the deployed app will verify webhook signatures.
+
+**Remaining to observe:** a webhook-delivered `PAYMENT.CAPTURE.COMPLETED` marked **PAID via webhook** and a duplicate **ignored** (Render logs).
 
 ---
 
