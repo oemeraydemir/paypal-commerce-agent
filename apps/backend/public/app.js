@@ -11,6 +11,12 @@
   function eur(minor) { return new Intl.NumberFormat('en-IE', { style: 'currency', currency: 'EUR' }).format(minor / 100); }
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
 
+  // Category emoji for product cards (unicode only — no external images).
+  var CATEGORY_EMOJI = {
+    breakfast: '🥐', drinks: '🥤', desserts: '🍰', gifts: '🎁',
+    lunch: '🥪', snacks: '🍪', catering: '🍱'
+  };
+
   function banner(kind, text) {
     var b = $('banner'); b.hidden = false; b.textContent = '';
     var d = el('div', kind, text); b.appendChild(d);
@@ -131,7 +137,7 @@
     });
     var box = $('catalog'); box.textContent = '';
     list.filter(function (p) { return activeCat === 'all' || p.category === activeCat; }).forEach(function (p) {
-      var card = el('div', 'prod'); card.appendChild(el('b', '', p.name)); card.appendChild(el('small', '', p.description));
+      var card = el('div', 'prod'); card.appendChild(el('span', 'emo', CATEGORY_EMOJI[p.category] || '🛒')); card.appendChild(el('b', '', p.name)); card.appendChild(el('small', '', p.description));
       var tags = el('div', 'tags'); p.dietary.forEach(function (d) { tags.appendChild(el('span', 'tag' + (d === 'alcohol' ? ' warn' : ''), d)); }); card.appendChild(tags);
       var row = el('div', 'row'); row.appendChild(el('span', '', eur(p.priceMinor)));
       var add = el('button', '', 'Add'); add.onclick = function () { setQty(p.id, (cart[p.id] || 0) + 1); };
@@ -184,13 +190,14 @@
   function pay() {
     var items = Object.keys(cart).map(function (id) { return { productId: id, quantity: cart[id] }; });
     if (!items.length) return;
-    busy = true; renderCart(); $('pay').textContent = 'Contacting PayPal…';
+    busy = true; renderCart();
+    var pbtn = $('pay'); pbtn.classList.add('loading'); pbtn.setAttribute('aria-busy', 'true'); pbtn.textContent = 'Contacting PayPal…';
     api('/api/orders/create', { method: 'POST', headers: { 'Idempotency-Key': uuid() }, body: JSON.stringify({ items: items }) }).then(function (o) {
       if (!o.approvalUrl) throw new Error('PayPal did not return an approval link');
       save(PKEY, { orderId: o.orderId, paypalOrderId: o.paypalOrderId, total: o.totalFormatted });
       window.location.assign(o.approvalUrl);
     }).catch(function (e) {
-      busy = false; $('pay').textContent = 'Review & pay with PayPal'; renderCart();
+      busy = false; pbtn.classList.remove('loading'); pbtn.removeAttribute('aria-busy'); renderCart();
       if (e.status === 403) { showPolicy({ policyDecision: 'BLOCK', reason: (e.body && (e.body.reason || e.body.suggestion)) || e.message }); }
       banner('bad', e.status === 503 ? 'PayPal is not configured on this server.' : 'Checkout failed: ' + e.message);
     });
@@ -205,14 +212,65 @@
     var box = el('div', 'ok'); box.appendChild(el('div', '', 'PayPal approved your ' + pend.total + ' order. Confirm to complete the payment.'));
     var go = el('button', 'primary', 'Confirm payment'); go.style.marginTop = '8px';
     go.onclick = function () {
-      go.disabled = true; go.textContent = 'Capturing…';
+      go.disabled = true; go.classList.add('loading'); go.setAttribute('aria-busy', 'true'); go.textContent = 'Capturing…';
       api('/api/orders/' + encodeURIComponent(pend.orderId) + '/capture', { method: 'POST', body: '{}' }).then(function (r) {
+        var items = Object.keys(cart).map(function (id) { var p = catalog[id]; return { name: p.name, qty: cart[id], price: eur(p.priceMinor) }; });
+        var decision = (policy && policy.decision) ? policy.decision : 'AUTO_ALLOW';
+        go.classList.remove('loading'); go.removeAttribute('aria-busy');
         drop(PKEY); cart = {}; save(CKEY, cart); renderCart();
-        banner('ok', 'Payment ' + r.status + '. PayPal capture ' + (r.paypalCaptureId || '') + '. See it live in the Agent Control Center.');
-      }).catch(function (e) { go.disabled = false; go.textContent = 'Confirm payment'; banner('bad', 'Capture failed: ' + e.message); });
+        renderReceipt({ items: items, totalText: pend.total, maskedId: maskId(r.paypalCaptureId), decision: decision, status: r.status || 'COMPLETED' });
+      }).catch(function (e) { go.disabled = false; go.classList.remove('loading'); go.removeAttribute('aria-busy'); go.textContent = 'Confirm payment'; banner('bad', 'Capture failed: ' + e.message); });
     };
     box.appendChild(go); b.appendChild(box);
   }
+
+  // ---- Receipt + demo reset ------------------------------------------------------------------
+  function maskId(id) {
+    if (!id) return '—';
+    if (id.length <= 8) return id;
+    return id.slice(0, 4) + '••••' + id.slice(-4);
+  }
+  function decisionLabel(d) {
+    if (d === 'REQUIRE_CONFIRMATION') return 'needed your approval';
+    if (d === 'BLOCK') return 'blocked';
+    return 'auto-allowed';
+  }
+  // Hide the cart chrome while a receipt is on screen (and restore it on reset).
+  function setCartChrome(v) {
+    ['cart', 'policy', 'policy-note', 'cartTotal', 'pay', 'payNote'].forEach(function (id) { var n = $(id); if (n) n.hidden = !v; });
+  }
+  function renderReceipt(d) {
+    var box = $('receipt'); box.textContent = ''; box.hidden = false;
+    box.appendChild(el('h3', '', 'Payment receipt'));
+    box.appendChild(el('p', 'mut', 'Status: ' + (d.status || 'COMPLETED')));
+    if (d.items && d.items.length) {
+      var ul = el('ul', 'ritems');
+      d.items.forEach(function (it) {
+        var li = el('li', ''); li.appendChild(el('span', '', it.qty + '× ' + it.name)); li.appendChild(el('span', '', it.price));
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+    }
+    box.appendChild(el('div', 'rtotal', 'Total paid: ' + d.totalText));
+    box.appendChild(el('div', 'rmask', 'PayPal capture ID: ' + d.maskedId));
+    var steps = ['Cart prepared', 'Policy decision — ' + decisionLabel(d.decision), 'Approved at PayPal', 'Captured'];
+    var ol = el('ol', 'rsteps');
+    steps.forEach(function (t) { var li = el('li', 'step'); li.appendChild(el('span', 'ic', '✓')); li.appendChild(el('span', '', t)); ol.appendChild(li); });
+    box.appendChild(ol);
+    var link = el('a', 'rlink', 'Open the Agent Control Center'); link.href = '/dashboard.html'; link.setAttribute('rel', 'noopener');
+    box.appendChild(link);
+    setCartChrome(false);
+  }
+  function reset() {
+    cart = {}; save(CKEY, cart); drop(PKEY);
+    var r = $('receipt'); if (r) { r.textContent = ''; r.hidden = true; }
+    var b = $('banner'); if (b) { b.hidden = true; b.textContent = ''; }
+    policy = null; $('policy').textContent = ''; $('policy-note').textContent = '';
+    setCartChrome(true); renderCart();
+    say('s', 'Demo reset — cart and pending order cleared.');
+  }
+  // Exposed for headless verification only; not used by the normal flow.
+  window.AICAFE = window.AICAFE || {}; window.AICAFE.renderReceipt = renderReceipt; window.AICAFE.reset = reset;
 
   // ---- Boot ---------------------------------------------------------------------------------
   function boot() {
@@ -222,6 +280,7 @@
     });
     $('chat-form').addEventListener('submit', function (e) { e.preventDefault(); ask($('msg').value); });
     $('pay').addEventListener('click', pay);
+    $('reset').addEventListener('click', reset);
     say('a', 'Hi! Tell me what you need and what you want to spend. I prepare the cart; you approve the payment.');
     fetch('/api/health').then(function (r) { return r.json(); }).then(function (h) {
       var a = $('b-ai'), p = $('b-pp');
