@@ -48,11 +48,29 @@ Policy defaults in effect: `maxPerPurchaseMinor=2000` (€20), `confirmationThre
 
 ---
 
-## Step 3 — Live payment (human approval) — ⏳ PENDING (owner action)
+## Step 3 — Live payment (human approval) — ✅ PASS
 
-**Owner action:** open https://paypal-commerce-agent.onrender.com → **"Everyday order"** → **"Review & pay with PayPal"** → log in with the **sandbox buyer** → **Approve** → return to the storefront → press **"Confirm payment"**.
+Owner completed the payment in a real browser: **"Everyday order"** (€13) → **Review & pay with PayPal** → sandbox buyer **Approve** → return → **"Confirm payment"**.
 
-**Verification once done:** poll `GET /api/orders` and assert a **PAID** order exists with exactly **one** capture.
+Verified against the live service (`GET /api/orders`, public read-only endpoint):
+
+| Field | Value |
+|---|---|
+| Order id (public, non-secret) | `ca398ad9-4cf1-4acf-aa9d-e7a36d7759b3` |
+| **Status** | **`PAID`** ✅ |
+| `totalMinor` | **`1300`** (€13.00) ✅ |
+| Origin | `HUMAN` ✅ |
+| Items | `veg_breakfast` ×1 = 1000, `coffee` ×1 = 300 ✅ |
+| Session ref (non-reversible) | `sess_bd0aa2f3` |
+| Created | `2026-10-15T14:27:01.911Z` |
+| `GET /api/orders` total | **1** |
+
+`GET /api/orders/stats`:
+```json
+{"total":1,"aiAssisted":0,"aiAssistedPercentage":0,"revenueMinor":1300,"revenueFormatted":"€13.00","aiAssistedRevenueMinor":0,"aiAssistedRevenueFormatted":"€0.00"}
+```
+
+**Exactly one order → exactly one capture.** No duplicate order, no double capture. Gate satisfied.
 
 ## Step 4 — Webhook registration — ✅ VERIFIED (registered, no duplicate created)
 
@@ -83,7 +101,7 @@ GET https://paypal-commerce-agent.onrender.com/api/webhooks/health  → 200 {"st
 ```
 → Render has `PAYPAL_WEBHOOK_ID` set, so the deployed app will verify webhook signatures.
 
-**Remaining to observe:** a webhook-delivered `PAYMENT.CAPTURE.COMPLETED` marked **PAID via webhook** and a duplicate **ignored** (Render logs).
+**Remaining to observe:** the two Render log lines for the Step 3 payment — one showing the order **marked PAID via webhook** and one showing a **duplicate ignored**. Render logs are owner-visible only, so these are pending an owner paste (redacted).
 
 ---
 
