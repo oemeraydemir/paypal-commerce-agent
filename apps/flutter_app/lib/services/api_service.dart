@@ -105,13 +105,9 @@ class ApiService {
   /// minting a second session for the same logical identity.
   Future<void>? _sessionCreation;
 
-  ApiService({
-    http.Client? client,
-    String? baseUrl,
-    required SessionStorage storage,
-  }) : _client = client ?? http.Client(),
-       _baseUrl = (baseUrl ?? resolveBaseUrl()).replaceFirst(RegExp(r'/$'), ''),
-       _storage = storage;
+  ApiService({http.Client? client, String? baseUrl, required this._storage})
+    : _client = client ?? http.Client(),
+      _baseUrl = (baseUrl ?? resolveBaseUrl()).replaceFirst(RegExp(r'/$'), '');
 
   Uri _url(String path) => Uri.parse('$_baseUrl$path');
 

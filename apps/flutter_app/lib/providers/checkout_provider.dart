@@ -261,8 +261,7 @@ class CheckoutProvider extends ChangeNotifier {
   /// Explains that the matching PayPal return link is required before capture.
   /// A user assertion from the browser cannot authorize payment.
   void confirmApprovalInBrowser() {
-    _statusMessage =
-        'Approval is not confirmed in AI Café yet. Return using PayPal’s link so this order can be validated.';
+    _statusMessage = 'Approval is not confirmed in AI Café yet. Return using PayPal’s link so this order can be validated.';
     _error = null;
     notifyListeners();
   }
