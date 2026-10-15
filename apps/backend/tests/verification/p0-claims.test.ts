@@ -474,8 +474,18 @@ describe('CLAIM 5 - demo scenario vs catalog', () => {
     expect(price('veg_breakfast') + price('coffee')).toBe(1300);
   });
 
-  test('5b NO combination of catalog items (qty 0..8 each) sums to 1890', () => {
-    const prices: number[] = (catalog as any).products.map((p: any) => p.priceMinor);
+  // The claim concerns the ORIGINAL eight-product demo catalog (the stale EUR 18.90 figure could never
+  // be built from it). The catalog has since grown, so the claim is pinned to those original ids.
+  const ORIGINAL_CATALOG_IDS = [
+    'veg_breakfast', 'coffee', 'orange_juice', 'premium_cake',
+    'gift_box', 'flowers_bouquet', 'pancakes', 'latte',
+  ];
+
+  test('5b NO combination of the original catalog items (qty 0..8 each) sums to 1890', () => {
+    const prices: number[] = (catalog as any).products
+      .filter((p: any) => ORIGINAL_CATALOG_IDS.includes(p.id))
+      .map((p: any) => p.priceMinor);
+    expect(prices).toHaveLength(ORIGINAL_CATALOG_IDS.length);
     const reachable = new Set<number>([0]);
     let layer = new Set<number>([0]);
     for (const p of prices) {
