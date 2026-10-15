@@ -10,6 +10,8 @@ import healthRoutes from './routes/health';
 import catalogRoutes from './routes/catalog';
 import orderRoutes from './routes/orders';
 import policyEventsRoutes from './routes/policy-events';
+import policyPreviewRoutes from './routes/policy-preview';
+import opsRoutes from './routes/ops';
 import aiRoutes from './routes/ai';
 import webhookRoutes from './routes/webhooks';
 import dashboardRoutes from './routes/dashboard';
@@ -79,6 +81,8 @@ export function createApp() {
   app.use('/api', catalogRoutes);
   app.use('/api', orderRoutes);
   app.use('/api', policyEventsRoutes);
+  app.use('/api', policyPreviewRoutes);
+  app.use('/api', opsRoutes);
   app.use('/api', aiRoutes);
 
   app.use(errorHandler);

@@ -81,10 +81,10 @@ describe('Health endpoint (integration)', () => {
     );
   });
 
-  it('GET /api/catalog returns 8 products', async () => {
+  it('GET /api/catalog returns 25 products', async () => {
     const res = await request(app).get('/api/catalog');
     expect(res.status).toBe(200);
-    expect(res.body.count).toBe(8);
+    expect(res.body.count).toBe(25);
     expect(Array.isArray(res.body.products)).toBe(true);
     expect(res.body.products[0]).toHaveProperty('priceMinor');
     expect(res.body.products[0]).toHaveProperty('dietary');

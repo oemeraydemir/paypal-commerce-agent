@@ -5,7 +5,7 @@ describe('CatalogService', () => {
 
   it('returns all 8 available products', () => {
     const products = catalog.getAll();
-    expect(products.length).toBe(8);
+    expect(products.length).toBe(25);
   });
 
   it('returns a product by id with minor price + dietary/occasion fields', () => {

@@ -50,6 +50,20 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .policy{font-size:12.5px;margin:8px 0;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
 .policy.AUTO_ALLOW{border-color:var(--ok)}.policy.REQUIRE_CONFIRMATION{border-color:var(--warn)}.policy.BLOCK{border-color:var(--bad)}
 .mut{color:var(--mut)}.full{width:100%}
+.pbox{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;font-size:13px}
+.pbox.AUTO_ALLOW{border-color:var(--ok)}.pbox.REQUIRE_CONFIRMATION{border-color:var(--warn)}.pbox.BLOCK{border-color:var(--bad)}
+.phead{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
+.meter{position:relative;height:10px;border-radius:99px;background:var(--bg);border:1px solid var(--line);margin:10px 0 4px;overflow:hidden}
+.meter .fill{position:absolute;inset:0 auto 0 0;background:var(--brand)}.pbox.REQUIRE_CONFIRMATION .fill{background:var(--warn)}.pbox.BLOCK .fill{background:var(--bad)}.pbox.AUTO_ALLOW .fill{background:var(--ok)}
+.meter .mark{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--ink)}
+.scale{display:flex;justify-content:space-between;color:var(--mut);font-size:11.5px;margin-bottom:8px}
+.checks{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:5px}
+.checks li{display:flex;gap:8px;align-items:flex-start}.checks .ic{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex:none;color:#fff;margin-top:1px}
+.checks .pass .ic{background:var(--ok)}.checks .confirm .ic{background:var(--warn)}.checks .fail .ic{background:var(--bad)}
+.cats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}.cats button{font-size:13px;padding:5px 11px;border-radius:99px}.cats .on{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.tags{display:flex;flex-wrap:wrap;gap:4px}.tag{font-size:11px;padding:1px 7px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}.tag.warn{color:var(--bad);border-color:var(--bad)}
+#scenarios{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.scn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left}
 footer{max-width:1100px;margin:8px auto 28px;padding:0 16px;color:var(--mut);font-size:12.5px}
 </style>
 </head>
@@ -82,13 +96,20 @@ footer{max-width:1100px;margin:8px auto 28px;padding:0 16px;color:var(--mut);fon
   <section aria-label="Cart">
     <h2>Your cart</h2>
     <div id="cart"></div>
-    <div id="policy"></div>
+    <div id="policy" aria-live="polite"></div>
+    <div id="policy-note"></div>
     <div class="total"><span>Total</span><span id="total">€0.00</span></div>
     <button class="primary full" id="pay" disabled>Review &amp; pay with PayPal</button>
     <p class="mut" style="font-size:12.5px;margin:8px 0 0">The agent can prepare a cart. Only you can authorize payment, in PayPal sandbox.</p>
   </section>
+  <section style="grid-column:1/-1" aria-label="Demo scenarios">
+    <h2>Try a scenario</h2>
+    <p class="mut" style="margin:0 0 10px;font-size:13px">One click fills the cart. The decision you see comes from the server-side policy engine, not from this page.</p>
+    <div id="scenarios"></div>
+  </section>
   <section style="grid-column:1/-1" aria-label="Menu">
     <h2>Menu</h2>
+    <div class="cats" id="cats"></div>
     <div id="catalog"></div>
   </section>
 </main>

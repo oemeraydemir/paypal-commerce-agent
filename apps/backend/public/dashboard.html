@@ -113,6 +113,26 @@
         color: var(--muted);
       }
 
+      .ops { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+      .ops:empty { display: none; }
+      .ops-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .ops-head h2 { margin: 0; font-size: 1.1rem; }
+      .ops-badge { font-size: 0.75rem; padding: 3px 9px; border-radius: 99px; border: 1px solid var(--success); color: var(--success); }
+      .ops-muted { color: var(--muted); font-size: 0.9rem; margin: 8px 0; }
+      .ops-row { display: flex; gap: 8px; margin: 8px 0; }
+      .ops-row input { flex: 1; min-width: 0; padding: 9px 11px; border: 1px solid var(--border); border-radius: 8px; font: inherit; }
+      .ops-btn { background: var(--primary); color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; font: inherit; cursor: pointer; }
+      .ops-btn:disabled { opacity: 0.6; cursor: wait; }
+      .ops-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+      .ops-chip { border: 1px solid var(--border); background: var(--bg); border-radius: 99px; padding: 5px 11px; font-size: 0.8rem; cursor: pointer; }
+      .ops-out { margin-top: 12px; }
+      .ops-answer { white-space: pre-wrap; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+      .ops-err { padding: 10px 12px; border: 1px solid var(--danger); color: var(--danger); border-radius: 8px; }
+      .ops-tools { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .ops-tool { font-size: 0.75rem; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--primary); color: var(--primary); }
+      .ops-tool.internal { border-color: var(--muted); color: var(--muted); }
+      .ops-tool.rejected, .ops-tool.fail { border-color: var(--danger); color: var(--danger); }
+
       .grid-wrap {
         background: var(--panel);
         border: 1px solid var(--border);
@@ -300,6 +320,8 @@
         </div>
       </div>
 
+      <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
+
       <div class="grid-wrap">
         <div id="eventGrid" class="ag-theme-alpine" style="height: 620px; width: 100%;"></div>
       </div>
@@ -317,5 +339,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@31.0.0/dist/ag-grid-community.min.js"></script>
     <script src="/dashboard.js"></script>
+    <script src="/ops-copilot.js" defer></script>
   </body>
 </html>

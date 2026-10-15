@@ -3,6 +3,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var SKEY = 'aicafe.session', PKEY = 'aicafe.pending', CKEY = 'aicafe.cart';
   var catalog = {}, cart = {}, session = null, busy = false;
+  var policy = null, pseq = 0, ptimer = null, activeCat = 'all', allProducts = [];
 
   function load(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
   function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } }
@@ -57,26 +58,102 @@
       row.appendChild(n); row.appendChild(q); box.appendChild(row);
     });
     $('total').textContent = eur(cartTotal());
-    $('pay').disabled = busy || !ids.length;
+    updatePay();
+    schedulePolicy();
+  }
+  // UI convenience only: the server re-evaluates policy at /api/orders/create and is the sole authority.
+  function updatePay() {
+    var blocked = !!(policy && policy.decision === 'BLOCK' && Object.keys(cart).length);
+    $('pay').disabled = busy || !Object.keys(cart).length || blocked;
+    if (!busy) $('pay').textContent = blocked ? 'Blocked by your policy' : 'Review & pay with PayPal';
   }
   function showPolicy(c) {
-    var box = $('policy'); box.textContent = '';
+    var box = $('policy-note'); box.textContent = '';
     if (!c || !c.policyDecision) return;
-    var labels = { AUTO_ALLOW: 'Policy: within your limits', REQUIRE_CONFIRMATION: 'Policy: needs your explicit approval', BLOCK: 'Policy: blocked' };
+    var labels = { AUTO_ALLOW: 'Agent check: within your limits', REQUIRE_CONFIRMATION: 'Agent check: needs your explicit approval', BLOCK: 'Agent check: blocked' };
     var d = el('div', 'policy ' + c.policyDecision, labels[c.policyDecision] || c.policyDecision);
     if (c.reason) d.appendChild(el('div', 'mut', c.reason));
     box.appendChild(d);
   }
+  function schedulePolicy() { clearTimeout(ptimer); ptimer = setTimeout(refreshPolicy, 120); }
+  function refreshPolicy() {
+    var items = Object.keys(cart).map(function (id) { return { productId: id, quantity: cart[id] }; });
+    var seq = ++pseq;
+    api('/api/policy/preview', { method: 'POST', body: JSON.stringify({ items: items }) }).then(function (p) {
+      if (seq !== pseq) return; // a newer cart state is already in flight
+      policy = p; renderPolicy(p); updatePay();
+    }).catch(function () { if (seq === pseq) { policy = null; $('policy').textContent = ''; updatePay(); } });
+  }
+  var DECISION_TEXT = {
+    AUTO_ALLOW: ['Within your limits', 'Checkout needs no extra confirmation.'],
+    REQUIRE_CONFIRMATION: ['Needs your approval', 'You must explicitly approve this payment on PayPal.'],
+    BLOCK: ['Blocked by your policy', 'The server will refuse this cart before PayPal is contacted.']
+  };
+  function renderPolicy(p) {
+    var box = $('policy'); box.textContent = '';
+    var L = p.limits; var max = L.maxPerPurchaseMinor; var wrap = el('div', 'pbox' + (p.decision ? ' ' + p.decision : ''));
+    var head = el('div', 'phead');
+    head.appendChild(el('b', '', p.decision ? DECISION_TEXT[p.decision][0] : 'Your policy limits'));
+    head.appendChild(el('span', 'pill', 'enforced by server'));
+    wrap.appendChild(head);
+    var meter = el('div', 'meter'); meter.setAttribute('role', 'img');
+    var total = p.empty ? 0 : p.totalMinor;
+    meter.setAttribute('aria-label', 'Cart ' + eur(total) + ' of ' + eur(max) + ' maximum; approval above ' + eur(L.confirmationThresholdMinor));
+    var fill = el('i', 'fill'); fill.style.width = Math.min(100, total / max * 100) + '%'; meter.appendChild(fill);
+    var mark = el('i', 'mark'); mark.style.left = (L.confirmationThresholdMinor / max * 100) + '%'; meter.appendChild(mark);
+    wrap.appendChild(meter);
+    var scale = el('div', 'scale'); scale.appendChild(el('span', '', eur(0)));
+    var thr = el('span', '', 'approval above ' + eur(L.confirmationThresholdMinor)); scale.appendChild(thr);
+    scale.appendChild(el('span', '', 'max ' + eur(max))); wrap.appendChild(scale);
+    if (p.decision) {
+      wrap.appendChild(el('div', 'mut', p.decision === 'BLOCK' && p.reason ? p.reason + '. ' + DECISION_TEXT.BLOCK[1] : DECISION_TEXT[p.decision][1]));
+      var ul = el('ul', 'checks');
+      p.checks.forEach(function (c) {
+        var li = el('li', c.status); li.appendChild(el('span', 'ic', c.status === 'pass' ? '✓' : c.status === 'confirm' ? '!' : '✕'));
+        var t = el('span', ''); t.appendChild(el('b', '', c.label + ': ')); t.appendChild(document.createTextNode(c.detail)); li.appendChild(t); ul.appendChild(li);
+      });
+      wrap.appendChild(ul);
+    } else {
+      wrap.appendChild(el('div', 'mut', 'Daily budget ' + eur(L.dailySpendLimitMinor) + ' (' + eur(L.dailyRemainingMinor) + ' left). Add items to see the live policy decision.'));
+    }
+    box.appendChild(wrap);
+  }
 
   // ---- Catalog ------------------------------------------------------------------------------
   function renderCatalog(list) {
+    allProducts = list; list.forEach(function (p) { catalog[p.id] = p; });
+    var cats = ['all'].concat(list.map(function (p) { return p.category; }).filter(function (c, i, a) { return a.indexOf(c) === i; }));
+    var bar = $('cats'); bar.textContent = '';
+    cats.forEach(function (c) {
+      var b = el('button', c === activeCat ? 'on' : '', c === 'all' ? 'All' : c.charAt(0).toUpperCase() + c.slice(1)); b.type = 'button';
+      b.setAttribute('aria-pressed', c === activeCat ? 'true' : 'false');
+      b.onclick = function () { activeCat = c; renderCatalog(allProducts); }; bar.appendChild(b);
+    });
     var box = $('catalog'); box.textContent = '';
-    list.forEach(function (p) {
-      catalog[p.id] = p;
+    list.filter(function (p) { return activeCat === 'all' || p.category === activeCat; }).forEach(function (p) {
       var card = el('div', 'prod'); card.appendChild(el('b', '', p.name)); card.appendChild(el('small', '', p.description));
+      var tags = el('div', 'tags'); p.dietary.forEach(function (d) { tags.appendChild(el('span', 'tag' + (d === 'alcohol' ? ' warn' : ''), d)); }); card.appendChild(tags);
       var row = el('div', 'row'); row.appendChild(el('span', '', eur(p.priceMinor)));
       var add = el('button', '', 'Add'); add.onclick = function () { setQty(p.id, (cart[p.id] || 0) + 1); };
       row.appendChild(add); card.appendChild(row); box.appendChild(card);
+    });
+  }
+
+  // One-click, repeatable scenarios. They only fill the cart: the decision shown always comes from the server.
+  var SCENARIOS = [
+    { t: 'Everyday order', hint: 'EUR 13 → needs approval', items: { veg_breakfast: 1, coffee: 1 } },
+    { t: 'Quick coffee', hint: 'EUR 3 → auto-allowed', items: { coffee: 1 } },
+    { t: 'Over the limit', hint: 'EUR 55 → blocked', items: { veg_breakfast: 1, premium_cake: 1 } },
+    { t: 'Team order', hint: 'EUR 38 → blocked', items: { office_pastry_box: 1 } },
+    { t: 'Alcohol request', hint: 'blocked by rule', items: { mulled_wine: 1 } }
+  ];
+  function renderScenarios() {
+    var box = $('scenarios'); box.textContent = '';
+    SCENARIOS.forEach(function (sc) {
+      if (!Object.keys(sc.items).every(function (id) { return catalog[id]; })) return;
+      var b = el('button', 'scn'); b.type = 'button'; b.appendChild(el('b', '', sc.t)); b.appendChild(el('small', 'mut', sc.hint));
+      b.onclick = function () { cart = Object.assign({}, sc.items); save(CKEY, cart); renderCart(); };
+      box.appendChild(b);
     });
   }
 
@@ -151,7 +228,7 @@
       a.textContent = h.ai && h.ai.enabled ? 'AI ready' : 'AI not configured'; a.className = 'pill ' + (h.ai && h.ai.enabled ? 'on' : 'off');
       p.textContent = h.paypal && h.paypal.enabled ? 'PayPal ' + h.paypal.environment : 'PayPal not configured'; p.className = 'pill ' + (h.paypal && h.paypal.enabled ? 'on' : 'off');
     }).catch(function () { /* badges stay neutral */ });
-    fetch('/api/catalog').then(function (r) { return r.json(); }).then(function (c) { renderCatalog(c.products || []); renderCart(); handleReturn(); })
+    fetch('/api/catalog').then(function (r) { return r.json(); }).then(function (c) { renderCatalog(c.products || []); renderScenarios(); renderCart(); handleReturn(); })
       .catch(function () { banner('bad', 'Could not load the menu. Is the API running?'); });
     renderCart();
     if (!session) newSession().catch(function () { /* retried on first request */ });

@@ -25,6 +25,12 @@ describe('web storefront', () => {
     expect(src).not.toMatch(/innerHTML|document\.write|eval\(/);
   });
 
+  test('storefront asks the server for policy decisions and never enforces rules client-side', () => {
+    const src = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
+    expect(src).toContain('/api/policy/preview');
+    expect(src).not.toMatch(/maxPerPurchaseMinor\s*[<>]=?\s*\d/); // no hardcoded limits in the page
+  });
+
   test('desktop browsers are auto-sent to the web app; mobile keeps a user-triggered deep link and a visible web fallback', async () => {
     const res = await request(app).get('/api/checkout/return?token=ORDER-9');
     expect(res.status).toBe(200);
