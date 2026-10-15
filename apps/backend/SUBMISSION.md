@@ -21,8 +21,10 @@ customer—not the agent—in control of the financial decision.
 
 ### What judges can try
 
-1. Start the Flutter app and backend using the root README.
-2. Ask for a vegetarian breakfast for two with a €20 budget.
+1. Start the backend and open `http://localhost:3000` in a browser (or use the Flutter app), per the root README.
+2. Without any credentials, click the **Try a scenario** buttons and watch the server-side policy
+   meter: EUR 13 needs approval, EUR 3 is auto-allowed, EUR 55, a EUR 38 team order and alcohol are blocked.
+   With OpenAI configured, ask for a vegetarian breakfast for two with a €20 budget.
 3. Review the AI-generated cart and add or remove items.
 4. Open PayPal sandbox, approve using a sandbox buyer, return to AI Café, and
    confirm payment capture.
@@ -38,6 +40,10 @@ and manual cart can still be explored without credentials.
   function calling for product search, product detail, and cart preparation.
 - **PayPal Orders API:** server-side order creation and capture after buyer
   approval in sandbox. No live mode is supported.
+- **PayPal Agent Toolkit (`@paypal/agent-toolkit`, OpenAI adapter):** powers the merchant Ops Copilot on the
+  dashboard. Configured with read permissions only (8 of the toolkit's 47 tools, verified by a test), plus
+  a by-name allow-list that refuses any write tool the model asks for. Off by default; enabled with
+  `OPS_COPILOT_ENABLED` and `OPS_COPILOT_KEY`. Judges receive the key through the private testing-instructions field.
 - **AG Grid:** public, read-only order operations dashboard.
 - **Flutter:** Android/iOS shopper application.
 - **Node.js, TypeScript, Express:** catalog, AI orchestration, PayPal

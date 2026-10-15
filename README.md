@@ -21,6 +21,62 @@ giving an AI agent authority over money:
 
 The AI has no PayPal tool, credential, or payment endpoint access.
 
+## Try it in your browser (no emulator needed)
+
+The backend serves a responsive web storefront, so the full flow runs with only Node.js:
+
+```bash
+cd apps/backend && npm install && cp .env.example .env   # add OPENAI_API_KEY + PayPal sandbox keys
+npm run dev                                              # open http://localhost:3000
+```
+
+For local browser runs set `PAYPAL_RETURN_URL=http://localhost:3000/api/checkout/return` and
+`PAYPAL_CANCEL_URL=http://localhost:3000/api/checkout/cancel`. Desktop browsers return from PayPal
+to the web app, where you press **Confirm payment**; phones offer the Flutter deep link plus a
+visible "Continue in the browser" fallback. The AG Grid dashboard is at `/dashboard.html`.
+
+### Policy transparency and one-click scenarios
+
+Every cart change calls `POST /api/policy/preview`, which runs the **same** validation and
+`PolicyService` as `POST /api/orders/create` (side-effect free: no order, reservation, PayPal call
+or audit event). The page shows a meter against the EUR 20 maximum with the EUR 10 approval
+threshold marked, plus a per-rule checklist (per-purchase limit, approval threshold, daily budget,
+blocked attributes, approved merchant). The UI only mirrors the server's answer; `/orders/create`
+re-evaluates and remains the sole authority. The "Try a scenario" buttons work without OpenAI or
+PayPal credentials:
+
+| Scenario | Cart | Server decision |
+|---|---|---|
+| Everyday order | Vegetarian Breakfast + Coffee, EUR 13 | `REQUIRE_CONFIRMATION` |
+| Quick coffee | Coffee, EUR 3 | `AUTO_ALLOW` |
+| Over the limit | Breakfast + Premium Cake, EUR 55 | `BLOCK` (per-purchase limit) |
+| Team order | Office Pastry Box, EUR 38 | `BLOCK` (per-purchase limit) |
+| Alcohol request | Winter Mulled Wine, EUR 5.50 | `BLOCK` (blocked attribute) |
+
+The catalog now has 25 products in 7 categories (breakfast, lunch, drinks, desserts, snacks, gifts,
+catering) with dietary labels; the web menu renders `GET /api/catalog` directly.
+
+## Ops Copilot: a second, read-only PayPal + AI integration
+
+The merchant dashboard (`/dashboard.html`) includes an **Ops Copilot**, built on the official
+[`@paypal/agent-toolkit`](https://github.com/paypal/agent-toolkit) (OpenAI adapter). It answers
+questions such as "which payments were blocked today and why?" by combining live PayPal sandbox data
+(`list_transactions`, `get_order`, `list_disputes`, `get_dispute`, `list_invoices`, `get_invoice`,
+`get_refund`, `get_shipment_tracking`) with AI Café's policy audit trail.
+
+It is deliberately **read-only**, with two independent layers:
+
+1. The toolkit is configured with read permissions only. Verified offline by a test: of the toolkit's
+   47 tools, exactly these 8 are exposed.
+2. Every tool call the model requests is checked by name before it reaches PayPal. A hallucinated or
+   prompt-injected `pay_order`, `create_refund` or `send_invoice` is refused and shown as such.
+
+The shopper-facing agent still has **no** PayPal tool at all, and payments are approved only by the
+shopper. Because the copilot reads merchant data and spends OpenAI credits, it is **off by default**
+and requires `OPS_COPILOT_ENABLED=true` plus `OPS_COPILOT_KEY` (16+ characters, sent as the
+`X-Ops-Key` header, compared in constant time, rate limited per IP). The PayPal environment stays
+sandbox-only.
+
 ## What is in the prototype
 
 - Flutter Android/iOS app with an AI chat, guided example requests, searchable

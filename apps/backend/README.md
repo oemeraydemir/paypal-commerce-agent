@@ -49,6 +49,9 @@ configuration, test commands, and demo flow.
 | ------ | ---- | ----------- |
 | GET | `/api/health` | Backend, AI, and PayPal sandbox readiness |
 | GET | `/api/catalog` | Available products with authoritative prices |
+| GET | `/api/ops/status` | Whether the read-only Ops Copilot is enabled, and which tools it may use |
+| POST | `/api/ops/ask` | Ops Copilot question (`X-Ops-Key` required; PayPal Agent Toolkit, read permissions only) |
+| POST | `/api/policy/preview` | Session-scoped, side-effect-free policy decision and per-rule checks for a cart (same engine as order creation) |
 | GET | `/api/catalog/search?query=&category=&dietary=&maxPriceMinor=` | Free-text and structured search |
 | POST | `/api/ai/chat` | AI product discovery and cart preparation |
 | POST | `/api/orders/create` | Create a PayPal sandbox order |
