@@ -1,5 +1,16 @@
 import { env as _doNotUse } from '../../src/config/environment';
 
+// Hermetic: prevent the real apps/backend/.env from leaking into this suite.
+// environment.ts calls `dotenv.config()` at import time; we stub it so the
+// per-test controlled `process.env` (with PAYPAL_RETURN_URL/CANCEL_URL cleared)
+// is the ONLY source of config. This makes the suite pass identically WITH and
+// WITHOUT a real .env present.
+jest.mock('dotenv', () => ({
+  __esModule: true,
+  default: { config: () => ({ parsed: {} }) },
+  config: () => ({ parsed: {} }),
+}));
+
 // NOTE: This suite previously spawned a child Node process via `spawnSync` to
 // evaluate the real config module with a controlled environment. Child-process
 // spawning is blocked in some CI / sandbox environments, so those tests could
