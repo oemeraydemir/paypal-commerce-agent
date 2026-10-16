@@ -6,9 +6,9 @@
 
 ### Short description
 
-AI Café helps shoppers order by describing what they want. An OpenAI-powered
-shopping agent searches a café catalog and prepares a cart using prices
-provided by the backend. Shoppers review the cart and approve payment in PayPal
+AI Café helps shoppers order by describing what they want. An AI shopping agent
+(OpenAI-compatible, with automatic fallback to free providers) searches a café
+catalog and prepares a cart using prices provided by the backend. Shoppers review the cart and approve payment in PayPal
 sandbox. The agent cannot set prices, access PayPal, or authorize payment.
 Orders then appear in a live AG Grid operations dashboard.
 
@@ -24,7 +24,7 @@ customer—not the agent—in control of the financial decision.
 1. Open the live demo or start the backend and open `http://localhost:3000` in a browser (or use the Flutter app), per the root README.
 2. Without any credentials, click the **Try a scenario** buttons and watch the server-side policy
    meter: EUR 13 needs approval, EUR 3 is auto-allowed, EUR 55, a EUR 38 team order and alcohol are blocked.
-   With OpenAI configured, ask for a vegetarian breakfast for two with a €20 budget.
+   With an AI provider configured, ask for a vegetarian breakfast for two with a €20 budget.
 3. Review the AI-generated cart and add or remove items.
 4. Open PayPal sandbox, approve using a sandbox buyer, return to AI Café, and
    confirm payment capture.
@@ -36,8 +36,10 @@ and manual cart can still be explored without credentials.
 
 ## Tools and how they are used
 
-- **OpenAI GPT-4o-mini:** natural-language shopping intent and restricted
-  function calling for product search, product detail, and cart preparation.
+- **OpenAI-compatible LLM (Primary OpenAI with automatic, seamless fallback to
+  free providers Groq/Gemini on 429/5xx errors):** natural-language shopping
+  intent and restricted function calling for product search, product detail,
+  and cart preparation.
 - **PayPal Orders API:** server-side order creation and capture after buyer
   approval in sandbox. No live mode is supported.
 - **PayPal Agent Toolkit (`@paypal/agent-toolkit`, OpenAI adapter):** powers the merchant Ops Copilot on the
@@ -65,15 +67,23 @@ project and recording the demo:
 - **Team:** _TODO: add the submitting individual or team name_
 
 The source repository is public and has its license visible at the
-repository root. See [LICENSE](../../LICENSE).
+repository root. See [LICENSE](../../LICENSE). (Verified unauthenticated:
+repository page HTTP 200, `LICENSE` blob HTTP 200, GitHub API reports
+`"private": false` and license `MIT`.)
 
 ## What is PROVEN LIVE (verified on the deployed demo)
 
 - **Health / build SHA match.** `GET /api/health` reports `buildCommit` (the deployed commit SHA);
   on the live demo this matches the deployed commit, so the running build is the reviewed code.
-- **Smoke 7/7.** `npm run e2e:smoke` runs 7 local endpoint checks — health, catalog, orders,
-  orders/stats, dashboard redirect, webhook health, and webhook unsigned→401 — and passed **7/7** against
-  the deployed demo.
+- **Smoke 7/7 (7-check HTTPS smoke).** A 7-check HTTPS smoke against the deployed demo passed **7/7**
+  (recorded in `evidence/p3-deploy/REPORT_step4_5.md`, Step 2 — not the local `npm run e2e:smoke`):
+  1. `GET /` (storefront) → 200, `text/html`, storefront marker found
+  2. Security headers → CSP present (`script-src 'self' … 'nonce-…'`)
+  3. `GET /api/catalog` → 200, `count = 25`
+  4. `POST /api/sessions` → 201, session id + token issued
+  5. `POST /api/policy/preview` (EUR 13) → 200, `totalMinor = 1300`, `decision = REQUIRE_CONFIRMATION`
+  6. `POST /api/orders/create` over-limit → 403, `policyDecision = BLOCK`
+  7. `GET /api/ops/status` → 200, `enabled = false`
 - **A €13.00 payment was captured, exactly once.** A live PayPal sandbox payment (order `ca398ad9…`)
   reached status `PAID` with a single capture; no duplicate capture occurred.
 - **Webhook delivery was signature-verified.** A genuine PayPal `PAYMENT.CAPTURE.COMPLETED` webhook was
@@ -115,7 +125,9 @@ AG Grid dashboard shows every order, who prepared it (AI or human), and what the
 - **PayPal Agent Toolkit (read-only)** — powers a merchant Ops Copilot on the dashboard: configured with
   read permissions only (8 of 47 tools, enforced by a test and a by-name allow-list that refuses any write
   tool), so it can answer "what was blocked today and why?" but can never issue a refund.
-- **OpenAI function calling** — restricted to catalog/cart tools; the model has no PayPal credential or payment endpoint.
+- **OpenAI-compatible function calling** (primary OpenAI, with automatic, seamless fallback to free
+  providers Groq/Gemini on 429/5xx errors) — restricted to catalog/cart tools; the model has no PayPal
+  credential or payment endpoint.
 
 *Challenges.* Keeping the model from ever influencing money: prices are server-owned, payments require
 human approval, and the Ops Copilot is read-only with a refusal path for any write request. Verifying

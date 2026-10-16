@@ -14,7 +14,7 @@
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │ Catalog      │  │ AI Agent     │  │ Orders       │      │
-│  │ (8 products) │  │ (GPT-4o-mini)│  │ (in-memory)  │      │
+│  │ (8 products) │  │ (AI+fallback)│  │ (in-memory)  │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
@@ -81,7 +81,7 @@ This is enforced server-side and not by trusting client-supplied origin values. 
 
 ## Technical Summary
 
-- AI agent: OpenAI GPT-4o-mini with function calling
+- AI agent: OpenAI-compatible LLM with function calling — primary OpenAI, with automatic, seamless fallback to free providers Groq/Gemini on 429/5xx errors
 - API: Node.js + TypeScript + Express
 - Payment: PayPal Orders API + webhooks
 - Client: Flutter app for chat and checkout
