@@ -9,6 +9,9 @@ import {
   AIProviderId,
   AIProviderSettings,
   buildChatRequestBody,
+  classifyProviderError,
+  parseModelList,
+  providerModels,
   resolveAIProviderOrder,
   resolveAIProviders,
 } from '../../src/ai/providers';
@@ -23,6 +26,16 @@ const provider = (id: AIProviderId, model = `model-${id}`): AIProviderSettings =
   baseURL: `https://${id}.example.invalid/v1`,
   apiKey: `secret-key-${id}`,
   model,
+  models: [model],
+});
+
+/** A provider with an ordered model fallback list (first = preferred). */
+const multiModelProvider = (id: AIProviderId, models: string[]): AIProviderSettings => ({
+  id,
+  baseURL: `https://${id}.example.invalid/v1`,
+  apiKey: `secret-key-${id}`,
+  model: models[0],
+  models,
 });
 
 const completion = (content: string, toolCalls: any[] = []): OpenAI.Chat.ChatCompletion =>
@@ -175,6 +188,160 @@ describe('FallbackAIClient routing', () => {
     await client.chat([{ role: 'user', content: 'hi' }], [toolDef]);
 
     expect(seen?.tools).toEqual([toolDef]);
+  });
+});
+
+describe('per-provider model list fallback', () => {
+  test('a 404 on the first model falls through to the next model of the SAME provider', async () => {
+    const seen: string[] = [];
+    const completer: ProviderCompleter = async (p, params) => {
+      seen.push(`${p.id}:${params.model}`);
+      if (params.model === 'gemini-old') throw httpError(404);
+      return completion('answer from gemini-new');
+    };
+    const client = new FallbackAIClient(
+      [multiModelProvider('gemini', ['gemini-old', 'gemini-new'])],
+      { completer }
+    );
+
+    const result = await client.chat([{ role: 'user', content: 'hi' }]);
+
+    expect(seen).toEqual(['gemini:gemini-old', 'gemini:gemini-new']);
+    expect(result.choices[0].message.content).toBe('answer from gemini-new');
+  });
+
+  test('a retired model (404) is skipped for the process lifetime', async () => {
+    const seen: string[] = [];
+    const completer: ProviderCompleter = async (_p, params) => {
+      seen.push(params.model);
+      if (params.model === 'gemini-old') throw httpError(404);
+      return completion('ok');
+    };
+    const client = new FallbackAIClient(
+      [multiModelProvider('gemini', ['gemini-old', 'gemini-new'])],
+      { completer }
+    );
+
+    await client.chat([{ role: 'user', content: 'one' }]);
+    expect(seen).toEqual(['gemini-old', 'gemini-new']);
+
+    seen.length = 0;
+    await client.chat([{ role: 'user', content: 'two' }]);
+    expect(seen).toEqual(['gemini-new']); // gemini-old is never retried
+  });
+
+  test('a provider is disabled only when ALL of its models 404', async () => {
+    const seen: string[] = [];
+    const completer: ProviderCompleter = async (p, params) => {
+      seen.push(`${p.id}:${params.model}`);
+      if (p.id === 'gemini') throw httpError(404);
+      return completion('groq answer');
+    };
+    const client = new FallbackAIClient(
+      [multiModelProvider('gemini', ['g1', 'g2']), multiModelProvider('groq', ['k1'])],
+      { completer }
+    );
+
+    const first = await client.chat([{ role: 'user', content: 'one' }]);
+    expect(seen).toEqual(['gemini:g1', 'gemini:g2', 'groq:k1']);
+    expect(first.choices[0].message.content).toBe('groq answer');
+
+    seen.length = 0;
+    await client.chat([{ role: 'user', content: 'two' }]);
+    expect(seen).toEqual(['groq:k1']); // gemini fully disabled, not retried
+  });
+
+  test('a transient 429 on a model cools the provider and moves to the next provider', async () => {
+    const seen: string[] = [];
+    const completer: ProviderCompleter = async (p, params) => {
+      seen.push(`${p.id}:${params.model}`);
+      if (p.id === 'gemini') throw httpError(429, { 'retry-after': '60' });
+      return completion('groq');
+    };
+    const client = new FallbackAIClient(
+      [multiModelProvider('gemini', ['g1', 'g2']), multiModelProvider('groq', ['k1'])],
+      { completer }
+    );
+
+    await client.chat([{ role: 'user', content: 'hi' }]);
+
+    // 429 is provider-level: g2 is NOT tried; we move straight to groq.
+    expect(seen).toEqual(['gemini:g1', 'groq:k1']);
+  });
+
+  test('all models 404 across every provider -> 503 AI_UNAVAILABLE', async () => {
+    const completer: ProviderCompleter = async () => {
+      throw httpError(404);
+    };
+    const client = new FallbackAIClient(
+      [multiModelProvider('gemini', ['g1', 'g2']), multiModelProvider('groq', ['k1'])],
+      { completer }
+    );
+
+    await expect(client.chat([{ role: 'user', content: 'hi' }])).rejects.toMatchObject({
+      statusCode: 503,
+      details: { code: 'AI_UNAVAILABLE' },
+    });
+  });
+
+  test('the real completer sends the per-attempt model, not the provider default', async () => {
+    // Guards against a regression where the SDK request used provider.model
+    // instead of the model currently being tried.
+    const seenModels: string[] = [];
+    const client = new FallbackAIClient([multiModelProvider('gemini', ['m1', 'm2'])], {
+      completer: async (_p, params) => {
+        seenModels.push(params.model);
+        return completion('ok');
+      },
+    });
+
+    await client.chat([{ role: 'user', content: 'hi' }]);
+    expect(seenModels).toEqual(['m1']);
+  });
+});
+
+describe('provider model configuration', () => {
+  test('parseModelList splits, trims and de-duplicates', () => {
+    expect(parseModelList(' a-flash, b-flash ,a-flash ', 'x')).toEqual(['a-flash', 'b-flash']);
+    expect(parseModelList('', 'fallback')).toEqual(['fallback']);
+    expect(parseModelList(undefined, 'fallback')).toEqual(['fallback']);
+    expect(parseModelList('   ', 'fallback')).toEqual(['fallback']);
+  });
+
+  test('providerModels falls back to [model] for a bare settings object', () => {
+    const bare = { id: 'openai', baseURL: 'x', apiKey: 'k', model: 'm', models: [] } as AIProviderSettings;
+    expect(providerModels(bare)).toEqual(['m']);
+  });
+
+  test('*_MODEL accepts a comma-separated list (first = preferred)', () => {
+    const providers = resolveAIProviders({
+      GEMINI_API_KEY: 'g',
+      GEMINI_MODEL: 'a-flash, b-flash ,a-flash',
+    } as NodeJS.ProcessEnv);
+    expect(providers[0].models).toEqual(['a-flash', 'b-flash']);
+    expect(providers[0].model).toBe('a-flash');
+  });
+
+  test('the retired gemini default is replaced by the documented replacements', () => {
+    const gemini = resolveAIProviders({ GEMINI_API_KEY: 'g' } as NodeJS.ProcessEnv)[0];
+    expect(gemini.models).toEqual(['gemini-3.6-flash', 'gemini-3.5-flash']);
+    expect(gemini.models).not.toContain('gemini-2.5-flash');
+
+    const groq = resolveAIProviders({ GROQ_API_KEY: 'g' } as NodeJS.ProcessEnv)[0];
+    expect(groq.models).toEqual(['openai/gpt-oss-120b', 'llama-3.3-70b-versatile']);
+  });
+
+  test('a 404 is classified as model-not-found, not a provider disable', () => {
+    const info = classifyProviderError(httpError(404));
+    expect(info.modelNotFound).toBe(true);
+    expect(info.disable).toBe(false);
+    expect(info.status).toBe(404);
+  });
+
+  test('401/403 still disable the whole provider', () => {
+    expect(classifyProviderError(httpError(401)).disable).toBe(true);
+    expect(classifyProviderError(httpError(403)).disable).toBe(true);
+    expect(classifyProviderError(httpError(400)).disable).toBe(true);
   });
 });
 

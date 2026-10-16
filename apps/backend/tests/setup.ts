@@ -17,3 +17,12 @@ process.env.PAYPAL_CANCEL_URL = 'http://10.0.2.2:3000/api/checkout/cancel';
 process.env.PAYPAL_WEBHOOK_ID = 'test-webhook-id';
 // Enable the AI module in tests; the OpenAI client is mocked in the AI suite.
 process.env.OPENAI_API_KEY = 'test-openai-key';
+// Pin the AI-chat rate-limit ceilings to their documented defaults. Without
+// this, a developer's local `.env` (dotenv loads it, and a stricter local
+// ceiling such as AI_CHAT_PER_IP_PER_MIN=4 is legitimate for manual quota
+// protection) would silently change the limits and break the rate-limit tests.
+// setupFiles run before module imports, and dotenv never overrides an existing
+// process.env value, so these win over `.env`.
+process.env.AI_CHAT_PER_SESSION_PER_MIN = '10';
+process.env.AI_CHAT_PER_IP_PER_MIN = '30';
+process.env.AI_CHAT_GLOBAL_PER_MIN = '120';
