@@ -17,7 +17,7 @@ off to PayPal sandbox only after you choose to check out.
 
 ```bash
 git clone https://github.com/oemeraydemir/paypal-commerce-agent.git
-cd apps/backend && npm install
+cd paypal-commerce-agent/apps/backend && npm install
 npm run dev            # then open http://localhost:3000
 ```
 
@@ -220,7 +220,7 @@ and AI services and do not charge or call those providers.
 
 | Tool | How it is used |
 | ---- | -------------- |
-| OpenAI GPT-4o-mini | Interprets shopping intent and invokes restricted catalog/cart tools |
+| OpenAI-compatible LLM (Primary OpenAI with automatic, seamless fallback to free providers Groq/Gemini on 429/5xx errors) | Interprets shopping intent and invokes restricted catalog/cart tools |
 | PayPal Orders API | Creates and captures buyer-approved sandbox payments |
 | AG Grid | Displays live order and payment metrics in the read-only dashboard |
 | Flutter | Builds the shopper's Android/iOS application |
