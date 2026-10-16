@@ -23,6 +23,8 @@ router.get('/health', (_req: Request, res: Response) => {
     },
     ai: {
       enabled: env.isAIEnabled(),
+      // Provider NAMES only (never keys or base URLs). Order = AI_PROVIDER_ORDER.
+      providers: env.ai ? env.ai.providers.map((provider) => provider.id) : [],
     },
   });
 });

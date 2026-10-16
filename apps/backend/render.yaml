@@ -26,3 +26,13 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      # P10: provider-agnostic AI layer. Names only; values are entered in the
+      # Render dashboard (sync:false) so no secret is ever committed.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false

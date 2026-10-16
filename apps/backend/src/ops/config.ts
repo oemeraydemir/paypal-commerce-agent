@@ -35,6 +35,6 @@ export function getOpsConfig(): OpsConfig {
   if (OPS_COPILOT_ENABLED !== 'true') return { enabled: false, perIpPerMin, reason: 'Ops Copilot is disabled on this server.' };
   if (!OPS_COPILOT_KEY) return { enabled: false, perIpPerMin, reason: 'Ops Copilot requires OPS_COPILOT_KEY.' };
   if (!env.isPayPalEnabled()) return { enabled: false, perIpPerMin, reason: 'Ops Copilot needs PayPal sandbox credentials.' };
-  if (!env.isAIEnabled()) return { enabled: false, perIpPerMin, reason: 'Ops Copilot needs OPENAI_API_KEY.' };
+  if (!env.isAIEnabled()) return { enabled: false, perIpPerMin, reason: 'Ops Copilot needs an AI provider key.' };
   return { enabled: true, key: OPS_COPILOT_KEY, perIpPerMin };
 }
