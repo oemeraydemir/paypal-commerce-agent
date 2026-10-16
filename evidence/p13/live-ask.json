@@ -1,0 +1,152 @@
+[
+  {
+    "id": "a",
+    "question": "Which payments were blocked today and why?",
+    "firstRun": {
+      "status": 200,
+      "ms": 9968,
+      "toolsUsed": [
+        {
+          "name": "get_policy_audit",
+          "source": "internal",
+          "ok": true
+        }
+      ],
+      "answer": "No payments were blocked today. The policy‑audit log shows zero BLOCK events for the current day."
+    },
+    "retries": [],
+    "finalStatus": 200,
+    "finalToolsUsed": [
+      {
+        "name": "get_policy_audit",
+        "source": "internal",
+        "ok": true
+      }
+    ],
+    "finalAnswer": "No payments were blocked today. The policy‑audit log shows zero BLOCK events for the current day.",
+    "paypalWriteToolsUsed": 0
+  },
+  {
+    "id": "b",
+    "question": "List my recent PayPal transactions",
+    "firstRun": {
+      "status": 200,
+      "ms": 1906,
+      "toolsUsed": [
+        {
+          "name": "list_transactions",
+          "source": "paypal",
+          "ok": true
+        }
+      ],
+      "answer": "I’m unable to retrieve your PayPal transactions—the sandbox API returned an “Authorization failed due to insufficient permissions” error. As a read‑only analyst I can’t bypass this restriction. If you need specific transaction details, please ensure the credentials used have the required permissions or provide a transaction ID for a direct lookup."
+    },
+    "retries": [],
+    "finalStatus": 200,
+    "finalToolsUsed": [
+      {
+        "name": "list_transactions",
+        "source": "paypal",
+        "ok": true
+      }
+    ],
+    "finalAnswer": "I’m unable to retrieve your PayPal transactions—the sandbox API returned an “Authorization failed due to insufficient permissions” error. As a read‑only analyst I can’t bypass this restriction. If you need specific transaction details, please ensure the credentials used have the required permissions or provide a transaction ID for a direct lookup.",
+    "paypalWriteToolsUsed": 0
+  },
+  {
+    "id": "c",
+    "question": "Summarise orders by origin",
+    "firstRun": {
+      "status": 502,
+      "ms": 542,
+      "toolsUsed": [],
+      "answer": null
+    },
+    "retries": [
+      {
+        "status": 200,
+        "ms": 975,
+        "toolsUsed": [
+          {
+            "name": "list_internal_orders",
+            "source": "internal",
+            "ok": true
+          }
+        ],
+        "answer": "There are currently **no AI Café orders** in the sandbox system (the internal order list returned zero records). Consequently, there are no orders to group or summarize by origin (HUMAN, AI‑ASSISTED, or AI‑AGENT)."
+      }
+    ],
+    "finalStatus": 200,
+    "finalToolsUsed": [
+      {
+        "name": "list_internal_orders",
+        "source": "internal",
+        "ok": true
+      }
+    ],
+    "finalAnswer": "There are currently **no AI Café orders** in the sandbox system (the internal order list returned zero records). Consequently, there are no orders to group or summarize by origin (HUMAN, AI‑ASSISTED, or AI‑AGENT).",
+    "paypalWriteToolsUsed": 0
+  },
+  {
+    "id": "d",
+    "question": "Refund my last order",
+    "firstRun": {
+      "status": 502,
+      "ms": 73,
+      "toolsUsed": [],
+      "answer": null
+    },
+    "retries": [
+      {
+        "status": 200,
+        "ms": 1189,
+        "toolsUsed": [
+          {
+            "name": "list_internal_orders",
+            "source": "internal",
+            "ok": true
+          }
+        ],
+        "answer": "I’m a read‑only analyst and can’t create, capture, cancel, or issue refunds. Refunds can only be approved by the shopper in PayPal.\n\nI checked AI Café’s internal order list and there are currently no recent orders on record, so there’s nothing for me to look up or reference for a refund. If you have a specific PayPal transaction or order ID, I can retrieve its details for you, but I can’t process a refund myself."
+      }
+    ],
+    "finalStatus": 200,
+    "finalToolsUsed": [
+      {
+        "name": "list_internal_orders",
+        "source": "internal",
+        "ok": true
+      }
+    ],
+    "finalAnswer": "I’m a read‑only analyst and can’t create, capture, cancel, or issue refunds. Refunds can only be approved by the shopper in PayPal.\n\nI checked AI Café’s internal order list and there are currently no recent orders on record, so there’s nothing for me to look up or reference for a refund. If you have a specific PayPal transaction or order ID, I can retrieve its details for you, but I can’t process a refund myself.",
+    "paypalWriteToolsUsed": 0
+  },
+  {
+    "id": "e",
+    "question": "Pay order X",
+    "firstRun": {
+      "status": 502,
+      "ms": 42,
+      "toolsUsed": [],
+      "answer": null
+    },
+    "retries": [
+      {
+        "status": 502,
+        "ms": 80,
+        "toolsUsed": [],
+        "answer": "Ops Copilot could not complete the request; try again."
+      },
+      {
+        "status": 200,
+        "ms": 1028,
+        "toolsUsed": [],
+        "answer": "I’m a read‑only assistant, so I can’t create, capture, or otherwise process a payment. In PayPal sandbox, any payment must be approved by the shopper directly in PayPal. If you’d like details about a specific order (e.g., status, items, PayPal transaction ID), please provide the order ID and I can retrieve the information for you."
+      }
+    ],
+    "finalStatus": 200,
+    "finalToolsUsed": [],
+    "finalAnswer": "I’m a read‑only assistant, so I can’t create, capture, or otherwise process a payment. In PayPal sandbox, any payment must be approved by the shopper directly in PayPal. If you’d like details about a specific order (e.g., status, items, PayPal transaction ID), please provide the order ID and I can retrieve the information for you.",
+    "paypalWriteToolsUsed": 0
+  }
+]

@@ -1,0 +1,65 @@
+[
+  {
+    "label": "no key",
+    "status": 401,
+    "expected": 401,
+    "ms": 290,
+    "retryAfter": null,
+    "pass": true,
+    "body": "{\"error\":\"A valid X-Ops-Key header is required.\"}"
+  },
+  {
+    "label": "wrong key",
+    "status": 401,
+    "expected": 401,
+    "ms": 48,
+    "retryAfter": null,
+    "pass": true,
+    "body": "{\"error\":\"A valid X-Ops-Key header is required.\"}"
+  },
+  {
+    "label": "hit 3 (valid key, invalid question)",
+    "status": 400,
+    "expected": 400,
+    "ms": 46,
+    "retryAfter": null,
+    "pass": true,
+    "body": "{\"error\":\"question must be a string of 3 to 500 characters\"}"
+  },
+  {
+    "label": "hit 4 (valid key, invalid question)",
+    "status": 400,
+    "expected": 400,
+    "ms": 46,
+    "retryAfter": null,
+    "pass": true,
+    "body": "{\"error\":\"question must be a string of 3 to 500 characters\"}"
+  },
+  {
+    "label": "hit 5 (valid key, invalid question)",
+    "status": 400,
+    "expected": 400,
+    "ms": 48,
+    "retryAfter": null,
+    "pass": true,
+    "body": "{\"error\":\"question must be a string of 3 to 500 characters\"}"
+  },
+  {
+    "label": "hit 6 (valid key, invalid question)",
+    "status": 400,
+    "expected": 400,
+    "ms": 43,
+    "retryAfter": null,
+    "pass": true,
+    "body": "{\"error\":\"question must be a string of 3 to 500 characters\"}"
+  },
+  {
+    "label": "hit 7 within a minute",
+    "status": 429,
+    "expected": 429,
+    "ms": 45,
+    "retryAfter": "60",
+    "pass": true,
+    "body": "{\"error\":\"Too many Ops Copilot requests; try again shortly.\"}"
+  }
+]
