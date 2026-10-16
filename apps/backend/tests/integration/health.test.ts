@@ -17,6 +17,21 @@ describe('Health endpoint (integration)', () => {
     expect(res.body.ai).toHaveProperty('enabled');
   });
 
+  it('GET /api/health exposes ai.providers as provider names only (no secrets)', async () => {
+    const res = await request(app).get('/api/health');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.ai.providers)).toBe(true);
+    // setup.ts sets OPENAI_API_KEY, so 'openai' is always active under test.
+    expect(res.body.ai.providers).toContain('openai');
+    expect(res.body.ai.providers.every((id: unknown) => typeof id === 'string')).toBe(true);
+
+    // No key material, base URLs, or upstream bodies may appear anywhere.
+    const raw = JSON.stringify(res.body);
+    expect(raw).not.toContain('test-openai-key');
+    expect(raw).not.toContain('api.openai.com');
+    expect(raw).not.toContain('sk-');
+  });
+
   it('GET /api/health exposes buildCommit=unknown when RENDER_GIT_COMMIT is absent', async () => {
     const original = process.env.RENDER_GIT_COMMIT;
     delete process.env.RENDER_GIT_COMMIT;
