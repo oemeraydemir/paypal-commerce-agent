@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import { resolveAIProviders, type AIProviderSettings } from '../ai/providers';
 
 dotenv.config();
 
@@ -56,16 +57,15 @@ if (baseEnv.NODE_ENV === 'production' || baseEnv.PAYPAL_ENABLED === 'true') {
   paypalEnv = paypalSchema.parse(process.env);
 }
 
-// AI / OpenAI is OPTIONAL (enabled when OPENAI_API_KEY is present). The AI
-// agent never touches payments directly — it only prepares carts (see S3).
-const aiSchema = z.object({
-  OPENAI_API_KEY: z.string().min(1),
-});
-
-let aiEnv: z.infer<typeof aiSchema> | null = null;
-if (process.env.OPENAI_API_KEY) {
-  aiEnv = aiSchema.parse({ OPENAI_API_KEY: process.env.OPENAI_API_KEY });
-}
+// AI providers are OPTIONAL (the agent is enabled when at least one provider
+// key is present). The AI agent never touches payments directly — it only
+// prepares carts (see S3). The registry + parsing live in src/ai/providers.ts
+// (pure, testable, secret-free); here we only snapshot the ACTIVE providers,
+// in AI_PROVIDER_ORDER, for this process. An OPENAI_API_KEY-only setup yields
+// exactly one provider (openai) and behaves exactly as before.
+const aiProviders = resolveAIProviders(process.env);
+const aiEnv: { providers: AIProviderSettings[] } | null =
+  aiProviders.length > 0 ? { providers: aiProviders } : null;
 
 export const env = {
   ...baseEnv,
