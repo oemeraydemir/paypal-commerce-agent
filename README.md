@@ -240,6 +240,8 @@ provides public, read-only order and payment metrics for the demo.
 
 ## Validate
 
+From the repository root:
+
 ```powershell
 cd apps/backend
 npm test -- --runInBand
