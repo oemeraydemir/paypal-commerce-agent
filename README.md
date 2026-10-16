@@ -116,6 +116,13 @@ Groq or Gemini key is enough — and OpenAI is optional and last in the chain.
 - `npm run ai:check` prints a PASS/FAIL table per provider (with the `/models` ids and which
   configured model was actually used) and **never prints keys**.
 
+**Which providers are verified live.** Two of the five have been exercised against the real provider
+APIs — **Gemini** and **Groq**: both passed `npm run ai:check` (HTTP 200 from `/models`, a full tool
+round trip, and the model id echoed back), and the deployed demo answers AI chat through Groq.
+**Cerebras, OpenRouter and OpenAI are supported by the code but were not verified live** — no working
+key was available for them, so treat them as untested. The chain is provider-agnostic, so any
+OpenAI-compatible endpoint you configure should work; only Gemini and Groq are *proven*.
+
 **Never commit keys.** Put them in `apps/backend/.env` locally (git-ignored) and in the host's
 environment-variable panel in production (e.g. Render). `.env.example` and `render.yaml` list the
 variable **names** only.
@@ -136,7 +143,7 @@ It is deliberately **read-only**, with two independent layers:
    prompt-injected `pay_order`, `create_refund` or `send_invoice` is refused and shown as such.
 
 The shopper-facing agent still has **no** PayPal tool at all, and payments are approved only by the
-shopper. Because the copilot reads merchant data and spends OpenAI credits, it is **off by default**
+shopper. Because the copilot reads merchant data and spends AI-provider quota, it is **off by default**
 and requires `OPS_COPILOT_ENABLED=true` plus `OPS_COPILOT_KEY` (16+ characters, sent as the
 `X-Ops-Key` header, compared in constant time, rate limited per IP). The PayPal environment stays
 sandbox-only.
@@ -169,6 +176,8 @@ cross-contamination guarantee.
 - Node.js 20 or newer.
 - At least one AI provider key for live AI requests — a free Groq or Gemini key
   is enough, and OpenAI is optional (see [AI provider setup](#ai-provider-setup)).
+  Gemini and Groq are the two providers verified live; Cerebras, OpenRouter and
+  OpenAI are supported but untested.
 - PayPal Developer account sandbox REST app credentials and a sandbox buyer
   account for the complete payment demo. No live credentials are supported.
 
@@ -178,54 +187,54 @@ Open PowerShell in the repository root.
 
 1. Configure the backend:
 
-   ```powershell
-   cd apps/backend
-   npm install
-   Copy-Item .env.example .env
-   ```
+    ```powershell
+    cd apps/backend
+    npm install
+    Copy-Item .env.example .env
+    ```
 
 2. Open `apps/backend/.env` locally and set:
 
-   ```dotenv
-   # ONE free AI key is enough (Gemini or Groq); OpenAI is optional.
-   GEMINI_API_KEY=your-gemini-key        # or: GROQ_API_KEY=your-groq-key
-   PAYPAL_ENABLED=true
-   PAYPAL_ENV=sandbox
-   PAYPAL_CLIENT_ID=your-paypal-sandbox-client-id
-   PAYPAL_CLIENT_SECRET=your-paypal-sandbox-secret
-   PAYPAL_RETURN_URL=http://10.0.2.2:3000/api/checkout/return
-   PAYPAL_CANCEL_URL=http://10.0.2.2:3000/api/checkout/cancel
-   ```
+    ```dotenv
+    # ONE free AI key is enough (Gemini or Groq); OpenAI is optional.
+    GEMINI_API_KEY=your-gemini-key        # or: GROQ_API_KEY=your-groq-key
+    PAYPAL_ENABLED=true
+    PAYPAL_ENV=sandbox
+    PAYPAL_CLIENT_ID=your-paypal-sandbox-client-id
+    PAYPAL_CLIENT_SECRET=your-paypal-sandbox-secret
+    PAYPAL_RETURN_URL=http://10.0.2.2:3000/api/checkout/return
+    PAYPAL_CANCEL_URL=http://10.0.2.2:3000/api/checkout/cancel
+    ```
 
-   Get PayPal credentials and a buyer account from the PayPal Developer
-   Dashboard, and a free AI key from
-   [AI provider setup](#ai-provider-setup). Never put API keys in the Flutter
-   app or commit `.env`.
+    Get PayPal credentials and a buyer account from the PayPal Developer
+    Dashboard, and a free AI key from
+    [AI provider setup](#ai-provider-setup). Never put API keys in the Flutter
+    app or commit `.env`.
 
 3. Start the API in this terminal:
 
-   ```powershell
-   npm run dev
-   ```
+    ```powershell
+    npm run dev
+    ```
 
-   Confirm `http://localhost:3000/api/health` reports both `ai.enabled` and
-   `paypal.enabled` as `true`.
+    Confirm `http://localhost:3000/api/health` reports both `ai.enabled` and
+    `paypal.enabled` as `true`.
 
 4. In a second terminal, build and launch the app:
 
-   ```powershell
-   cd apps/flutter_app
-   flutter pub get
-   flutter run
-   ```
+    ```powershell
+    cd apps/flutter_app
+    flutter pub get
+    flutter run
+    ```
 
-   The default API address `10.0.2.2:3000` connects the Android emulator to the
-   backend running on your computer.
+    The default API address `10.0.2.2:3000` connects the Android emulator to the
+    backend running on your computer.
 
 5. Ask for “a vegetarian breakfast for two under €20,” review and adjust the
-   AI-prepared cart, then choose **Review & pay**. Approve with a PayPal
-   sandbox buyer account. The browser returns through the backend to AI Café;
-   confirm capture in the app.
+    AI-prepared cart, then choose **Review & pay**. Approve with a PayPal
+    sandbox buyer account. The browser returns through the backend to AI Café;
+    confirm capture in the app.
 
 If using a physical device, desktop, web, or a hosted API, set
 `--dart-define=API_BASE_URL=http://<reachable-backend-host>:3000` when running

@@ -4,7 +4,7 @@ import { env } from '../config/environment';
 // Ops Copilot configuration. Read lazily (per call) so the feature can be toggled without code
 // changes and unit-tested. The copilot reads merchant data from the PayPal sandbox account, so it is
 // OFF by default and can only be switched on together with a shared access key: an unauthenticated
-// endpoint must never be able to read payment data or spend OpenAI credits.
+// endpoint must never be able to read payment data or spend AI-provider quota.
 const schema = z.object({
   OPS_COPILOT_ENABLED: z.enum(['true', 'false']).default('false'),
   OPS_COPILOT_KEY: z.string().min(16).optional(),

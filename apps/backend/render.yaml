@@ -36,3 +36,10 @@ services:
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
+      # P13: Ops Copilot (merchant, READ-ONLY). Both must be set for the feature to
+      # turn on; enter the values in the Render dashboard (sync:false) so no secret
+      # is ever committed. Off = the dashboard shows "Ops Copilot is disabled".
+      - key: OPS_COPILOT_ENABLED
+        sync: false
+      - key: OPS_COPILOT_KEY
+        sync: false

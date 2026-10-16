@@ -30,6 +30,9 @@ customer—not the agent—in control of the financial decision.
 4. Open PayPal sandbox, approve using a sandbox buyer, return to AI Café, and
    confirm payment capture.
 5. View the resulting order in the AG Grid dashboard.
+6. In the dashboard's **Ops Copilot** panel, paste the shared `OPS_COPILOT_KEY` into **Ops access key**
+   and ask "which payments were blocked today and why?". Then ask "refund my last order" — the copilot
+   refuses and explains that it is read-only.
 
 The backend must be configured with at least one AI provider key (a free Groq or
 Gemini key is enough; OpenAI is optional) and PayPal sandbox credentials for
@@ -46,9 +49,11 @@ and manual cart can still be explored without credentials.
 - **PayPal Orders API:** server-side order creation and capture after buyer
   approval in sandbox. No live mode is supported.
 - **PayPal Agent Toolkit (`@paypal/agent-toolkit`, OpenAI adapter):** powers the merchant Ops Copilot on the
-  dashboard. Configured with read permissions only (8 of the toolkit's 47 tools, verified by a test), plus
-  a by-name allow-list that refuses any write tool the model asks for. Off by default; enabled with
-  `OPS_COPILOT_ENABLED` and `OPS_COPILOT_KEY`. Judges receive the key through the private testing-instructions field.
+  dashboard. Configured with read permissions only — with that configuration the toolkit advertises
+  exactly 8 read-only tools and zero write tools (verified by a test and by a live probe), plus a
+  by-name allow-list that refuses any write tool the model asks for. Off by default; **enabled on the
+  live demo** with `OPS_COPILOT_ENABLED=true` and an `OPS_COPILOT_KEY`. Judges receive the key through
+  the private testing-instructions field and paste it into the dashboard's **Ops access key** box.
 - **AG Grid:** public, read-only order operations dashboard.
 - **Flutter:** Android/iOS shopper application.
 - **Node.js, TypeScript, Express:** catalog, AI orchestration, PayPal
@@ -86,7 +91,8 @@ repository page HTTP 200, `LICENSE` blob HTTP 200, GitHub API reports
   4. `POST /api/sessions` → 201, session id + token issued
   5. `POST /api/policy/preview` (EUR 13) → 200, `totalMinor = 1300`, `decision = REQUIRE_CONFIRMATION`
   6. `POST /api/orders/create` over-limit → 403, `policyDecision = BLOCK`
-  7. `GET /api/ops/status` → 200, `enabled = false`
+  7. `GET /api/ops/status` → 200, `enabled = false` *(that run predates enabling the copilot; it now
+     reports `true` — see the Ops Copilot entry below)*
 - **A €13.00 payment was captured, exactly once.** A live PayPal sandbox payment (order `ca398ad9…`)
   reached status `PAID` with a single capture; no duplicate capture occurred.
 - **Webhook delivery was signature-verified.** A genuine PayPal `PAYMENT.CAPTURE.COMPLETED` webhook was
@@ -100,6 +106,18 @@ repository page HTTP 200, `LICENSE` blob HTTP 200, GitHub API reports
   Rapid back-to-back calls on the **free** provider tiers returned **HTTP 503 `AI_UNAVAILABLE`** — the
   designed graceful degradation (the earlier ungraceful 500 no longer occurs) — and recovered after the
   ~60 s per-provider cooldown. Full detail: `evidence/p11/REPORT.md`.
+- **The read-only Ops Copilot is enabled and answers on the live demo.** `GET /api/ops/status` reports
+  `enabled = true` (the earlier smoke run recorded `false`). Against the deployed demo, all five probe
+  questions returned HTTP 200: "which payments were blocked today and why?" (policy audit trail),
+  "list my recent PayPal transactions", "summarise orders by origin", plus the two write requests.
+  **"Refund my last order" and "Pay order X" were refused with zero tool calls** — no PayPal write was
+  ever attempted, and the copilot explained it is read-only. Without a key → `401`; with a wrong key →
+  `401`; the 7th request within a minute → `429` (per-IP limit 6/min). Three questions first hit the free
+  Groq tier's rate limit and returned `502` in <1 s (provider in cooldown), then returned 200 on retry
+  after ~60–90 s — reported as-is, not hidden.
+  **Honest caveat:** the PayPal `list_transactions` read returns
+  `403 Authorization failed due to insufficient permissions` on this sandbox app, and the copilot reports
+  that error instead of inventing data. Detail: `evidence/p13/REPORT.md`.
 
 ## What is covered by automated tests ONLY (not proven live)
 
