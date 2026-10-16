@@ -26,14 +26,22 @@ export interface AIProviderSettings {
   id: AIProviderId;
   baseURL: string;
   apiKey: string;
+  /** Preferred model — always equal to `models[0]`. Kept for convenience. */
   model: string;
+  /**
+   * Ordered model fallback list for this provider. `*_MODEL` may be a
+   * comma-separated list (first entry = preferred); a retired model (HTTP 404)
+   * is skipped for the process lifetime and the next entry is tried first.
+   */
+  models: string[];
 }
 
 interface AIProviderDefinition {
   baseURL: string;
   keyEnv: string;
   modelEnv: string;
-  defaultModel: string;
+  /** Comma-separated default model list (first = preferred). */
+  defaultModels: string;
 }
 
 // Base URLs and default model names are NOT secret and live in code, so a
@@ -43,32 +51,34 @@ const AI_PROVIDER_DEFS: Record<AIProviderId, AIProviderDefinition> = {
     baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
     keyEnv: 'GEMINI_API_KEY',
     modelEnv: 'GEMINI_MODEL',
-    defaultModel: 'gemini-2.5-flash',
+    // gemini-2.5-flash was retired on 2026-10-16 (HTTP 404); the documented
+    // replacements are listed in preference order.
+    defaultModels: 'gemini-3.6-flash,gemini-3.5-flash',
   },
   groq: {
     baseURL: 'https://api.groq.com/openai/v1',
     keyEnv: 'GROQ_API_KEY',
     modelEnv: 'GROQ_MODEL',
-    defaultModel: 'openai/gpt-oss-120b',
+    defaultModels: 'openai/gpt-oss-120b,llama-3.3-70b-versatile',
   },
   cerebras: {
     baseURL: 'https://api.cerebras.ai/v1',
     keyEnv: 'CEREBRAS_API_KEY',
     modelEnv: 'CEREBRAS_MODEL',
-    defaultModel: 'llama-3.3-70b',
+    defaultModels: 'llama-3.3-70b',
   },
   openrouter: {
     baseURL: 'https://openrouter.ai/api/v1',
     keyEnv: 'OPENROUTER_API_KEY',
     modelEnv: 'OPENROUTER_MODEL',
     // A ':free' tool-capable model. Override with OPENROUTER_MODEL if needed.
-    defaultModel: 'meta-llama/llama-3.3-70b-instruct:free',
+    defaultModels: 'meta-llama/llama-3.3-70b-instruct:free',
   },
   openai: {
     baseURL: 'https://api.openai.com/v1',
     keyEnv: 'OPENAI_API_KEY',
     modelEnv: 'OPENAI_MODEL',
-    defaultModel: 'gpt-4o-mini',
+    defaultModels: 'gpt-4o-mini',
   },
 };
 
@@ -99,6 +109,39 @@ export function resolveAIProviderOrder(raw?: string): AIProviderId[] {
   return order;
 }
 
+/**
+ * Parse a comma-separated model list into an ordered, de-duplicated array.
+ * Blank entries are dropped; an empty/blank input falls back to `fallback`.
+ */
+export function parseModelList(raw: string | undefined, fallback: string): string[] {
+  const source = typeof raw === 'string' && raw.trim().length > 0 ? raw : fallback;
+  const seen = new Set<string>();
+  const models: string[] = [];
+  for (const part of source.split(',')) {
+    const id = part.trim();
+    if (id.length > 0 && !seen.has(id)) {
+      seen.add(id);
+      models.push(id);
+    }
+  }
+  return models;
+}
+
+/**
+ * The ordered model list to try for a provider. Always non-empty for a provider
+ * built by `resolveAIProviders`; falls back to `[model]` for a bare settings
+ * object that only carries a single `model`.
+ */
+export function providerModels(provider: AIProviderSettings): string[] {
+  if (Array.isArray(provider.models) && provider.models.length > 0) return provider.models;
+  return provider.model ? [provider.model] : [];
+}
+
+/** Stable key for "this model on this provider" (used to skip retired models). */
+export function providerModelKey(providerId: string, model: string): string {
+  return `${providerId}::${model}`;
+}
+
 /** Build the ordered list of ACTIVE providers (key present) from an env object. */
 export function resolveAIProviders(source: NodeJS.ProcessEnv = process.env): AIProviderSettings[] {
   const providers: AIProviderSettings[] = [];
@@ -106,13 +149,13 @@ export function resolveAIProviders(source: NodeJS.ProcessEnv = process.env): AIP
     const def = AI_PROVIDER_DEFS[id];
     const apiKey = source[def.keyEnv];
     if (typeof apiKey !== 'string' || apiKey.trim().length === 0) continue;
-    const model = source[def.modelEnv];
+    const models = parseModelList(source[def.modelEnv], def.defaultModels);
     providers.push({
       id,
       baseURL: def.baseURL,
       apiKey: apiKey.trim(),
-      model:
-        typeof model === 'string' && model.trim().length > 0 ? model.trim() : def.defaultModel,
+      model: models[0],
+      models,
     });
   }
   return providers;
@@ -123,10 +166,24 @@ export function resolveAIProviders(source: NodeJS.ProcessEnv = process.env): AIP
 // ---------------------------------------------------------------------------
 
 export interface ProviderErrorInfo {
-  kind: 'auth' | 'rate_limit' | 'server' | 'timeout' | 'network' | 'client' | 'unknown';
+  kind:
+    | 'auth'
+    | 'rate_limit'
+    | 'server'
+    | 'timeout'
+    | 'network'
+    | 'client'
+    | 'model_not_found'
+    | 'unknown';
   status?: number;
-  /** true => disable this provider for the process lifetime. */
+  /** true => disable this PROVIDER for the process lifetime. */
   disable: boolean;
+  /**
+   * true => skip THIS MODEL for the process lifetime (HTTP 404: the provider is
+   * reachable but the model id is retired/unknown). The provider stays usable
+   * through its other models.
+   */
+  modelNotFound?: boolean;
   /** Transient cooldown in ms (only meaningful when disable === false). */
   cooldownMs?: number;
 }
@@ -155,8 +212,15 @@ export function classifyProviderError(err: unknown): ProviderErrorInfo {
   const status = typeof anyErr?.status === 'number' ? anyErr.status : undefined;
   const retryAfterMs = readRetryAfterMs(anyErr);
 
+  // A 404 means the provider answered but this MODEL id is gone (e.g. a retired
+  // Gemini model). Skip the model, not the provider — the caller falls through
+  // to the next model of the SAME provider.
+  if (status === 404) {
+    return { kind: 'model_not_found', status, disable: false, modelNotFound: true };
+  }
+
   // Permanent client errors: retrying the same provider keeps failing.
-  if (status === 400 || status === 401 || status === 403 || status === 404) {
+  if (status === 400 || status === 401 || status === 403) {
     return {
       kind: status === 401 || status === 403 ? 'auth' : 'client',
       status,
