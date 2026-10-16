@@ -1,0 +1,82 @@
+{
+  "base": "http://localhost:3210",
+  "passed": 14,
+  "total": 15,
+  "results": [
+    {
+      "name": "1. /api/health",
+      "ok": true,
+      "detail": "HTTP 200 status=ok ai.enabled=true paypal.enabled=true buildCommit=unknown (140ms)"
+    },
+    {
+      "name": "2. /api/catalog",
+      "ok": true,
+      "detail": "HTTP 200 count=25 (10ms)"
+    },
+    {
+      "name": "3. /dashboard.html",
+      "ok": true,
+      "detail": "HTTP 200 markers=true bytes=10078 (5ms)"
+    },
+    {
+      "name": "4. /dashboard redirect",
+      "ok": true,
+      "detail": "HTTP 302 location=/dashboard.html (8ms)"
+    },
+    {
+      "name": "5. /api/policy-events",
+      "ok": true,
+      "detail": "HTTP 200 events=0 (5ms)"
+    },
+    {
+      "name": "6. /api/policy-events/stats",
+      "ok": true,
+      "detail": "HTTP 200 keys=totalRequests,allowed,blocked,spentMinor,spentFormatted (4ms)"
+    },
+    {
+      "name": "7. /api/webhooks/health",
+      "ok": true,
+      "detail": "HTTP 200 webhookEnabled=false (4ms)"
+    },
+    {
+      "name": "8. /api/webhooks/paypal unsigned rejected",
+      "ok": true,
+      "detail": "HTTP 401 (11ms)"
+    },
+    {
+      "name": "9. /api/orders",
+      "ok": true,
+      "detail": "HTTP 200 total=0 returned=0 (6ms)"
+    },
+    {
+      "name": "10. /api/orders/stats",
+      "ok": true,
+      "detail": "HTTP 200 total=0 aiAssisted=0 (5ms)"
+    },
+    {
+      "name": "11. /api/policy/preview reachable",
+      "ok": false,
+      "detail": "HTTP 401 decision=n/a (5ms)"
+    },
+    {
+      "name": "12. /api/ops/status",
+      "ok": true,
+      "detail": "HTTP 200 enabled=true (3ms)"
+    },
+    {
+      "name": "13. /api/ops/ask without key -> 401",
+      "ok": true,
+      "detail": "HTTP 401 (6ms)"
+    },
+    {
+      "name": "14. security headers (CSP nonce + nosniff)",
+      "ok": true,
+      "detail": "HTTP 200 nonce=true nosniff=true cspBytes=309"
+    },
+    {
+      "name": "15. unknown /api/* -> 404",
+      "ok": true,
+      "detail": "HTTP 404"
+    }
+  ]
+}

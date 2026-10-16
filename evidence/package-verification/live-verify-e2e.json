@@ -1,0 +1,82 @@
+{
+  "base": "https://paypal-commerce-agent.onrender.com",
+  "passed": 14,
+  "total": 15,
+  "results": [
+    {
+      "name": "1. /api/health",
+      "ok": true,
+      "detail": "HTTP 200 status=ok ai.enabled=true paypal.enabled=true buildCommit=f57cb22d71aea5fabea2cd9d4ede0faf2eb025ac (362ms)"
+    },
+    {
+      "name": "2. /api/catalog",
+      "ok": true,
+      "detail": "HTTP 200 count=25 (105ms)"
+    },
+    {
+      "name": "3. /dashboard.html",
+      "ok": true,
+      "detail": "HTTP 200 markers=true bytes=10078 (129ms)"
+    },
+    {
+      "name": "4. /dashboard redirect",
+      "ok": true,
+      "detail": "HTTP 302 location=/dashboard.html (96ms)"
+    },
+    {
+      "name": "5. /api/policy-events",
+      "ok": true,
+      "detail": "HTTP 200 events=0 (113ms)"
+    },
+    {
+      "name": "6. /api/policy-events/stats",
+      "ok": true,
+      "detail": "HTTP 200 keys=totalRequests,allowed,blocked,spentMinor,spentFormatted (93ms)"
+    },
+    {
+      "name": "7. /api/webhooks/health",
+      "ok": true,
+      "detail": "HTTP 200 webhookEnabled=true (54ms)"
+    },
+    {
+      "name": "8. /api/webhooks/paypal unsigned rejected",
+      "ok": true,
+      "detail": "HTTP 401 (87ms)"
+    },
+    {
+      "name": "9. /api/orders",
+      "ok": true,
+      "detail": "HTTP 200 total=0 returned=0 (81ms)"
+    },
+    {
+      "name": "10. /api/orders/stats",
+      "ok": true,
+      "detail": "HTTP 200 total=0 aiAssisted=0 (72ms)"
+    },
+    {
+      "name": "11. /api/policy/preview reachable",
+      "ok": false,
+      "detail": "HTTP 401 decision=n/a (65ms)"
+    },
+    {
+      "name": "12. /api/ops/status",
+      "ok": true,
+      "detail": "HTTP 200 enabled=true (58ms)"
+    },
+    {
+      "name": "13. /api/ops/ask without key -> 401",
+      "ok": true,
+      "detail": "HTTP 401 (94ms)"
+    },
+    {
+      "name": "14. security headers (CSP nonce + nosniff)",
+      "ok": true,
+      "detail": "HTTP 200 nonce=true nosniff=true cspBytes=309"
+    },
+    {
+      "name": "15. unknown /api/* -> 404",
+      "ok": true,
+      "detail": "HTTP 404"
+    }
+  ]
+}

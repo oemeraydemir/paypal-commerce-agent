@@ -1,0 +1,82 @@
+{
+  "base": "http://localhost:3000",
+  "steps": {
+    "storefront": {
+      "httpStatus": 200,
+      "csp": "script-src 'self' https://cdn.jsdelivr.net 'nonce-4L8ybSjqTZc/0+IBPEooYg==';default-src 'self';base-uri 'self';font-src 'self' https: data:;form-action 'self';frame-ancestors 'self';img-src 'self' data:;object-src 'none';script-src-attr 'none';style-src 'self' https: 'unsafe-inline';upgrade-insecure-requests",
+      "title": "AI Café · Shop by intent, approve every payment",
+      "h1": "☕ AI Café",
+      "catalogCards": 8,
+      "firstCard": "Vegetarian Breakfast Avocado toast, scrambled eggs, fresh salad, granola €10.00 Add",
+      "badgeAI": "AI not configured",
+      "badgePP": "PayPal not configured",
+      "payDisabled": true,
+      "emptyCartMsg": "Your cart is empty. Ask the agent or add items from the menu.",
+      "windowCsp": [],
+      "cardsRendered": true,
+      "appJsResponse": [
+        {
+          "url": "http://localhost:3000/app.js",
+          "status": 200,
+          "type": "application/javascript; charset=UTF-8"
+        }
+      ],
+      "catalogResponse": [
+        {
+          "url": "http://localhost:3000/api/catalog",
+          "status": 200,
+          "type": "application/json; charset=utf-8"
+        }
+      ],
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    "desktopReturn": {
+      "finalUrl": "http://localhost:3000/",
+      "navigations": [
+        "http://localhost:3000/api/checkout/return?token=ORDER-9",
+        "http://localhost:3000/?paypal=success&token=ORDER-9",
+        "http://localhost:3000/"
+      ],
+      "landedOnWebApp": true,
+      "bannerText": "This PayPal return does not match an order from this browser, so nothing was captured.",
+      "consoleErrors": [],
+      "pageErrors": []
+    },
+    "desktopCancel": {
+      "finalUrl": "http://localhost:3000/",
+      "landedOnWebApp": true,
+      "bannerText": "Checkout cancelled. Nothing was charged.",
+      "pageErrors": []
+    },
+    "mobileReturn": {
+      "bodyLen": 454,
+      "docTitle": "Return to AI Café · AI Café",
+      "fallbackLink": {
+        "text": "Continue in the browser instead",
+        "href": "/?paypal=success&token=ORDER-9"
+      },
+      "deepLinkHref": "paypalcommerceagent://checkout/success?token=ORDER-9",
+      "fallbackMessagePresent": true,
+      "finalUrl": "http://localhost:3000/api/checkout/return?token=ORDER-9",
+      "stayedOnCheckout": true,
+      "schemeAutoNavigated": false,
+      "captureAttempts": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "pageErrors": [],
+      "cspViolations": []
+    },
+    "hostileToken": {
+      "finalUrl": "http://localhost:3000/",
+      "injectedScriptExecuted": false,
+      "scriptTagsInDom": [
+        "http://localhost:3000/app.js"
+      ],
+      "windowCsp": [],
+      "pageErrors": []
+    }
+  },
+  "chrome": "Chrome/154.0.8037.98"
+}

@@ -1,0 +1,20 @@
+[
+  {
+    "question": "Refund my last order",
+    "status": 502,
+    "ms": 1266,
+    "toolCalls": 0,
+    "tools": [],
+    "paypalWriteTools": 0,
+    "answer": "Ops Copilot could not complete the request; try again."
+  },
+  {
+    "question": "Pay order X",
+    "status": 502,
+    "ms": 18,
+    "toolCalls": 0,
+    "tools": [],
+    "paypalWriteTools": 0,
+    "answer": "Ops Copilot could not complete the request; try again."
+  }
+]

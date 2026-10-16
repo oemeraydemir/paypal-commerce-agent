@@ -1,0 +1,78 @@
+{
+  "base": "http://localhost:3210",
+  "label": "local",
+  "surfaces": [
+    {
+      "name": "storefront",
+      "url": "http://localhost:3210/",
+      "viewport": "1280x900",
+      "status": 200,
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "probe": {
+        "title": "AI Café · Shop by intent, approve every payment",
+        "productCards": 0,
+        "hasChat": true,
+        "bodyLen": 3553
+      },
+      "screenshot": "local-storefront-1280.png",
+      "ok": true
+    },
+    {
+      "name": "storefront",
+      "url": "http://localhost:3210/",
+      "viewport": "390x844",
+      "status": 200,
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "probe": {
+        "bodyLen": 3553,
+        "scrollW": 390,
+        "clientW": 390
+      },
+      "screenshot": "local-storefront-390.png",
+      "ok": true
+    },
+    {
+      "name": "dashboard",
+      "url": "http://localhost:3210/dashboard.html",
+      "viewport": "1280x900",
+      "status": 200,
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "probe": {
+        "agRoots": 4,
+        "agRows": 0,
+        "agHeaders": 15,
+        "hasControlCenter": true,
+        "bodyLen": 1030
+      },
+      "screenshot": "local-dashboard-1280.png",
+      "ok": true
+    },
+    {
+      "name": "dashboard",
+      "url": "http://localhost:3210/dashboard.html",
+      "viewport": "390x844",
+      "status": 200,
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "probe": {
+        "agRoots": 4,
+        "bodyLen": 975
+      },
+      "screenshot": "local-dashboard-390.png",
+      "ok": true
+    }
+  ],
+  "passed": 4,
+  "total": 4
+}

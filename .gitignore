@@ -1,0 +1,31 @@
+# ── Dependencies / build output ──
+node_modules/
+dist/
+build/
+coverage/
+
+# ── Secrets / environment (keep the *.example files) ──
+.env
+.env.*
+!.env.example
+!.env.render.example
+*.env              # ephemeral Flutter native integration files
+
+# ── Logs ──
+*.log
+npm-debug.log*
+
+# ── Binaries / release artifacts ──
+*.apk
+release/
+
+# ── Editor / OS cruft ──
+.DS_Store
+.idea/
+.vscode/
+
+# ── Project data (agent memory, not source) ──
+.workbuddy-ai/
+
+# ── Credential doc (placeholder buyer creds — never commit the filled copy) ──
+docs/devpost-testing-instructions.md

@@ -1,0 +1,114 @@
+{
+  "base": "http://localhost:3210",
+  "passed": 14,
+  "total": 14,
+  "results": [
+    {
+      "id": "A",
+      "name": "A. POST /api/sessions",
+      "ok": true,
+      "detail": "HTTP 201 hasSessionId=true hasToken=true (145ms)"
+    },
+    {
+      "id": "B",
+      "name": "B. /api/policy/preview without session -> 401",
+      "ok": true,
+      "detail": "HTTP 401 (16ms)"
+    },
+    {
+      "id": "C",
+      "name": "C. empty cart -> limits envelope",
+      "ok": true,
+      "detail": "HTTP 200 empty=true enforcedBy=server maxPerPurchase=2000 confirmAt=1000 dailyLimit=10000 (6ms)"
+    },
+    {
+      "id": "D",
+      "name": "D. coffee x1 (3.00 EUR) -> AUTO_ALLOW",
+      "ok": true,
+      "detail": "HTTP 200 decision=AUTO_ALLOW total=€3.00 (10ms)"
+    },
+    {
+      "id": "E",
+      "name": "E. coffee x3 (9.00 EUR) -> AUTO_ALLOW (threshold boundary)",
+      "ok": true,
+      "detail": "HTTP 200 decision=AUTO_ALLOW total=€9.00 (7ms)"
+    },
+    {
+      "id": "F",
+      "name": "F. coffee x4 (12.00 EUR) -> REQUIRE_CONFIRMATION",
+      "ok": true,
+      "detail": "HTTP 200 decision=REQUIRE_CONFIRMATION requiresExplicitApproval=true (9ms)"
+    },
+    {
+      "id": "G",
+      "name": "G. gift_box x1 (35.00 EUR) -> BLOCK (per-purchase cap)",
+      "ok": true,
+      "detail": "HTTP 200 decision=BLOCK reason=\"Cart exceeds maximum purchase limit\" (6ms)"
+    },
+    {
+      "id": "H",
+      "name": "H. gift_box x3 (105.00 EUR) -> rejected at input layer",
+      "ok": true,
+      "detail": "HTTP 400 error=\"Order total must not exceed 10000 minor units\" decision=undefined (6ms)"
+    },
+    {
+      "id": "I",
+      "name": "I. unknown product -> 4xx (no 500)",
+      "ok": true,
+      "detail": "HTTP 400 body=\"Product not found: no_such_product_xyz\" (7ms)"
+    },
+    {
+      "id": "J",
+      "name": "J. policy preview is side-effect free (no order created)",
+      "ok": true,
+      "detail": "orders total 0 -> 0"
+    },
+    {
+      "id": "K",
+      "name": "K. POST /api/ai/chat (1 call)",
+      "ok": true,
+      "detail": "HTTP 200 code=ok (1464ms)",
+      "raw": {
+        "status": 200,
+        "errorCode": null,
+        "keys": [
+          "sessionId",
+          "response",
+          "preparedCart",
+          "checkoutReady",
+          "toolRounds",
+          "messageCount"
+        ]
+      }
+    },
+    {
+      "id": "L",
+      "name": "L. POST /api/ops/ask with key",
+      "ok": true,
+      "detail": "HTTP 200 tools=[\"list_internal_orders/internal\"] (7570ms)",
+      "raw": {
+        "status": 200,
+        "toolsUsed": [
+          {
+            "name": "list_internal_orders",
+            "source": "internal",
+            "ok": true
+          }
+        ],
+        "answer": "There are currently **no AI Café orders** in the system (the internal order list returned zero records). Consequently, there are no orders to summarize by origin (HUMAN, AI‑ASSISTED, or AI‑AGENT)."
+      }
+    },
+    {
+      "id": "M",
+      "name": "M. POST /api/ops/ask without key -> 401",
+      "ok": true,
+      "detail": "HTTP 401 (10ms)"
+    },
+    {
+      "id": "N",
+      "name": "N. POST /api/ops/ask with wrong key -> 401",
+      "ok": true,
+      "detail": "HTTP 401 (4ms)"
+    }
+  ]
+}

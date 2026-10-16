@@ -1,0 +1,79 @@
+{
+  "base": "https://paypal-commerce-agent.onrender.com",
+  "passed": 12,
+  "total": 12,
+  "results": [
+    {
+      "id": "A",
+      "name": "A. POST /api/sessions",
+      "ok": true,
+      "detail": "HTTP 201 hasSessionId=true hasToken=true (424ms)"
+    },
+    {
+      "id": "B",
+      "name": "B. /api/policy/preview without session -> 401",
+      "ok": true,
+      "detail": "HTTP 401 (69ms)"
+    },
+    {
+      "id": "C",
+      "name": "C. empty cart -> limits envelope",
+      "ok": true,
+      "detail": "HTTP 200 empty=true enforcedBy=server maxPerPurchase=2000 confirmAt=1000 dailyLimit=10000 (63ms)"
+    },
+    {
+      "id": "D",
+      "name": "D. coffee x1 (3.00 EUR) -> AUTO_ALLOW",
+      "ok": true,
+      "detail": "HTTP 200 decision=AUTO_ALLOW total=€3.00 (80ms)"
+    },
+    {
+      "id": "E",
+      "name": "E. coffee x3 (9.00 EUR) -> AUTO_ALLOW (threshold boundary)",
+      "ok": true,
+      "detail": "HTTP 200 decision=AUTO_ALLOW total=€9.00 (81ms)"
+    },
+    {
+      "id": "F",
+      "name": "F. coffee x4 (12.00 EUR) -> REQUIRE_CONFIRMATION",
+      "ok": true,
+      "detail": "HTTP 200 decision=REQUIRE_CONFIRMATION requiresExplicitApproval=true (65ms)"
+    },
+    {
+      "id": "G",
+      "name": "G. gift_box x1 (35.00 EUR) -> BLOCK (per-purchase cap)",
+      "ok": true,
+      "detail": "HTTP 200 decision=BLOCK reason=\"Cart exceeds maximum purchase limit\" (87ms)"
+    },
+    {
+      "id": "H",
+      "name": "H. gift_box x3 (105.00 EUR) -> rejected at input layer",
+      "ok": true,
+      "detail": "HTTP 400 error=\"Order total must not exceed 10000 minor units\" decision=undefined (39ms)"
+    },
+    {
+      "id": "I",
+      "name": "I. unknown product -> 4xx (no 500)",
+      "ok": true,
+      "detail": "HTTP 400 body=\"Product not found: no_such_product_xyz\" (51ms)"
+    },
+    {
+      "id": "J",
+      "name": "J. policy preview is side-effect free (no order created)",
+      "ok": true,
+      "detail": "orders total 0 -> 0"
+    },
+    {
+      "id": "M",
+      "name": "M. POST /api/ops/ask without key -> 401",
+      "ok": true,
+      "detail": "HTTP 401 (48ms)"
+    },
+    {
+      "id": "N",
+      "name": "N. POST /api/ops/ask with wrong key -> 401",
+      "ok": true,
+      "detail": "HTTP 401 (47ms)"
+    }
+  ]
+}

@@ -1,0 +1,566 @@
+{
+  "info": {
+    "name": "PayPal Commerce Agent — AI Café",
+    "description": "Complete API collection for **AI Café**, an agentic-commerce prototype built for the PayPal AI Hackathon.\n\nThe agent prepares a shopping cart from natural-language intent, but the **server owns all prices** and a **human authorizes every PayPal payment**. The AI never touches money. A read-only PayPal **Ops Copilot** lets a merchant audit activity.\n\n**How to use**\n1. Import this collection and the `paypal-commerce-agent.postman_environment.json` file.\n2. Set `baseUrl` (default `http://localhost:3000`) — or your Render URL.\n3. Run folder **`0 · Authentication > Start session`** first. It mints a server-side session and stores `sessionId` + `sessionToken` for the rest of the run (collection-level Bearer auth uses them automatically).\n4. Then run any request, folder, or the whole collection in the Collection Runner.\n\n**Why some requests return 503**: `AI chat`, `Orders create`, and `Ops ask` require server-side secrets (an AI key, PayPal sandbox credentials, or the Ops key). On a fresh deploy without those, the API answers `503` by design — the collection's tests accept `200/201` *or* `503` so the run stays green. Set the secrets in your environment (or Render dashboard) to exercise the full flow.\n\nPrize context: this collection is the tryability surface for the **Postman** sponsor prize.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{sessionToken}}", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
+    { "key": "sessionId", "value": "", "type": "string" },
+    { "key": "sessionToken", "value": "", "type": "string" },
+    { "key": "orderId", "value": "", "type": "string" },
+    { "key": "paypalOrderId", "value": "", "type": "string" },
+    { "key": "opsKey", "value": "", "type": "string" },
+    { "key": "checkoutToken", "value": "PAYID-EXAMPLE", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "0 · Authentication",
+      "description": "A session is server-issued and returned exactly once. Store it, then present `X-Session-Id` + `Authorization: Bearer <token>` on every protected call. The collection-level Bearer auth already does this for you.",
+      "item": [
+        {
+          "name": "Start session",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.expect(pm.response.code).to.equal(201));",
+                  "const j = pm.response.json();",
+                  "pm.collectionVariables.set('sessionId', j.sessionId);",
+                  "pm.collectionVariables.set('sessionToken', j.sessionToken);",
+                  "pm.environment.set('sessionId', j.sessionId);",
+                  "pm.environment.set('sessionToken', j.sessionToken);",
+                  "pm.test('returns sessionId + sessionToken', () => {",
+                  "  pm.expect(j.sessionId).to.be.a('string').and.not.empty;",
+                  "  pm.expect(j.sessionToken).to.be.a('string').and.not.empty;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] },
+            "description": "Mint a server-side session. Rate-limited per IP (30/hour on shared hosts) — reuse the cached token across a run."
+          },
+          "response": []
+        },
+        {
+          "name": "End session",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/sessions/current", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "current"] },
+            "description": "Logout / reset the demo. Clears AI-prepared cart + conversation."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "1 · Health & Ops",
+      "item": [
+        {
+          "name": "Health",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('reports status', () => pm.expect(j.status).to.be.ok);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/health", "host": ["{{baseUrl}}"], "path": ["api", "health"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Webhook health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/webhooks/health", "host": ["{{baseUrl}}"], "path": ["api", "webhooks", "health"] },
+            "description": "Liveness for the PayPal webhook receiver (signature-verified)."
+          },
+          "response": []
+        },
+        {
+          "name": "Ops status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('read-only ops surface', () => pm.expect(j.readOnly).to.equal(true));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/ops/status", "host": ["{{baseUrl}}"], "path": ["api", "ops", "status"] },
+            "description": "Shows the 8 read-only PayPal tools + 3 internal audit tools the Ops Copilot may use."
+          },
+          "response": []
+        },
+        {
+          "name": "Ops ask (read-only merchant copilot)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('handled: 200 (key set), 401 (no key), or 503 (disabled)', () => {",
+                  "  pm.expect([200, 401, 503]).to.include(pm.response.code);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Ops-Key", "value": "{{opsKey}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"How many orders were blocked by policy today, and what was the total value of approved orders?\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/ops/ask", "host": ["{{baseUrl}}"], "path": ["api", "ops", "ask"] },
+            "description": "Merchant-facing, READ-ONLY copilot. Uses PayPal Agent Toolkit (read permissions only). Returns 401 if X-Ops-Key is missing, 503 if disabled. Set `opsKey` in the environment to exercise it."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2 · Catalog",
+      "item": [
+        {
+          "name": "List catalog",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('returns products', () => pm.expect(j.count).to.be.a('number').and.be.above(0));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/catalog", "host": ["{{baseUrl}}"], "path": ["api", "catalog"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Product by id",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/catalog/coffee", "host": ["{{baseUrl}}"], "path": ["api", "catalog", "coffee"] }
+          },
+          "response": []
+        },
+        {
+          "name": "Search catalog",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/search?category=drinks&maxPriceMinor=500&dietary=vegan",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "catalog", "search"],
+              "query": [
+                { "key": "category", "value": "drinks" },
+                { "key": "maxPriceMinor", "value": "500" },
+                { "key": "dietary", "value": "vegan" }
+              ]
+            },
+            "description": "Server-side filtering: category, max price (minor units), dietary tags, occasion, matchMode=any|all."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3 · AI Shopping Agent",
+      "item": [
+        {
+          "name": "AI chat (natural-language cart builder)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('handled: 200 (AI configured) or 503 (no AI key)', () => {",
+                  "  pm.expect([200, 503]).to.include(pm.response.code);",
+                  "});",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.test('returns a response + preparedCart flag', () => {",
+                  "    pm.expect(j.response).to.be.a('string');",
+                  "    pm.expect(j).to.have.property('checkoutReady');",
+                  "  });",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"I'm vegetarian and have €15. Surprise me with a coffee and a snack.\",\n  \"preferences\": { \"dietary\": [\"vegetarian\"], \"maxBudgetMinor\": 1500 }\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/ai/chat", "host": ["{{baseUrl}}"], "path": ["api", "ai", "chat"] },
+            "description": "Provider-agnostic AI (Gemini→Groq→Cerebras→OpenRouter→OpenAI). Returns a preparedCart and checkoutReady. Requires an AI_API_KEY on the server; otherwise 503."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear AI cart",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/ai/cart/{{sessionId}}", "host": ["{{baseUrl}}"], "path": ["api", "ai", "cart", "{{sessionId}}"] },
+            "description": "Discards the AI-prepared cart for THIS session only (ownership enforced)."
+          },
+          "response": []
+        },
+        {
+          "name": "Clear AI chat history",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/ai/chat/{{sessionId}}", "host": ["{{baseUrl}}"], "path": ["api", "ai", "chat", "{{sessionId}}"] },
+            "description": "Clears conversation history for THIS session only."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4 · Policy (human-in-the-loop)",
+      "description": "The server is the sole authority on price + policy. These endpoints preview or enforce per-purchase, daily-spend, confirmation, and blocked-attribute rules. Defaults: per-purchase ≤ €20, daily ≤ €100, confirmation ≥ €10, blocked dietary = alcohol.",
+      "item": [
+        {
+          "name": "Policy preview — AUTO_ALLOW",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('decision present (advisory only)', () => pm.expect(j).to.have.property('decision'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"productId\": \"coffee\", \"quantity\": 1 },\n    { \"productId\": \"orange_juice\", \"quantity\": 1 },\n    { \"productId\": \"croissant\", \"quantity\": 1 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/policy/preview", "host": ["{{baseUrl}}"], "path": ["api", "policy", "preview"] },
+            "description": "930 minor = €9.30 → under the €10 confirmation threshold → AUTO_ALLOW. Side-effect free advisory UX."
+          },
+          "response": []
+        },
+        {
+          "name": "Policy preview — REQUIRE_CONFIRMATION",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"productId\": \"latte\", \"quantity\": 1 },\n    { \"productId\": \"pancakes\", \"quantity\": 1 },\n    { \"productId\": \"coffee\", \"quantity\": 1 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/policy/preview", "host": ["{{baseUrl}}"], "path": ["api", "policy", "preview"] },
+            "description": "1650 minor = €16.50 → above the €10 threshold → REQUIRE_CONFIRMATION (human must approve the payment)."
+          },
+          "response": []
+        },
+        {
+          "name": "Policy preview — BLOCK",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"productId\": \"premium_cake\", \"quantity\": 2 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/policy/preview", "host": ["{{baseUrl}}"], "path": ["api", "policy", "preview"] },
+            "description": "9000 minor = €90.00 → above the €20 per-purchase limit → BLOCK (never reaches PayPal)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5 · Orders & Payment",
+      "description": "Prices are re-derived server-side from the catalog; the client's numbers are never trusted. Idempotency is dual-layer (client Idempotency-Key → PayPal-Request-Id).",
+      "item": [
+        {
+          "name": "Create order (AUTO_ALLOW → 201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created or 503 if PayPal unset', () => pm.expect([201, 503]).to.include(pm.response.code));",
+                  "if (pm.response.code === 201) {",
+                  "  const j = pm.response.json();",
+                  "  pm.collectionVariables.set('orderId', j.orderId);",
+                  "  pm.collectionVariables.set('paypalOrderId', j.paypalOrderId);",
+                  "  pm.environment.set('orderId', j.orderId);",
+                  "  pm.environment.set('paypalOrderId', j.paypalOrderId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"productId\": \"coffee\", \"quantity\": 1 },\n    { \"productId\": \"orange_juice\", \"quantity\": 1 },\n    { \"productId\": \"croissant\", \"quantity\": 1 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/orders/create", "host": ["{{baseUrl}}"], "path": ["api", "orders", "create"] },
+            "description": "€9.30 cart → AUTO_ALLOW. Returns orderId, paypalOrderId and an approvalUrl. Chains the orderId into Capture/Cancel. Requires PayPal sandbox creds; else 503."
+          },
+          "response": []
+        },
+        {
+          "name": "Create order (BLOCKED by policy → 403)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('403 blocked by policy (or 503 if PayPal unset)', () => pm.expect([403, 503]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"items\": [\n    { \"productId\": \"premium_cake\", \"quantity\": 2 }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/orders/create", "host": ["{{baseUrl}}"], "path": ["api", "orders", "create"] },
+            "description": "€90.00 cart exceeds the €20 per-purchase limit → server returns 403 BLOCK before any PayPal order is created. Demonstrates the human-in-the-loop guardrail."
+          },
+          "response": []
+        },
+        {
+          "name": "Capture order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('handled: 200/409/400/402/503', () => pm.expect([200, 409, 400, 402, 503]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/orders/{{orderId}}/capture", "host": ["{{baseUrl}}"], "path": ["api", "orders", "{{orderId}}", "capture"] },
+            "description": "Captures the PayPal order (after the human approves at the approvalUrl). Idempotent; 409 if already captured."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel order",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{}" },
+            "url": { "raw": "{{baseUrl}}/api/orders/{{orderId}}/cancel", "host": ["{{baseUrl}}"], "path": ["api", "orders", "{{orderId}}", "cancel"] },
+            "description": "Buyer/app cancellation of a not-yet-captured checkout. Releases the daily-spend reservation after PayPal confirms nothing was captured."
+          },
+          "response": []
+        },
+        {
+          "name": "List orders",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders?origin=AI_AGENT&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "orders"],
+              "query": [
+                { "key": "origin", "value": "AI_AGENT" },
+                { "key": "limit", "value": "50" }
+              ]
+            },
+            "description": "Public, read-only. Filters by origin (AI_AGENT|HUMAN) and status. Never exposes real PayPal ids."
+          },
+          "response": []
+        },
+        {
+          "name": "Orders stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/orders/stats", "host": ["{{baseUrl}}"], "path": ["api", "orders", "stats"] }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6 · Checkout redirect",
+      "item": [
+        {
+          "name": "Checkout return",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/checkout/return?token={{checkoutToken}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "checkout", "return"],
+              "query": [{ "key": "token", "value": "{{checkoutToken}}" }]
+            },
+            "description": "PayPal bounces the shopper here after approving. On mobile it deep-links back into the app; in a browser it returns to the web storefront. Does NOT capture payment itself."
+          },
+          "response": []
+        },
+        {
+          "name": "Checkout cancel",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/checkout/cancel?token={{checkoutToken}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "checkout", "cancel"],
+              "query": [{ "key": "token", "value": "{{checkoutToken}}" }]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7 · Audit / Observability",
+      "description": "Every policy decision (allow/confirm/block) is recorded as an immutable audit event — the backbone of the AG Grid 'Agent Control Center' dashboard and the Elastic-style observability story.",
+      "item": [
+        {
+          "name": "Policy events",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200 OK', () => pm.expect(pm.response.code).to.equal(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('returns events array', () => pm.expect(j).to.have.property('events'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/policy-events?limit=100&decision=BLOCK",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "policy-events"],
+              "query": [
+                { "key": "limit", "value": "100" },
+                { "key": "decision", "value": "BLOCK" }
+              ]
+            },
+            "description": "Immutable audit trail of every policy decision. Filter by decision (AUTO_ALLOW|REQUIRE_CONFIRMATION|BLOCK) and limit (1–100)."
+          },
+          "response": []
+        },
+        {
+          "name": "Policy events stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/policy-events/stats", "host": ["{{baseUrl}}"], "path": ["api", "policy-events", "stats"] },
+            "description": "Counts of allowed/blocked decisions and confirmed spend (deduped by paid order)."
+          },
+          "response": []
+        },
+        {
+          "name": "Dashboard (Agent Control Center)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/dashboard", "host": ["{{baseUrl}}"], "path": ["api", "dashboard"] },
+            "description": "Redirects to /dashboard.html — the AG Grid control center (orders grid + policy-events grid + KPI cards + live 5s refresh)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

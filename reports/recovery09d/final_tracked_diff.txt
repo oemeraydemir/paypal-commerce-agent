@@ -1,0 +1,332 @@
+warning: in the working copy of 'apps/backend/tests/verification/p0-claims.test.ts', LF will be replaced by CRLF the next time Git touches it
+diff --git a/apps/backend/src/routes/checkout.ts b/apps/backend/src/routes/checkout.ts
+index 8d25069..9b6b68a 100644
+--- a/apps/backend/src/routes/checkout.ts
++++ b/apps/backend/src/routes/checkout.ts
+@@ -29,6 +29,11 @@ function checkoutReturn(status: 'success' | 'cancel') {
+       return entities[character];
+     });
+     const scriptAppLink = JSON.stringify(appLink);
++    // Browser clients (the hosted web storefront) have no custom-scheme handler, so desktop
++    // browsers are sent back to the web app instead, where the shopper confirms the capture.
++    const webLink = `/?paypal=${status}&token=${encodeURIComponent(token)}`;
++    const scriptWebLink = JSON.stringify(webLink);
++    const htmlWebLink = webLink.replace(/&/g, '&amp;');
+ 
+     res
+       .status(200)
+@@ -41,7 +46,11 @@ function checkoutReturn(status: 'success' | 'cancel') {
+     <meta name="referrer" content="no-referrer">
+     <title>${title} · AI Café</title>
+     <script${res.locals.cspNonce ? ` nonce="${res.locals.cspNonce}"` : ''}>
+-      window.location.replace(${scriptAppLink});
++      if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
++        window.location.replace(${scriptAppLink});
++      } else {
++        window.location.replace(${scriptWebLink});
++      }
+       window.setTimeout(function () {
+         document.getElementById('fallback-message').hidden = false;
+       }, 1200);
+@@ -53,6 +62,7 @@ function checkoutReturn(status: 'success' | 'cancel') {
+       <p>${message}</p>
+       <p id="fallback-message">If AI Café did not open automatically, use this link:</p>
+       <a href="${htmlAppLink}">Return to AI Café</a>
++      <p><a href="${htmlWebLink}">Continue in the browser instead</a></p>
+     </main>
+   </body>
+ </html>`);
+diff --git a/apps/backend/tests/verification/p0-claims.test.ts b/apps/backend/tests/verification/p0-claims.test.ts
+index b9bf2b7..6673db8 100644
+--- a/apps/backend/tests/verification/p0-claims.test.ts
++++ b/apps/backend/tests/verification/p0-claims.test.ts
+@@ -85,6 +85,10 @@ const COMPLETED = {
+ };
+ 
+ beforeEach(async () => {
++  // Restore real timers FIRST: a preceding test (e.g. 1c-unit) may leave fake
++  // timers installed, and a session minted under a stale fake clock would be
++  // idle-expired once the real clock returns (401 instead of the intended 502).
++  jest.useRealTimers();
+   resetSessionState();
+   sess = await newSession(app);
+   USER = sess.userId;
+@@ -92,7 +96,6 @@ beforeEach(async () => {
+   createOrder.mockReset();
+   captureOrder.mockReset();
+   getOrder.mockReset();
+-  jest.useRealTimers();
+   orderService.reset();
+   policyStorage.reset();
+   dailySpendTracker.reset();
+diff --git a/apps/flutter_app/lib/providers/checkout_provider.dart b/apps/flutter_app/lib/providers/checkout_provider.dart
+index 98bd1b9..de94c46 100644
+--- a/apps/flutter_app/lib/providers/checkout_provider.dart
++++ b/apps/flutter_app/lib/providers/checkout_provider.dart
+@@ -398,12 +398,20 @@ class CheckoutProvider extends ChangeNotifier {
+         _error = 'PayPal did not complete the payment. Your cart is unchanged; review checkout to try again.';
+       }
+     } on ApiException catch (e) {
+-      // F3: recover from stale/ambiguous pending orders without losing state.
++      // F3/Recovery 07.1: recover from stale/ambiguous pending orders WITHOUT
++      // fabricating a payment outcome. A 409 "already captured" is only proof of
++      // payment when the backend has independently verified a real PayPal
++      // COMPLETED capture and signalled it via `details.settled == true`. Any
++      // other conflict (bare idempotent 409, unverified/failed reconciliation)
++      // is unresolved: keep the pending order so the user can retry and the
++      // webhook/reconciler can settle it. Never invent `PAID`/`COMPLETED`.
+       final msg = e.message.toLowerCase();
+-      if (e.statusCode == 409 && msg.contains('already captured')) {
+-        // Definitive: the order is already paid. Reflect that and clear the
+-        // pending state. We do not invent a capture id, and this is NOT treated
+-        // as a cancellation.
++      if (e.statusCode == 409 &&
++          msg.contains('already captured') &&
++          e.settled == true) {
++        // Trusted, verified completion. Reflect PAID and clear the pending
++        // state. We still do not invent a capture id (the server did not return
++        // one on this conflict), and this is NOT treated as a cancellation.
+         _captured = OrderCaptureResult(
+           orderId: _created!.orderId,
+           status: 'PAID',
+@@ -414,8 +422,8 @@ class CheckoutProvider extends ChangeNotifier {
+         _paypalApproved = false;
+         _statusMessage = 'Payment was already completed for this order.';
+       } else if (e.statusCode == 502 || e.statusCode == 409) {
+-        // Ambiguous transport / capture-in-progress: preserve the recoverable
+-        // pending order and let the user retry.
++        // Ambiguous transport / capture-in-progress / unverified 409: preserve
++        // the recoverable pending order and let the user retry.
+         _error =
+             'Capture could not be confirmed (${e.statusCode}): ${e.message}';
+         _statusMessage = null;
+@@ -453,12 +461,17 @@ class CheckoutProvider extends ChangeNotifier {
+       _paypalApproved = false;
+       _statusMessage = 'Order cancelled (status: ${result.status}).';
+     } on ApiException catch (e) {
+-      // F3: do not treat every error as an ordinary cancellation. Preserve
+-      // recoverable state and classify specific outcomes.
++      // F3/Recovery 07.1: do not treat every error as an ordinary cancellation.
++      // Preserve recoverable state and classify specific outcomes. A 409
++      // "already captured" only proves payment when the backend verified a real
++      // PayPal COMPLETED capture (`details.settled == true`); otherwise it is
++      // unresolved and the pending order must be kept, never fabricated as PAID.
+       final msg = e.message.toLowerCase();
+-      if (e.statusCode == 409 && msg.contains('already captured')) {
+-        // The order is actually paid; reflect that instead of leaving a stale
+-        // pending order. Not marked cancelled.
++      if (e.statusCode == 409 &&
++          msg.contains('already captured') &&
++          e.settled == true) {
++        // The order is actually paid (server-verified); reflect that instead of
++        // leaving a stale pending order. Not marked cancelled.
+         _captured = OrderCaptureResult(
+           orderId: target,
+           status: 'PAID',
+@@ -475,8 +488,9 @@ class CheckoutProvider extends ChangeNotifier {
+         _paypalApproved = false;
+         _statusMessage = 'The order no longer exists; nothing to cancel.';
+       } else {
+-        // 502 (could not verify PayPal state) or other: keep the recoverable
+-        // pending order so the user can retry.
++        // 502 (could not verify PayPal state), an unverified 409, or any other
++        // ambiguous outcome: keep the recoverable pending order so the user can
++        // retry and the webhook/reconciler can settle it.
+         _error = 'Cancel failed (${e.statusCode}): ${e.message}';
+         _statusMessage = null;
+       }
+diff --git a/apps/flutter_app/lib/services/api_service.dart b/apps/flutter_app/lib/services/api_service.dart
+index b7d99db..8802dd2 100644
+--- a/apps/flutter_app/lib/services/api_service.dart
++++ b/apps/flutter_app/lib/services/api_service.dart
+@@ -10,11 +10,24 @@ import 'package:flutter_app/models/cart.dart';
+ import 'package:flutter_app/services/session_service.dart';
+ 
+ /// Raised when the backend responds with a non-2xx status.
++///
++/// [settled] mirrors the backend's `details.settled` flag on a capture/cancel
++/// conflict (HTTP 409 `Order already captured`). It is `true` **only** when the
++/// server has independently confirmed a real PayPal `COMPLETED` capture before
++/// reporting the conflict (see `apps/backend/src/orders/routes` +
++/// `payment-lifecycle.ts`). It is `null` whenever the server did not supply a
++/// verified flag — e.g. the bare idempotent 409 — in which case callers must
++/// treat the payment state as unresolved and never fabricate `PAID`.
+ class ApiException implements Exception {
+   final int statusCode;
+   final String message;
+ 
+-  ApiException(this.statusCode, this.message);
++  /// `true` only when the backend verified a completed PayPal capture; `null`
++  /// when the backend did not assert completion. Never trust a bare 409 message
++  /// on its own (see [checkout_provider.dart]).
++  final bool? settled;
++
++  ApiException(this.statusCode, this.message, {this.settled});
+ 
+   @override
+   String toString() => 'ApiException($statusCode): $message';
+@@ -349,8 +362,32 @@ class ApiService {
+ 
+   void _ensureOk(http.Response res, String op) {
+     if (res.statusCode < 200 || res.statusCode >= 300) {
+-      throw ApiException(res.statusCode, _errMsg(res, op));
++      throw ApiException(
++        res.statusCode,
++        _errMsg(res, op),
++        settled: _settledFlag(res),
++      );
++    }
++  }
++
++  /// Reads the backend's verified-completion flag from a 409 capture/cancel
++  /// conflict body (`{ error, details: { settled } }`). Returns `true`/`false`
++  /// only when the backend explicitly supplied a boolean; `null` otherwise so
++  /// the caller can distinguish "server did not assert completion" from a
++  /// verified `false`. See [ApiException.settled].
++  bool? _settledFlag(http.Response res) {
++    try {
++      final b = jsonDecode(res.body);
++      if (b is Map) {
++        final details = b['details'];
++        if (details is Map && details['settled'] is bool) {
++          return details['settled'] as bool;
++        }
++      }
++    } catch (_) {
++      // ignore parse errors, fall through to "not supplied"
+     }
++    return null;
+   }
+ 
+   String _errMsg(http.Response res, [String? op]) {
+diff --git a/apps/flutter_app/test/checkout_provider_test.dart b/apps/flutter_app/test/checkout_provider_test.dart
+index dcbf42b..d2eebc8 100644
+--- a/apps/flutter_app/test/checkout_provider_test.dart
++++ b/apps/flutter_app/test/checkout_provider_test.dart
+@@ -371,65 +371,69 @@ void main() {
+       expect(checkout.error, isNotNull); // user informed
+     });
+ 
+-    test(
+-      'F3: capture 409 ALREADY_CAPTURED reflects paid without losing state',
+-      () async {
+-        final api = ApiService(
+-          baseUrl: 'http://localhost:3000',
+-          storage: InMemorySessionStorage(),
+-          client: withSession((request) async {
+-            if (request.url.path == '/api/orders/create') {
+-              return http.Response(
+-                jsonEncode({
+-                  'orderId': 'order-1',
+-                  'paypalOrderId': 'paypal-1',
+-                  'status': 'PAYMENT_PENDING',
+-                  'origin': 'MANUAL',
+-                  'totalMinor': 500,
+-                  'totalFormatted': 'EUR 5.00',
+-                  'currency': 'EUR',
+-                  'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
+-                }),
+-                200,
+-              );
+-            }
+-            if (request.url.path.contains('/capture')) {
+-              return http.Response(
+-                jsonEncode({'error': 'Order already captured'}),
+-                409,
+-              );
+-            }
+-            return http.Response('Not found', 404);
+-          }),
+-        );
+-        final chat = ChatProvider(api);
+-        final checkout = CheckoutProvider(
+-          api,
+-          chat,
+-          launchApproval: (_) async => true,
+-        );
+-        addTearDown(checkout.dispose);
+-        addTearDown(api.dispose);
++    test('F3: capture 409 ALREADY_CAPTURED reflects paid only when the backend '
++        'verified a COMPLETED capture (details.settled == true)', () async {
++      final api = ApiService(
++        baseUrl: 'http://localhost:3000',
++        storage: InMemorySessionStorage(),
++        client: withSession((request) async {
++          if (request.url.path == '/api/orders/create') {
++            return http.Response(
++              jsonEncode({
++                'orderId': 'order-1',
++                'paypalOrderId': 'paypal-1',
++                'status': 'PAYMENT_PENDING',
++                'origin': 'MANUAL',
++                'totalMinor': 500,
++                'totalFormatted': 'EUR 5.00',
++                'currency': 'EUR',
++                'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
++              }),
++              200,
++            );
++          }
++          if (request.url.path.contains('/capture')) {
++            // Recovery 07.1: a verified, server-settled conflict. The backend
++            // only sends `settled: true` after confirming a real PayPal
++            // COMPLETED capture (settleFromPayPal), so PAID is justified here.
++            return http.Response(
++              jsonEncode({
++                'error': 'Order already captured',
++                'details': {'settled': true},
++              }),
++              409,
++            );
++          }
++          return http.Response('Not found', 404);
++        }),
++      );
++      final chat = ChatProvider(api);
++      final checkout = CheckoutProvider(
++        api,
++        chat,
++        launchApproval: (_) async => true,
++      );
++      addTearDown(checkout.dispose);
++      addTearDown(api.dispose);
+ 
+-        checkout.addProduct('coffee');
+-        await checkout.startCheckout();
+-        // Approve via the REAL PayPal return deep link (token matches the pending
+-        // paypalOrderId). The insecure "I already approved" browser fallback no
+-        // longer authorizes capture (RECOVERY-02), so a test that wants to reach
+-        // capture must drive the genuine approval path.
+-        final approved = await checkout.handlePayPalReturn(
+-          Uri.parse('paypalcommerceagent://checkout/success?token=paypal-1'),
+-        );
+-        expect(approved, isTrue);
+-        expect(checkout.paypalApproved, isTrue);
++      checkout.addProduct('coffee');
++      await checkout.startCheckout();
++      // Approve via the REAL PayPal return deep link (token matches the pending
++      // paypalOrderId). The insecure "I already approved" browser fallback no
++      // longer authorizes capture (RECOVERY-02), so a test that wants to reach
++      // capture must drive the genuine approval path.
++      final approved = await checkout.handlePayPalReturn(
++        Uri.parse('paypalcommerceagent://checkout/success?token=paypal-1'),
++      );
++      expect(approved, isTrue);
++      expect(checkout.paypalApproved, isTrue);
+ 
+-        await checkout.completeCheckout();
+-        // Definitive: the order is paid, not a generic failure.
+-        expect(checkout.captured?.status, 'PAID');
+-        expect(checkout.created, isNull);
+-        expect(checkout.error, isNull);
+-      },
+-    );
++      await checkout.completeCheckout();
++      // Definitive + verified: the order is paid, not a generic failure.
++      expect(checkout.captured?.status, 'PAID');
++      expect(checkout.created, isNull);
++      expect(checkout.error, isNull);
++    });
+ 
+     test('F4: the idempotency key is stable across the 401 retry', () async {
+       final capturedKeys = <String>[];

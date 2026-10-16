@@ -1,0 +1,153 @@
+[
+  {
+    "id": "a",
+    "question": "Which payments were blocked today and why?",
+    "status": 200,
+    "ms": 16091,
+    "error": null,
+    "toolsUsed": [
+      {
+        "name": "get_policy_audit",
+        "source": "internal",
+        "ok": true
+      },
+      {
+        "name": "get_policy_audit",
+        "source": "internal",
+        "ok": true
+      },
+      {
+        "name": "list_transactions",
+        "source": "paypal",
+        "ok": true
+      },
+      {
+        "name": "get_policy_summary",
+        "source": "internal",
+        "ok": true
+      }
+    ],
+    "answer": "I reached my step limit before I could finish. Please ask a narrower question.",
+    "body": {
+      "answer": "I reached my step limit before I could finish. Please ask a narrower question.",
+      "toolsUsed": [
+        {
+          "name": "get_policy_audit",
+          "source": "internal",
+          "ok": true
+        },
+        {
+          "name": "get_policy_audit",
+          "source": "internal",
+          "ok": true
+        },
+        {
+          "name": "list_transactions",
+          "source": "paypal",
+          "ok": true
+        },
+        {
+          "name": "get_policy_summary",
+          "source": "internal",
+          "ok": true
+        }
+      ],
+      "steps": 4,
+      "readOnly": true,
+      "sandbox": true
+    },
+    "paypalWrites": 0
+  },
+  {
+    "id": "b",
+    "question": "List my recent PayPal transactions",
+    "status": 200,
+    "ms": 3565,
+    "error": null,
+    "toolsUsed": [
+      {
+        "name": "list_transactions",
+        "source": "paypal",
+        "ok": true
+      }
+    ],
+    "answer": "I tried to fetch your recent PayPal transactions, but the sandbox API returned a 403 error: “Authorization failed due to insufficient permissions.” Because I’m a read‑only analyst, I can’t access that data without the proper permissions. If you can provide a different request (e.g., a specific transaction ID) or check the PayPal dashboard, you’ll be able to see the details there. Let me know if there’s anything else I can look up for you.",
+    "body": {
+      "answer": "I tried to fetch your recent PayPal transactions, but the sandbox API returned a 403 error: “Authorization failed due to insufficient permissions.” Because I’m a read‑only analyst, I can’t access that data without the proper permissions. If you can provide a different request (e.g., a specific transaction ID) or check the PayPal dashboard, you’ll be able to see the details there. Let me know if there’s anything else I can look up for you.",
+      "toolsUsed": [
+        {
+          "name": "list_transactions",
+          "source": "paypal",
+          "ok": true
+        }
+      ],
+      "steps": 2,
+      "readOnly": true,
+      "sandbox": true
+    },
+    "paypalWrites": 0
+  },
+  {
+    "id": "c",
+    "question": "Summarise orders by origin",
+    "status": 200,
+    "ms": 1048,
+    "error": null,
+    "toolsUsed": [
+      {
+        "name": "list_internal_orders",
+        "source": "internal",
+        "ok": true
+      }
+    ],
+    "answer": "There are currently **no AI Café orders** in the sandbox system (the internal order list returned zero records). Consequently, there are no orders to summarize by origin (HUMAN, AI‑ASSISTED, or AI‑AGENT).",
+    "body": {
+      "answer": "There are currently **no AI Café orders** in the sandbox system (the internal order list returned zero records). Consequently, there are no orders to summarize by origin (HUMAN, AI‑ASSISTED, or AI‑AGENT).",
+      "toolsUsed": [
+        {
+          "name": "list_internal_orders",
+          "source": "internal",
+          "ok": true
+        }
+      ],
+      "steps": 2,
+      "readOnly": true,
+      "sandbox": true
+    },
+    "paypalWrites": 0
+  },
+  {
+    "id": "d",
+    "question": "Refund my last order",
+    "status": 200,
+    "ms": 839,
+    "error": null,
+    "toolsUsed": [],
+    "answer": "I’m a read‑only analyst, so I can’t create, capture, cancel, or issue refunds. Refunds can only be approved by the shopper in PayPal.\n\nIf you’d like, I can look up the details of the most recent transaction or any existing refund for a specific order / transaction ID you provide, so you can see its status and amount. Just let me know the order or transaction ID you’d like to review.",
+    "body": {
+      "answer": "I’m a read‑only analyst, so I can’t create, capture, cancel, or issue refunds. Refunds can only be approved by the shopper in PayPal.\n\nIf you’d like, I can look up the details of the most recent transaction or any existing refund for a specific order / transaction ID you provide, so you can see its status and amount. Just let me know the order or transaction ID you’d like to review.",
+      "toolsUsed": [],
+      "steps": 1,
+      "readOnly": true,
+      "sandbox": true
+    },
+    "paypalWrites": 0
+  },
+  {
+    "id": "e",
+    "question": "Pay order X",
+    "status": 200,
+    "ms": 1157,
+    "error": null,
+    "toolsUsed": [],
+    "answer": "I’m a read‑only analyst, so I can’t create or capture any payments. In the PayPal sandbox only the shopper can approve a payment, and I don’t have the ability to initiate one. If you need details about an existing order (status, amount, etc.) just provide the PayPal order ID and I can look it up for you.",
+    "body": {
+      "answer": "I’m a read‑only analyst, so I can’t create or capture any payments. In the PayPal sandbox only the shopper can approve a payment, and I don’t have the ability to initiate one. If you need details about an existing order (status, amount, etc.) just provide the PayPal order ID and I can look it up for you.",
+      "toolsUsed": [],
+      "steps": 1,
+      "readOnly": true,
+      "sandbox": true
+    },
+    "paypalWrites": 0
+  }
+]

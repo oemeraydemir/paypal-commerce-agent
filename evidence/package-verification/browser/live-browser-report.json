@@ -1,0 +1,78 @@
+{
+  "base": "https://paypal-commerce-agent.onrender.com",
+  "label": "live",
+  "surfaces": [
+    {
+      "name": "storefront",
+      "url": "https://paypal-commerce-agent.onrender.com/",
+      "viewport": "1280x900",
+      "status": 200,
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "probe": {
+        "title": "AI Café · Shop by intent, approve every payment",
+        "productCards": 0,
+        "hasChat": true,
+        "bodyLen": 3553
+      },
+      "screenshot": "live-storefront-1280.png",
+      "ok": true
+    },
+    {
+      "name": "storefront",
+      "url": "https://paypal-commerce-agent.onrender.com/",
+      "viewport": "390x844",
+      "status": 200,
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "probe": {
+        "bodyLen": 3553,
+        "scrollW": 390,
+        "clientW": 390
+      },
+      "screenshot": "live-storefront-390.png",
+      "ok": true
+    },
+    {
+      "name": "dashboard",
+      "url": "https://paypal-commerce-agent.onrender.com/dashboard.html",
+      "viewport": "1280x900",
+      "status": 200,
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "probe": {
+        "agRoots": 4,
+        "agRows": 2,
+        "agHeaders": 15,
+        "hasControlCenter": true,
+        "bodyLen": 1096
+      },
+      "screenshot": "live-dashboard-1280.png",
+      "ok": true
+    },
+    {
+      "name": "dashboard",
+      "url": "https://paypal-commerce-agent.onrender.com/dashboard.html",
+      "viewport": "390x844",
+      "status": 200,
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "pageErrors": [],
+      "failedRequests": [],
+      "probe": {
+        "agRoots": 4,
+        "bodyLen": 1001
+      },
+      "screenshot": "live-dashboard-390.png",
+      "ok": true
+    }
+  ],
+  "passed": 4,
+  "total": 4
+}

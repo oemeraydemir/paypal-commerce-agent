@@ -1,0 +1,184 @@
+{
+  "meta": {
+    "base": "http://localhost:3000",
+    "durationMs": 20000,
+    "concurrency": 192,
+    "sessions": 0,
+    "elapsedSec": 22
+  },
+  "summary": {
+    "totalRequests": 14528,
+    "totalErrors": 0,
+    "errorRatePct": 0,
+    "throughputRps": 663.02,
+    "latencyMs": {
+      "min": 5.05,
+      "mean": 266.23,
+      "p50": 270.11,
+      "p95": 360.39,
+      "p99": 442.25,
+      "max": 659.42
+    },
+    "postRunHealth": {
+      "beforeStatus": 200,
+      "afterStatus": 200,
+      "alive": true
+    }
+  },
+  "perEndpoint": [
+    {
+      "name": "GET /api/health",
+      "count": 2187,
+      "errors": 0,
+      "statuses": {
+        "200": 2187
+      },
+      "latencyMs": {
+        "p50": 280.4,
+        "p95": 371.14,
+        "p99": 530.52,
+        "max": 601.81
+      }
+    },
+    {
+      "name": "GET /api/catalog",
+      "count": 2204,
+      "errors": 0,
+      "statuses": {
+        "200": 2204
+      },
+      "latencyMs": {
+        "p50": 281,
+        "p95": 366.31,
+        "p99": 455.36,
+        "max": 603.28
+      }
+    },
+    {
+      "name": "GET /api/catalog/search",
+      "count": 1450,
+      "errors": 0,
+      "statuses": {
+        "200": 1450
+      },
+      "latencyMs": {
+        "p50": 281.35,
+        "p95": 370.96,
+        "p99": 543.13,
+        "max": 588.73
+      }
+    },
+    {
+      "name": "GET /api/catalog/veg_breakfast",
+      "count": 1493,
+      "errors": 0,
+      "statuses": {
+        "200": 1493
+      },
+      "latencyMs": {
+        "p50": 281.47,
+        "p95": 376.54,
+        "p99": 538.04,
+        "max": 604.05
+      }
+    },
+    {
+      "name": "GET /dashboard",
+      "count": 1113,
+      "errors": 0,
+      "statuses": {
+        "302": 1113
+      },
+      "latencyMs": {
+        "p50": 280.21,
+        "p95": 376,
+        "p99": 545.87,
+        "max": 601.8
+      }
+    },
+    {
+      "name": "GET /api/orders/stats",
+      "count": 1050,
+      "errors": 0,
+      "statuses": {
+        "200": 1050
+      },
+      "latencyMs": {
+        "p50": 282.01,
+        "p95": 376.66,
+        "p99": 517.77,
+        "max": 600.99
+      }
+    },
+    {
+      "name": "GET /api/ops/status",
+      "count": 766,
+      "errors": 0,
+      "statuses": {
+        "200": 766
+      },
+      "latencyMs": {
+        "p50": 280.22,
+        "p95": 367.39,
+        "p99": 442.25,
+        "max": 585.94
+      }
+    },
+    {
+      "name": "GET /api/webhooks/health",
+      "count": 692,
+      "errors": 0,
+      "statuses": {
+        "200": 692
+      },
+      "latencyMs": {
+        "p50": 179.95,
+        "p95": 254.31,
+        "p99": 383.71,
+        "max": 458.28
+      }
+    },
+    {
+      "name": "POST /api/sessions",
+      "count": 743,
+      "errors": 0,
+      "statuses": {
+        "429": 743
+      },
+      "latencyMs": {
+        "p50": 180.15,
+        "p95": 246.95,
+        "p99": 300.73,
+        "max": 456.36
+      }
+    },
+    {
+      "name": "POST /api/policy/preview",
+      "count": 1710,
+      "errors": 0,
+      "statuses": {
+        "401": 1710
+      },
+      "latencyMs": {
+        "p50": 250.44,
+        "p95": 346.19,
+        "p99": 406.68,
+        "max": 659.42
+      }
+    },
+    {
+      "name": "POST /api/ai/chat",
+      "count": 1120,
+      "errors": 0,
+      "statuses": {
+        "401": 1120
+      },
+      "latencyMs": {
+        "p50": 177.88,
+        "p95": 243.54,
+        "p99": 345.6,
+        "max": 460.25
+      }
+    }
+  ]
+}

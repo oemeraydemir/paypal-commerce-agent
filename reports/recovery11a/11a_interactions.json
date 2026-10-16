@@ -1,0 +1,29 @@
+{
+  "afterAdd": {
+    "cartItems": 1,
+    "cartText": "Vegetarian Breakfast €10.00 each − 1 +",
+    "total": "€10.00",
+    "payDisabled": false
+  },
+  "afterPlus": {
+    "qty": "2",
+    "total": "€20.00"
+  },
+  "afterPay": {
+    "banner": "PayPal is not configured on this server.",
+    "payLabel": "Review & pay with PayPal",
+    "payDisabled": false
+  },
+  "afterChat": {
+    "messages": [
+      "msg a | Hi! Tell me what you need and what you want to spend. I prepare the cart; you approve the payment.",
+      "msg u | A vegetarian breakfast for two under €20",
+      "msg s | The AI is not configured on this server (OPENAI_API_KEY missing). You can still use the menu."
+    ]
+  },
+  "pageErrors": [],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+  ]
+}
