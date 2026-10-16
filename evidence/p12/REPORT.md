@@ -2,7 +2,7 @@
 
 - **Live URL:** https://paypal-commerce-agent.onrender.com
 - **Branch:** `fix/render-deployment` (GitHub default branch)
-- **Local HEAD at verification time:** `eb6185f`
+- **Local HEAD at verification time:** `57ca495` (live service deployed `9eaca56` — see §3)
 - **Date:** 2026-10-16
 - **Secrets:** none printed or committed. Provider keys live only in `apps/backend/.env` (git-ignored)
   and in the host's env panel. `ai:check` prints provider names, public model ids, statuses and
@@ -149,6 +149,34 @@ Screenshots: `dashboard-1280.png`, `dashboard-390.png`.
 CSP unchanged (`script-src 'self' https://cdn.jsdelivr.net` with a per-response nonce; dashboard
 logic stays in same-origin `/*.js`, `textContent` only). Dashboard integration tests stay green.
 
+### Live re-verification after the Render redeploy — **PASS**
+
+`GET /api/health` (live):
+
+```json
+{"status":"ok","buildCommit":"9eaca56d560ac86391e1da5effc085eb2ad8e311","environment":"production",
+ "paypal":{"enabled":true,"environment":"sandbox"},
+ "ai":{"enabled":true,"providers":["groq"]}}
+```
+
+- **`buildCommit` = `9eaca56`** — the P12 functional commit (AI provider layer + dashboard fix +
+  docs + tests). It is the commit that contains every P12 behaviour change, so the live service runs
+  the reviewed code. *(The follow-up `57ca495` is a README wording-only commit; it had not finished
+  deploying when this check ran.)*
+- **Live dashboard (`/dashboard.html`), headless Chromium, 1280 px and 390 px:**
+
+```json
+{"status":200,"gridPresent":true,"ordersGridRendered":true,"eventsGridRendered":true,
+ "consoleErrors":[],"consoleWarnings":[],"pageErrors":[],"zeroWarnings":true}
+```
+
+→ **Zero console warnings and zero errors live.** The `enablePinning` warning and AG Grid error #48
+are gone in production, not just locally.
+- Live `ai.providers` is `["groq"]` — the Render environment sets `GROQ_API_KEY` (no Gemini key), so
+  the chain routes to Groq. The retired-Gemini default therefore never hit *this* deployment, but it
+  would have hit any deployment that sets `GEMINI_API_KEY` without `GEMINI_MODEL` — which is exactly
+  what the per-provider model list fixes.
+
 ## 4. Docs corrected (no "Primary OpenAI" claim anywhere)
 
 The default order is **gemini, groq, cerebras, openrouter, openai** — OpenAI is **optional and last**.
@@ -176,9 +204,24 @@ before recovering. The **YouTube** and **Team** TODOs remain visible.
    `tests/unit/ai-client.test.ts`, `tests/setup.ts`
 3. `docs+fix(dashboard): provider-agnostic docs; silence AG Grid warnings; P12 evidence` —
    `README.md`, `apps/backend/SUBMISSION.md`, `apps/backend/ARCHITECTURE.md`,
-   `apps/backend/.env.example`, `apps/backend/public/dashboard.js`, `evidence/p12/*`
+   `apps/backend/.env.example`, `apps/backend/public/dashboard.js`, `evidence/p12/*` — `9eaca56`
+4. `docs: state that the Validate block runs from the repository root` — `README.md` — `57ca495`
+   (wording only; every clone-based quick start already used
+   `cd paypal-commerce-agent/apps/backend`)
 
-Pushed fast-forward to `origin/fix/render-deployment`. Unrelated untracked files
+Pushed fast-forward to `origin/fix/render-deployment` (`eb6185f..57ca495`). Unrelated untracked files
 (`evidence/g1-sandbox-e2e/REPORT_run2.md`, `evidence/p3-deploy/REPORT.md`) were left untouched.
 
 > `docs/devpost-testing-instructions.md` is git-ignored by design and is therefore not in any commit.
+
+## 6. Two things worth flagging
+
+1. **The local `apps/backend/.env` broke the test suite, not the code.** It sets
+   `AI_CHAT_PER_IP_PER_MIN=4` / `AI_CHAT_GLOBAL_PER_MIN=10`. That is a legitimate local setting for
+   manual quota protection, but `dotenv` loads `.env` during tests, so it silently changed the limits
+   the rate-limit tests assert. `tests/setup.ts` now pins the three ceilings at their documented
+   defaults; `.env` itself was **not** modified. If you want the stricter ceilings to apply to your
+   manual runs, keep them in `.env` — the test suite is now immune to them.
+2. **The retired model is still listed by `GET /models`.** Gemini's `/models` endpoint still returns
+   `models/gemini-2.5-flash` even though chat completions 404 on it. Listing the ids is therefore a
+   diagnostic aid, not proof a model works — which is why `ai:check` performs the real tool round trip.
