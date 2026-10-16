@@ -81,7 +81,7 @@ This is enforced server-side and not by trusting client-supplied origin values. 
 
 ## Technical Summary
 
-- AI agent: OpenAI-compatible LLM with function calling — primary OpenAI, with automatic, seamless fallback to free providers Groq/Gemini on 429/5xx errors
+- AI agent: OpenAI-compatible LLM chain with function calling — Gemini → Groq → Cerebras → OpenRouter → OpenAI, with automatic fallback on 429/5xx and retired models (a free Groq or Gemini key is enough; OpenAI is optional)
 - API: Node.js + TypeScript + Express
 - Payment: PayPal Orders API + webhooks
 - Client: Flutter app for chat and checkout

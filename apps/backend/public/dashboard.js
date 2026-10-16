@@ -109,6 +109,16 @@
     return span;
   }
 
+  // `violatedRules` is an array (an object), so AG Grid needs a valueFormatter
+  // for sorting/filtering/export — otherwise it logs error #48.
+  function violationsFormatter(params) {
+    var violations = params.value || [];
+    if (!violations.length) return '—';
+    return violations
+      .map(function (v) { return v.type || 'UNKNOWN'; })
+      .join(', ');
+  }
+
   function currencyFormatter(params) {
     return formatMoney(params.value, params.data && params.data.currency);
   }
@@ -303,7 +313,7 @@
     { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, filter: 'agTextColumnFilter', minWidth: 180 },
     { headerName: 'Amount', field: 'amountMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
     { headerName: 'Reason', field: 'reason', filter: 'agTextColumnFilter', minWidth: 220 },
-    { headerName: 'Violations', field: 'violatedRules', cellRenderer: violationsRenderer, filter: false, minWidth: 180 }
+    { headerName: 'Violations', field: 'violatedRules', cellRenderer: violationsRenderer, valueFormatter: violationsFormatter, filter: false, minWidth: 180 }
   ];
 
   var defaultColDef = {
@@ -312,7 +322,6 @@
     sortable: true,
     resizable: true,
     filter: true,
-    enablePinning: true,
     enableCellChangeFlash: true
   };
 

@@ -27,7 +27,7 @@ npm run dev            # then open http://localhost:3000
 
 You can browse the 25-item menu, build a cart, watch the **server-side policy
 meter**, and open the **Agent Control Center** (`/dashboard.html`) with no
-OpenAI or PayPal credentials — only a live PayPal sandbox payment needs keys.
+AI or PayPal credentials — only a live PayPal sandbox payment needs keys.
 See [Try it in your browser](#try-it-in-your-browser--no-emulator-needed)
 below for the scenario table.
 
@@ -43,8 +43,11 @@ Shoppers should be able to describe an outcome instead of navigating filters
 and building every cart by hand. AI Café demonstrates that experience without
 giving an AI agent authority over money:
 
-1. OpenAI interprets a natural-language shopping request and calls
-   catalog-search and cart-preparation tools.
+1. An OpenAI-compatible model interprets a natural-language shopping request
+   and calls catalog-search and cart-preparation tools. The provider chain is
+   **Gemini → Groq → Cerebras → OpenRouter → OpenAI** — a free Groq or Gemini
+   key is enough, and OpenAI is optional (see
+   [AI provider setup](#ai-provider-setup)).
 2. The backend—not the model or the app—selects prices and validates quantities.
 3. The shopper reviews the cart and approves the order on PayPal sandbox.
 4. Only then can the backend capture payment and reconcile the order.
@@ -56,8 +59,11 @@ The AI has no PayPal tool, credential, or payment endpoint access.
 The backend serves a responsive web storefront, so the full flow runs with only Node.js:
 
 ```bash
-cd apps/backend && npm install && cp .env.example .env   # add OPENAI_API_KEY + PayPal sandbox keys
-npm run dev                                              # open http://localhost:3000
+git clone https://github.com/oemeraydemir/paypal-commerce-agent.git
+cd paypal-commerce-agent/apps/backend
+npm install
+cp .env.example .env    # then add ONE free AI key (Groq or Gemini); PayPal keys optional
+npm run dev             # open http://localhost:3000
 ```
 
 For local browser runs set `PAYPAL_RETURN_URL=http://localhost:3000/api/checkout/return` and
@@ -72,7 +78,7 @@ Every cart change calls `POST /api/policy/preview`, which runs the **same** vali
 or audit event). The page shows a meter against the EUR 20 maximum with the EUR 10 approval
 threshold marked, plus a per-rule checklist (per-purchase limit, approval threshold, daily budget,
 blocked attributes, approved merchant). The UI only mirrors the server's answer; `/orders/create`
-re-evaluates and remains the sole authority. The "Try a scenario" buttons work without OpenAI or
+re-evaluates and remains the sole authority. The "Try a scenario" buttons work without AI or
 PayPal credentials:
 
 | Scenario | Cart | Server decision |
@@ -85,6 +91,34 @@ PayPal credentials:
 
 The catalog now has 25 products in 7 categories (breakfast, lunch, drinks, desserts, snacks, gifts,
 catering) with dietary labels; the web menu renders `GET /api/catalog` directly.
+
+## AI provider setup
+
+The agent talks to any **OpenAI-compatible** provider. You only need **one** key — a free
+Groq or Gemini key is enough — and OpenAI is optional and last in the chain.
+
+| Order | Provider | Key env var | Model env var (comma-separated, first = preferred) | Where to get a free key |
+|---|---|---|---|---|
+| 1 | Gemini | `GEMINI_API_KEY` | `GEMINI_MODEL` (default `gemini-3.6-flash,gemini-3.5-flash`) | https://aistudio.google.com/apikey |
+| 2 | Groq | `GROQ_API_KEY` | `GROQ_MODEL` (default `openai/gpt-oss-120b,llama-3.3-70b-versatile`) | https://console.groq.com/keys |
+| 3 | Cerebras | `CEREBRAS_API_KEY` | `CEREBRAS_MODEL` | https://cloud.cerebras.ai |
+| 4 | OpenRouter | `OPENROUTER_API_KEY` | `OPENROUTER_MODEL` | https://openrouter.ai/keys |
+| 5 | OpenAI | `OPENAI_API_KEY` | `OPENAI_MODEL` (default `gpt-4o-mini`) | https://platform.openai.com/api-keys |
+
+- A provider is **active only when its key is set**; the attempt order is controlled by
+  `AI_PROVIDER_ORDER` (default `gemini,groq,cerebras,openrouter,openai`).
+- Each `*_MODEL` accepts a **comma-separated list**. If a model has been retired (HTTP 404) the
+  next model of the same provider is tried first; a model that 404s is skipped for the life of the
+  process, and a provider is disabled only once all of its models are gone.
+- A provider that returns 429/5xx/timeout is cooled down and the next provider is tried. When every
+  provider is exhausted the API returns **503 `AI_UNAVAILABLE`** ("AI is temporarily at capacity…")
+  instead of a generic 500.
+- `npm run ai:check` prints a PASS/FAIL table per provider (with the `/models` ids and which
+  configured model was actually used) and **never prints keys**.
+
+**Never commit keys.** Put them in `apps/backend/.env` locally (git-ignored) and in the host's
+environment-variable panel in production (e.g. Render). `.env.example` and `render.yaml` list the
+variable **names** only.
 
 ## Ops Copilot: a second, read-only PayPal + AI integration
 
@@ -114,8 +148,8 @@ sandbox-only.
   PayPal approval/return flow. Shoppers can save dietary preferences and a
   cart budget on-device; the backend applies these as constraints to AI
   discovery and validates every AI-prepared cart against them.
-- Node.js, TypeScript, and Express API using OpenAI function calling and the
-  PayPal Orders API in **sandbox only**.
+- Node.js, TypeScript, and Express API using OpenAI-compatible function
+  calling and the PayPal Orders API in **sandbox only**.
 - Authoritative catalog pricing, order idempotency, webhook verification, and
   clear separation between AI cart preparation and human-authorized payment.
 - Public, read-only operations dashboard built with AG Grid.
@@ -133,7 +167,8 @@ cross-contamination guarantee.
 - Flutter SDK and Android Studio with an Android emulator (or an iOS Simulator
   on macOS).
 - Node.js 20 or newer.
-- An OpenAI API key for live AI requests.
+- At least one AI provider key for live AI requests — a free Groq or Gemini key
+  is enough, and OpenAI is optional (see [AI provider setup](#ai-provider-setup)).
 - PayPal Developer account sandbox REST app credentials and a sandbox buyer
   account for the complete payment demo. No live credentials are supported.
 
@@ -152,7 +187,8 @@ Open PowerShell in the repository root.
 2. Open `apps/backend/.env` locally and set:
 
    ```dotenv
-   OPENAI_API_KEY=your-openai-api-key
+   # ONE free AI key is enough (Gemini or Groq); OpenAI is optional.
+   GEMINI_API_KEY=your-gemini-key        # or: GROQ_API_KEY=your-groq-key
    PAYPAL_ENABLED=true
    PAYPAL_ENV=sandbox
    PAYPAL_CLIENT_ID=your-paypal-sandbox-client-id
@@ -162,7 +198,9 @@ Open PowerShell in the repository root.
    ```
 
    Get PayPal credentials and a buyer account from the PayPal Developer
-   Dashboard. Never put API keys in the Flutter app or commit `.env`.
+   Dashboard, and a free AI key from
+   [AI provider setup](#ai-provider-setup). Never put API keys in the Flutter
+   app or commit `.env`.
 
 3. Start the API in this terminal:
 
@@ -220,7 +258,7 @@ and AI services and do not charge or call those providers.
 
 | Tool | How it is used |
 | ---- | -------------- |
-| OpenAI-compatible LLM (Primary OpenAI with automatic, seamless fallback to free providers Groq/Gemini on 429/5xx errors) | Interprets shopping intent and invokes restricted catalog/cart tools |
+| OpenAI-compatible LLM chain (Gemini → Groq → Cerebras → OpenRouter → OpenAI; automatic fallback, a free key is enough) | Interprets shopping intent and invokes restricted catalog/cart tools |
 | PayPal Orders API | Creates and captures buyer-approved sandbox payments |
 | AG Grid | Displays live order and payment metrics in the read-only dashboard |
 | Flutter | Builds the shopper's Android/iOS application |
