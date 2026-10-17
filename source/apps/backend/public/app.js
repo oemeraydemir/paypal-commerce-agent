@@ -176,12 +176,13 @@
     var thinking = $('log').lastChild;
     api('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message: text, preferences: prefs() }) }).then(function (r) {
       thinking.remove(); say('a', r.response || '(no answer)');
+      if (r.mode === 'rule-based') { say('s', 'Rule-based planner (no AI) \u2014 the cart below is still priced and checked by the server.'); }
       if (r.preparedCart && r.preparedCart.items) {
         cart = {}; r.preparedCart.items.forEach(function (i) { cart[i.productId] = i.quantity; });
         save(CKEY, cart); showPolicy(r.preparedCart);
       }
     }).catch(function (e) {
-      thinking.remove(); say('s', e.status === 503 ? 'The AI is not configured on this server (OPENAI_API_KEY missing). You can still use the menu.' : 'Error: ' + e.message);
+      thinking.remove(); say('s', e.status === 503 ? (e.body && e.body.details && e.body.details.code === 'AI_UNAVAILABLE' ? 'The AI is at capacity right now. Try again in a minute, or use the menu.' : 'The AI is not configured on this server (no AI provider key). You can still use the menu.') : 'Error: ' + e.message);
     }).then(function () { busy = false; $('send').disabled = false; renderCart(); });
   }
 

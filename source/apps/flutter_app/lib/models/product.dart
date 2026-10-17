@@ -28,16 +28,18 @@ class Product {
     required this.available,
   });
 
+  /// Tolerant of missing/empty fields so a partial catalog entry does not
+  /// crash the whole menu.
   factory Product.fromJson(Map<String, dynamic> json) => Product(
-    id: json['id'] as String,
-    name: json['name'] as String,
-    description: json['description'] as String,
-    priceMinor: json['priceMinor'] as int,
-    currency: json['currency'] as String,
-    category: json['category'] as String,
-    tags: List<String>.from(json['tags'] as List? ?? const <String>[]),
-    dietary: List<String>.from(json['dietary'] as List? ?? const <String>[]),
-    occasion: List<String>.from(json['occasion'] as List? ?? const <String>[]),
+    id: json['id'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    description: json['description'] as String? ?? '',
+    priceMinor: (json['priceMinor'] as num?)?.toInt() ?? 0,
+    currency: json['currency'] as String? ?? 'EUR',
+    category: json['category'] as String? ?? '',
+    tags: _stringList(json['tags']),
+    dietary: _stringList(json['dietary']),
+    occasion: _stringList(json['occasion']),
     available: json['available'] as bool? ?? true,
   );
 
@@ -45,3 +47,6 @@ class Product {
 
   String get priceFormatted => '€${price.toStringAsFixed(2)}';
 }
+
+List<String> _stringList(Object? value) =>
+    value is List ? value.whereType<String>().toList() : const <String>[];

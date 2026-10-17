@@ -134,3 +134,80 @@ describe('Sprint 6 dashboard and orders API', () => {
     expect(response.headers.location).toBe('/dashboard.html');
   });
 });
+
+describe('Sprint dashboard accessibility markers', () => {
+  test('dashboard.html exposes an accessible modal dialog, focus styles and live regions', async () => {
+    const res = await request(app).get('/dashboard.html');
+    expect(res.status).toBe(200);
+    const t = res.text;
+
+    // Detail panel is a properly labelled modal dialog.
+    expect(t).toContain('id="eventModal"');
+    expect(t).toContain('role="dialog"');
+    expect(t).toContain('aria-modal="true"');
+    expect(t).toContain('aria-labelledby="sideTitle"');
+    expect(t).toContain('tabindex="-1"');
+
+    // Visible focus indicator for keyboard users.
+    expect(t).toContain(':focus-visible');
+
+    // Per-grid polite status + assertive error live regions.
+    expect(t).toContain('id="ordersStatus"');
+    expect(t).toContain('role="status"');
+    expect(t).toContain('aria-live="polite"');
+    expect(t).toContain('id="ordersError"');
+    expect(t).toContain('role="alert"');
+
+    // Dark-mode badge colours overridden so they meet contrast on the dark panel.
+    expect(t).toContain('body.dark .badge-allow');
+
+    // Light-theme success/warning darkened to pass WCAG AA for the small badge text.
+    expect(t).toContain('--success: #15803d');
+    expect(t).toContain('--warning: #b45309');
+  });
+
+  test('dashboard.js wires keyboard + screen-reader accessibility into AG Grid', async () => {
+    const js = await request(app).get('/dashboard.js');
+    expect(js.status).toBe(200);
+    const t = js.text;
+
+    // Keyboard activation of a focused cell opens the detail dialog.
+    expect(t).toContain('onCellKeyDown');
+    // Descriptive screen-reader labels for the semantic badge columns.
+    expect(t).toContain('getCellAria');
+    expect(t).toContain('originAria');
+    expect(t).toContain('decisionAria');
+    // Loading / empty / error states are handled and announced.
+    expect(t).toContain('showLoadingOverlay');
+    expect(t).toContain('showNoRowsOverlay');
+    expect(t).toContain('hideOverlay');
+    expect(t).toContain('setGridError');
+    // Focus is moved into the dialog and restored on close (Escape).
+    expect(t).toContain('requestAnimationFrame');
+    expect(t).toContain('trapPanelKeys');
+    expect(t).toContain("e.key === 'Escape'");
+    // AG Grid's documented screen-reader DOM-order options are enabled.
+    expect(t).toContain('ensureDomOrder: true');
+    expect(t).toContain('suppressGroupRowsSticky: true');
+    // No new grid library was introduced — AG Grid remains the only one used.
+    expect(t).toContain('agGrid.createGrid');
+  });
+
+  test('grid containers carry no ARIA role (AG Grid owns grid/treegrid) and are named via heading', async () => {
+    const html = (await request(app).get('/dashboard.html')).text;
+    const js = (await request(app).get('/dashboard.js')).text;
+
+    // A hand-written role="grid" would nest inside AG Grid's own root
+    // (role="grid", or role="treegrid" while rows are grouped).
+    expect(html).not.toMatch(/role="(tree)?grid"/);
+    expect(html).toMatch(/<div id="ordersGrid"><\/div>/);
+    expect(html).toMatch(/<div id="eventsGrid"><\/div>/);
+
+    // The accessible name comes from the visible headings, attached in JS to AG Grid's real root.
+    expect(html).toContain('id="ordersHeading"');
+    expect(html).toContain('id="eventsHeading"');
+    expect(js).toContain("labelGridRoot('ordersGrid', 'ordersHeading')");
+    expect(js).toContain("labelGridRoot('eventsGrid', 'eventsHeading')");
+    expect(js).toContain("setAttribute('aria-labelledby', headingId)");
+  });
+});

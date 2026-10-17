@@ -11,14 +11,14 @@ Bu runbook, ajanın yapamadığı (hesap/secret/gizli anahtar/hardware gerektire
 
 | Araç | Ne yapar | Nerede |
 |---|---|---|
-| `npm test` | Tam backend test paketi (normal ortamda 143/143) | `apps/backend` |
-| `npm run e2e:smoke` | Yerel uçlar smoke testi (7/7) — ✅ doğrulandı | `apps/backend` |
-| `npm run verify:deployment <url>` | Canlı deploy'ı 8 maddede doğrular | `apps/backend` |
-| `npm run e2e:sandbox <url>` | GERÇEK AI→policy→PayPal→capture akışını sürer | `apps/backend` |
-| `npm run register-webhook <url>` | PayPal webhook kaydı → `PAYPAL_WEBHOOK_ID` | `apps/backend` |
+| `npm test` | Tam backend test paketi (normal ortamda 143/143) | `source/apps/backend` |
+| `npm run e2e:smoke` | Yerel uçlar smoke testi (7/7) — ✅ doğrulandı | `source/apps/backend` |
+| `npm run verify:deployment <url>` | Canlı deploy'ı 8 maddede doğrular | `source/apps/backend` |
+| `npm run e2e:sandbox <url>` | GERÇEK AI→policy→PayPal→capture akışını sürer | `source/apps/backend` |
+| `npm run register-webhook <url>` | PayPal webhook kaydı → `PAYPAL_WEBHOOK_ID` | `source/apps/backend` |
 | `verify.sh` | Tek komutla tüm yerel doğrulama | repo kökü |
 | `.github/workflows/ci.yml` | CI'da gerçek 143/143 + build artifact kontrolü | repo kökü |
-| `.env.render.example` | Render env şablonu (secret yok) | `apps/backend` |
+| `.env.render.example` | Render env şablonu (secret yok) | `source/apps/backend` |
 
 **S11 kapanışında düzeltilen 2 gerçek deployment blocker'ı (commit `d613f34`):**
 1. `package.json` `main`/`start` artık `dist/src/server.js` (önce `dist/server.js` → Render'da MODULE_NOT_FOUND).
@@ -38,7 +38,7 @@ git show --stat HEAD        # diff özeti
 
 **Diff'i incele (istediğin gibi):**
 ```bash
-git show HEAD -- apps/backend/package.json
+git show HEAD -- source/apps/backend/package.json
 ```
 Beklenen çıktı (yalnızca 3 satır değişir):
 ```diff
@@ -62,9 +62,9 @@ git push -u origin fix/render-deployment
 ## Bölüm 2 — Render'a deploy 🧑
 
 ### 2.1 Render servisi oluştur
-1. https://dashboard.render.com → **New** → **Blueprint** (repo'da `apps/backend/render.yaml` var).
+1. https://dashboard.render.com → **New** → **Blueprint** (repo'da `source/apps/backend/render.yaml` var).
 2. Repo'yu bağla; Render `render.yaml`'ı okuyup servisi kurar:
-   - `rootDir: apps/backend`, `buildCommand: npm install && npm run build`, `startCommand: npm start`
+   - `rootDir: source/apps/backend`, `buildCommand: npm install && npm run build`, `startCommand: npm start`
    - `NODE_ENV=production`, `PORT=10000`, `PAYPAL_ENABLED=true`, `PAYPAL_ENV=sandbox`
 3. **PayPal sandbox credentials** (Developer Dashboard → Sandbox → Apps & Credentials):
    - `PAYPAL_CLIENT_ID` → **secret olarak gir**
@@ -81,7 +81,7 @@ git push -u origin fix/render-deployment
 
 ### 2.2 Deploy'u doğrula ✅ (script hazır)
 ```bash
-cd apps/backend
+cd source/apps/backend
 npm run verify:deployment https://<your-service>.onrender.com
 ```
 Beklenen: **8/8 PASS** ve `health` satırında `ai.enabled=true paypal.enabled=true`.
@@ -103,7 +103,7 @@ curl -s https://<your-service>.onrender.com/api/webhooks/health   # webhookEnabl
 
 **Bölüm 3a — otomatik kısım** (AI + policy + order create + spent kuralı):
 ```bash
-cd apps/backend
+cd source/apps/backend
 npm run e2e:sandbox https://<your-service>.onrender.com
 ```
 Script sırayla şunu yapar ve **her adımı ekrana yazar**:
@@ -169,7 +169,7 @@ Script sırayla şunu yapar ve **her adımı ekrana yazar**:
 
 **143/143'ü almak için (senin makinen veya CI):**
 ```bash
-cd apps/backend
+cd source/apps/backend
 npm ci
 npx tsc --noEmit -p tsconfig.json
 npm test          # beklenen: Tests 143 passed / 143 total

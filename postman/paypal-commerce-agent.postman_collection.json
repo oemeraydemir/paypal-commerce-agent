@@ -7,17 +7,59 @@
   "auth": {
     "type": "bearer",
     "bearer": [
-      { "key": "token", "value": "{{sessionToken}}", "type": "string" }
+      {
+        "key": "token",
+        "value": "{{sessionToken}}",
+        "type": "string"
+      }
     ]
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:3000", "type": "string" },
-    { "key": "sessionId", "value": "", "type": "string" },
-    { "key": "sessionToken", "value": "", "type": "string" },
-    { "key": "orderId", "value": "", "type": "string" },
-    { "key": "paypalOrderId", "value": "", "type": "string" },
-    { "key": "opsKey", "value": "", "type": "string" },
-    { "key": "checkoutToken", "value": "PAYID-EXAMPLE", "type": "string" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "sessionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "sessionToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "orderId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "paypalOrderId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "opsKey",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "checkoutToken",
+      "value": "PAYID-EXAMPLE",
+      "type": "string"
+    },
+    {
+      "key": "mcpSessionId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "mcpOrderId",
+      "value": "",
+      "type": "string"
+    }
   ],
   "item": [
     {
@@ -49,7 +91,16 @@
           "request": {
             "method": "POST",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/sessions", "host": ["{{baseUrl}}"], "path": ["api", "sessions"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions"
+              ]
+            },
             "description": "Mint a server-side session. Rate-limited per IP (30/hour on shared hosts) — reuse the cached token across a run."
           },
           "response": []
@@ -59,7 +110,17 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/sessions/current", "host": ["{{baseUrl}}"], "path": ["api", "sessions", "current"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/sessions/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "sessions",
+                "current"
+              ]
+            },
             "description": "Logout / reset the demo. Clears AI-prepared cart + conversation."
           },
           "response": []
@@ -87,7 +148,16 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/health", "host": ["{{baseUrl}}"], "path": ["api", "health"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "health"
+              ]
+            }
           },
           "response": []
         },
@@ -96,7 +166,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/webhooks/health", "host": ["{{baseUrl}}"], "path": ["api", "webhooks", "health"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/webhooks/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "webhooks",
+                "health"
+              ]
+            },
             "description": "Liveness for the PayPal webhook receiver (signature-verified)."
           },
           "response": []
@@ -119,7 +199,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/ops/status", "host": ["{{baseUrl}}"], "path": ["api", "ops", "status"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ops/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ops",
+                "status"
+              ]
+            },
             "description": "Shows the 8 read-only PayPal tools + 3 internal audit tools the Ops Copilot may use."
           },
           "response": []
@@ -142,14 +232,30 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-Ops-Key", "value": "{{opsKey}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Ops-Key",
+                "value": "{{opsKey}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"question\": \"How many orders were blocked by policy today, and what was the total value of approved orders?\"\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/ops/ask", "host": ["{{baseUrl}}"], "path": ["api", "ops", "ask"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ops/ask",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ops",
+                "ask"
+              ]
+            },
             "description": "Merchant-facing, READ-ONLY copilot. Uses PayPal Agent Toolkit (read permissions only). Returns 401 if X-Ops-Key is missing, 503 if disabled. Set `opsKey` in the environment to exercise it."
           },
           "response": []
@@ -177,7 +283,16 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/catalog", "host": ["{{baseUrl}}"], "path": ["api", "catalog"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "catalog"
+              ]
+            }
           },
           "response": []
         },
@@ -186,7 +301,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/catalog/coffee", "host": ["{{baseUrl}}"], "path": ["api", "catalog", "coffee"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/catalog/coffee",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "catalog",
+                "coffee"
+              ]
+            }
           },
           "response": []
         },
@@ -208,12 +333,27 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/catalog/search?category=drinks&maxPriceMinor=500&dietary=vegan",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "catalog", "search"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "catalog",
+                "search"
+              ],
               "query": [
-                { "key": "category", "value": "drinks" },
-                { "key": "maxPriceMinor", "value": "500" },
-                { "key": "dietary", "value": "vegan" }
+                {
+                  "key": "category",
+                  "value": "drinks"
+                },
+                {
+                  "key": "maxPriceMinor",
+                  "value": "500"
+                },
+                {
+                  "key": "dietary",
+                  "value": "vegan"
+                }
               ]
             },
             "description": "Server-side filtering: category, max price (minor units), dietary tags, occasion, matchMode=any|all."
@@ -249,12 +389,27 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"message\": \"I'm vegetarian and have €15. Surprise me with a coffee and a snack.\",\n  \"preferences\": { \"dietary\": [\"vegetarian\"], \"maxBudgetMinor\": 1500 }\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/ai/chat", "host": ["{{baseUrl}}"], "path": ["api", "ai", "chat"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/chat",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ai",
+                "chat"
+              ]
+            },
             "description": "Provider-agnostic AI (Gemini→Groq→Cerebras→OpenRouter→OpenAI). Returns a preparedCart and checkoutReady. Requires an AI_API_KEY on the server; otherwise 503."
           },
           "response": []
@@ -264,7 +419,18 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/ai/cart/{{sessionId}}", "host": ["{{baseUrl}}"], "path": ["api", "ai", "cart", "{{sessionId}}"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/cart/{{sessionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ai",
+                "cart",
+                "{{sessionId}}"
+              ]
+            },
             "description": "Discards the AI-prepared cart for THIS session only (ownership enforced)."
           },
           "response": []
@@ -274,7 +440,18 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/ai/chat/{{sessionId}}", "host": ["{{baseUrl}}"], "path": ["api", "ai", "chat", "{{sessionId}}"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/ai/chat/{{sessionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ai",
+                "chat",
+                "{{sessionId}}"
+              ]
+            },
             "description": "Clears conversation history for THIS session only."
           },
           "response": []
@@ -302,12 +479,27 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"items\": [\n    { \"productId\": \"coffee\", \"quantity\": 1 },\n    { \"productId\": \"orange_juice\", \"quantity\": 1 },\n    { \"productId\": \"croissant\", \"quantity\": 1 }\n  ]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/policy/preview", "host": ["{{baseUrl}}"], "path": ["api", "policy", "preview"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/policy/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "preview"
+              ]
+            },
             "description": "930 minor = €9.30 → under the €10 confirmation threshold → AUTO_ALLOW. Side-effect free advisory UX."
           },
           "response": []
@@ -316,12 +508,27 @@
           "name": "Policy preview — REQUIRE_CONFIRMATION",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"items\": [\n    { \"productId\": \"latte\", \"quantity\": 1 },\n    { \"productId\": \"pancakes\", \"quantity\": 1 },\n    { \"productId\": \"coffee\", \"quantity\": 1 }\n  ]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/policy/preview", "host": ["{{baseUrl}}"], "path": ["api", "policy", "preview"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/policy/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "preview"
+              ]
+            },
             "description": "1650 minor = €16.50 → above the €10 threshold → REQUIRE_CONFIRMATION (human must approve the payment)."
           },
           "response": []
@@ -330,12 +537,27 @@
           "name": "Policy preview — BLOCK",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"items\": [\n    { \"productId\": \"premium_cake\", \"quantity\": 2 }\n  ]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/policy/preview", "host": ["{{baseUrl}}"], "path": ["api", "policy", "preview"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/policy/preview",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "policy",
+                "preview"
+              ]
+            },
             "description": "9000 minor = €90.00 → above the €20 per-purchase limit → BLOCK (never reaches PayPal)."
           },
           "response": []
@@ -369,14 +591,30 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"items\": [\n    { \"productId\": \"coffee\", \"quantity\": 1 },\n    { \"productId\": \"orange_juice\", \"quantity\": 1 },\n    { \"productId\": \"croissant\", \"quantity\": 1 }\n  ]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/orders/create", "host": ["{{baseUrl}}"], "path": ["api", "orders", "create"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "create"
+              ]
+            },
             "description": "€9.30 cart → AUTO_ALLOW. Returns orderId, paypalOrderId and an approvalUrl. Chains the orderId into Capture/Cancel. Requires PayPal sandbox creds; else 503."
           },
           "response": []
@@ -397,14 +635,30 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
             ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"items\": [\n    { \"productId\": \"premium_cake\", \"quantity\": 2 }\n  ]\n}"
             },
-            "url": { "raw": "{{baseUrl}}/api/orders/create", "host": ["{{baseUrl}}"], "path": ["api", "orders", "create"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "create"
+              ]
+            },
             "description": "€90.00 cart exceeds the €20 per-purchase limit → server returns 403 BLOCK before any PayPal order is created. Demonstrates the human-in-the-loop guardrail."
           },
           "response": []
@@ -424,9 +678,28 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{}" },
-            "url": { "raw": "{{baseUrl}}/api/orders/{{orderId}}/capture", "host": ["{{baseUrl}}"], "path": ["api", "orders", "{{orderId}}", "capture"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/capture",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "capture"
+              ]
+            },
             "description": "Captures the PayPal order (after the human approves at the approvalUrl). Idempotent; 409 if already captured."
           },
           "response": []
@@ -435,9 +708,28 @@
           "name": "Cancel order",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": { "mode": "raw", "raw": "{}" },
-            "url": { "raw": "{{baseUrl}}/api/orders/{{orderId}}/cancel", "host": ["{{baseUrl}}"], "path": ["api", "orders", "{{orderId}}", "cancel"] },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "cancel"
+              ]
+            },
             "description": "Buyer/app cancellation of a not-yet-captured checkout. Releases the daily-spend reservation after PayPal confirms nothing was captured."
           },
           "response": []
@@ -449,11 +741,22 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/orders?origin=AI_AGENT&limit=50",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "orders"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ],
               "query": [
-                { "key": "origin", "value": "AI_AGENT" },
-                { "key": "limit", "value": "50" }
+                {
+                  "key": "origin",
+                  "value": "AI_AGENT"
+                },
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
               ]
             },
             "description": "Public, read-only. Filters by origin (AI_AGENT|HUMAN) and status. Never exposes real PayPal ids."
@@ -465,7 +768,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/orders/stats", "host": ["{{baseUrl}}"], "path": ["api", "orders", "stats"] }
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "stats"
+              ]
+            }
           },
           "response": []
         }
@@ -481,9 +794,20 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/checkout/return?token={{checkoutToken}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "checkout", "return"],
-              "query": [{ "key": "token", "value": "{{checkoutToken}}" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "return"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{checkoutToken}}"
+                }
+              ]
             },
             "description": "PayPal bounces the shopper here after approving. On mobile it deep-links back into the app; in a browser it returns to the web storefront. Does NOT capture payment itself."
           },
@@ -496,9 +820,20 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/checkout/cancel?token={{checkoutToken}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "checkout", "cancel"],
-              "query": [{ "key": "token", "value": "{{checkoutToken}}" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "checkout",
+                "cancel"
+              ],
+              "query": [
+                {
+                  "key": "token",
+                  "value": "{{checkoutToken}}"
+                }
+              ]
             }
           },
           "response": []
@@ -529,11 +864,22 @@
             "header": [],
             "url": {
               "raw": "{{baseUrl}}/api/policy-events?limit=100&decision=BLOCK",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "policy-events"],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "policy-events"
+              ],
               "query": [
-                { "key": "limit", "value": "100" },
-                { "key": "decision", "value": "BLOCK" }
+                {
+                  "key": "limit",
+                  "value": "100"
+                },
+                {
+                  "key": "decision",
+                  "value": "BLOCK"
+                }
               ]
             },
             "description": "Immutable audit trail of every policy decision. Filter by decision (AUTO_ALLOW|REQUIRE_CONFIRMATION|BLOCK) and limit (1–100)."
@@ -545,7 +891,17 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/policy-events/stats", "host": ["{{baseUrl}}"], "path": ["api", "policy-events", "stats"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/policy-events/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "policy-events",
+                "stats"
+              ]
+            },
             "description": "Counts of allowed/blocked decisions and confirmed spend (deduped by paid order)."
           },
           "response": []
@@ -555,8 +911,418 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": { "raw": "{{baseUrl}}/api/dashboard", "host": ["{{baseUrl}}"], "path": ["api", "dashboard"] },
+            "url": {
+              "raw": "{{baseUrl}}/api/dashboard",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "dashboard"
+              ]
+            },
             "description": "Redirects to /dashboard.html — the AG Grid control center (orders grid + policy-events grid + KPI cards + live 5s refresh)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "8 · MCP (Agentic Commerce)",
+      "description": "Model Context Protocol endpoint: lets an external AI agent shop at AI Café and start a PayPal checkout that only a human can approve. Run **Initialize** first.",
+      "item": [
+        {
+          "name": "Initialize",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));",
+                  "const sid = pm.response.headers.get('Mcp-Session-Id');",
+                  "pm.test('session header issued', () => pm.expect(sid).to.match(/^mcp_/));",
+                  "pm.collectionVariables.set('mcpSessionId', sid);",
+                  "pm.test('tools capability', () => pm.expect(pm.response.json().result.capabilities.tools).to.exist);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 1,\n  \"method\": \"initialize\",\n  \"params\": {\n    \"protocolVersion\": \"2025-06-18\",\n    \"capabilities\": {},\n    \"clientInfo\": {\n      \"name\": \"postman\",\n      \"version\": \"1.0\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/mcp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mcp"
+              ]
+            },
+            "description": "Starts an MCP session. The `Mcp-Session-Id` response header is stored in `mcpSessionId` for the next requests."
+          },
+          "response": []
+        },
+        {
+          "name": "List tools",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const names = pm.response.json().result.tools.map(t => t.name);",
+                  "pm.test('exactly 5 tools', () => pm.expect(names).to.have.members(['search_menu','prepare_cart','check_policy','start_checkout','get_order_status']));",
+                  "pm.test('no payment tool exists', () => pm.expect(names.join(' ')).to.not.match(/capture|pay_|refund|charge/));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Mcp-Session-Id",
+                "value": "{{mcpSessionId}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 2,\n  \"method\": \"tools/list\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/mcp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mcp"
+              ]
+            },
+            "description": "There is deliberately no capture / pay / refund tool: an agent can only start a checkout that a human approves."
+          },
+          "response": []
+        },
+        {
+          "name": "search_menu (vegetarian breakfast)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().result;",
+                  "pm.test('products returned', () => pm.expect(r.structuredContent.count).to.be.above(0));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Mcp-Session-Id",
+                "value": "{{mcpSessionId}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 3,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"search_menu\",\n    \"arguments\": {\n      \"query\": \"breakfast\",\n      \"dietary\": [\n        \"vegetarian\"\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/mcp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mcp"
+              ]
+            },
+            "description": "Server-owned prices in EUR minor units."
+          },
+          "response": []
+        },
+        {
+          "name": "prepare_cart (over the limit → BLOCK)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().result.structuredContent;",
+                  "pm.test('BLOCK decision', () => pm.expect(r.policyDecision).to.eql('BLOCK'));",
+                  "pm.test('agent told to shrink the cart', () => pm.expect(r.next_step).to.match(/Blocked/));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Mcp-Session-Id",
+                "value": "{{mcpSessionId}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 4,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"prepare_cart\",\n    \"arguments\": {\n      \"items\": [\n        {\n          \"productId\": \"veg_breakfast\",\n          \"quantity\": 3\n        }\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/mcp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mcp"
+              ]
+            },
+            "description": "EUR 30 exceeds the EUR 20 per-purchase limit."
+          },
+          "response": []
+        },
+        {
+          "name": "prepare_cart (EUR 13 → REQUIRE_CONFIRMATION)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().result.structuredContent;",
+                  "pm.test('server total EUR 13', () => pm.expect(r.totalMinor).to.eql(1300));",
+                  "pm.test('needs human approval', () => pm.expect(r.policyDecision).to.eql('REQUIRE_CONFIRMATION'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Mcp-Session-Id",
+                "value": "{{mcpSessionId}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 5,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"prepare_cart\",\n    \"arguments\": {\n      \"items\": [\n        {\n          \"productId\": \"veg_breakfast\",\n          \"quantity\": 1\n        },\n        {\n          \"productId\": \"coffee\",\n          \"quantity\": 1\n        }\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/mcp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mcp"
+              ]
+            },
+            "description": "Prices come from the catalog, never from the agent."
+          },
+          "response": []
+        },
+        {
+          "name": "start_checkout (returns approvalUrl for a human)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json().result;",
+                  "if (res.isError) { pm.test('PayPal not configured here → clean refusal', () => pm.expect(res.structuredContent.error).to.be.a('string')); } else { pm.test('approval link for the human', () => pm.expect(res.structuredContent.approvalUrl).to.include('paypal'));",
+                  "pm.test('attributed to an AI agent', () => pm.expect(res.structuredContent.origin).to.eql('AI_AGENT'));",
+                  "pm.collectionVariables.set('mcpOrderId', res.structuredContent.orderId); }"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Mcp-Session-Id",
+                "value": "{{mcpSessionId}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 6,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"start_checkout\",\n    \"arguments\": {\n      \"items\": [\n        {\n          \"productId\": \"veg_breakfast\",\n          \"quantity\": 1\n        },\n        {\n          \"productId\": \"coffee\",\n          \"quantity\": 1\n        }\n      ]\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/mcp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mcp"
+              ]
+            },
+            "description": "Needs PayPal sandbox credentials on the server. The agent cannot capture; a human opens `approvalUrl`."
+          },
+          "response": []
+        },
+        {
+          "name": "get_order_status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Mcp-Session-Id",
+                "value": "{{mcpSessionId}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"jsonrpc\": \"2.0\",\n  \"id\": 7,\n  \"method\": \"tools/call\",\n  \"params\": {\n    \"name\": \"get_order_status\",\n    \"arguments\": {\n      \"orderId\": \"{{mcpOrderId}}\"\n    }\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/mcp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "mcp"
+              ]
+            },
+            "description": "Only orders created in this MCP session are visible."
           },
           "response": []
         }

@@ -286,6 +286,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? _PreparedCartCard(
                     cart: chat.lastPreparedCart!,
                     catalog: _catalog,
+                    mode: chat.lastPreparedCartMode,
                   )
                 : const SizedBox.shrink(),
           ),
@@ -597,6 +598,26 @@ class _MessageBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Truthful label for the deterministic fallback: the backend's
+            // `mode` is "rule-based", so this reply is explicitly not AI.
+            if (msg.isRuleBased) ...[
+              Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.tertiaryContainer,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'Rule-based answer · no AI',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onTertiaryContainer,
+                  ),
+                ),
+              ),
+            ],
             Text(
               msg.text,
               style: TextStyle(
@@ -628,7 +649,14 @@ class _PreparedCartCard extends StatelessWidget {
   final PreparedCart cart;
   final List<Product> catalog;
 
-  const _PreparedCartCard({required this.cart, required this.catalog});
+  /// Backend mode of the reply that produced this cart (`ai` / `rule-based`).
+  final ChatMode? mode;
+
+  const _PreparedCartCard({
+    required this.cart,
+    required this.catalog,
+    this.mode,
+  });
 
   @override
   Widget build(BuildContext context) => Consumer<CheckoutProvider>(
@@ -654,7 +682,9 @@ class _PreparedCartCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'AI-prepared cart · your edits',
+                mode == ChatMode.ruleBased
+                    ? 'Rule-based cart (no AI) · your edits'
+                    : 'AI-prepared cart · your edits',
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               const SizedBox(height: 6),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_app/models/cart.dart';
@@ -25,8 +27,16 @@ class ChatProvider extends ChangeNotifier {
   PreparedCart? _lastPreparedCart;
   PreparedCart? get lastPreparedCart => _lastPreparedCart;
 
-  /// True when the AI has prepared a cart the user can check out.
-  bool get checkoutReady => _lastPreparedCart != null;
+  /// Backend mode associated with [lastPreparedCart] (`ai` / `rule-based`).
+  /// The UI uses this so a rule-based cart is never labelled "AI-prepared".
+  ChatMode? _lastPreparedCartMode;
+  ChatMode? get lastPreparedCartMode => _lastPreparedCartMode;
+
+  /// Server-authoritative readiness for the cart that was actually prepared.
+  bool _checkoutReady = false;
+
+  /// True only when the backend said the prepared cart is ready for checkout.
+  bool get checkoutReady => _checkoutReady && _lastPreparedCart != null;
 
   Future<void> sendMessage(
     String text, {
@@ -51,16 +61,34 @@ class ChatProvider extends ChangeNotifier {
         message: trimmed,
         preferences: preferences,
       );
+      final text = resp.response.trim().isEmpty
+          ? 'The assistant returned an empty response. Please try again.'
+          : resp.response;
       _messages.add(
         ChatMessage(
           role: ChatRole.assistant,
-          text: resp.response,
+          text: text,
+          timestamp: DateTime.now(),
+          mode: resp.mode,
+        ),
+      );
+      // Only a newly prepared cart replaces the current one, so a follow-up
+      // reply without a cart does not discard a still-valid cart. For that
+      // cart, the server's checkoutReady flag is authoritative.
+      if (resp.preparedCart != null) {
+        _lastPreparedCart = resp.preparedCart;
+        _lastPreparedCartMode = resp.mode;
+        _checkoutReady = resp.checkoutReady;
+      }
+    } on TimeoutException {
+      _error = 'The AI request timed out. Check your connection and try again.';
+      _messages.add(
+        ChatMessage(
+          role: ChatRole.assistant,
+          text: '⚠️ $_error',
           timestamp: DateTime.now(),
         ),
       );
-      if (resp.preparedCart != null) {
-        _lastPreparedCart = resp.preparedCart;
-      }
     } on ApiException catch (e) {
       _error = 'Chat error (${e.statusCode}): ${e.message}';
       _messages.add(
@@ -97,6 +125,8 @@ class ChatProvider extends ChangeNotifier {
     }
     _messages.clear();
     _lastPreparedCart = null;
+    _lastPreparedCartMode = null;
+    _checkoutReady = false;
     _error = null;
     notifyListeners();
   }
@@ -115,6 +145,8 @@ class ChatProvider extends ChangeNotifier {
     }
 
     _lastPreparedCart = null;
+    _lastPreparedCartMode = null;
+    _checkoutReady = false;
     _error = null;
     notifyListeners();
   }

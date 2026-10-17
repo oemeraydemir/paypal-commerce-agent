@@ -1,7 +1,7 @@
 {
   "name": "paypal-commerce-agent-backend",
   "version": "1.0.0",
-  "description": "PayPal Commerce Agent — Sprint 1 backend foundation + catalog (Node.js + TypeScript + Express)",
+  "description": "AI Caf\u00e9 backend \u2014 PayPal + AI agentic commerce (Express/TypeScript, MCP server, AG Grid dashboard)",
   "main": "dist/src/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
@@ -15,7 +15,8 @@
     "ai:check": "ts-node --transpile-only scripts/ai-provider-check.ts",
     "e2e:smoke": "ts-node --transpile-only scripts/e2e-smoke-test.ts",
     "e2e:sandbox": "ts-node --transpile-only scripts/e2e-sandbox-flow.ts",
-    "verify:deployment": "ts-node --transpile-only scripts/verify-deployment.ts"
+    "verify:deployment": "ts-node --transpile-only scripts/verify-deployment.ts",
+    "mcp:demo": "ts-node --transpile-only scripts/mcp-demo.ts"
   },
   "dependencies": {
     "@paypal/agent-toolkit": "^1.11.0",

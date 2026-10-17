@@ -4,21 +4,57 @@
     "title": "AI Café — PayPal Commerce Agent API",
     "version": "1.0.0",
     "description": "Agentic-commerce API for the PayPal AI Hackathon. A natural-language AI agent prepares a shopping cart, but the **server owns all prices** and a **human authorizes every PayPal payment** — the agent never touches money. A read-only PayPal Ops Copilot lets a merchant audit activity. This spec powers SDK generation (APIMatic) and the Postman collection.",
-    "license": { "name": "MIT", "url": "https://opensource.org/licenses/MIT" },
-    "contact": { "name": "AI Café team" }
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    },
+    "contact": {
+      "name": "AI Café team"
+    }
   },
   "servers": [
-    { "url": "https://paypal-commerce-agent.onrender.com", "description": "Hosted demo (Render)" },
-    { "url": "http://localhost:3000", "description": "Local dev" }
+    {
+      "url": "https://paypal-commerce-agent.onrender.com",
+      "description": "Hosted demo (Render)"
+    },
+    {
+      "url": "http://localhost:3000",
+      "description": "Local dev"
+    }
   ],
   "tags": [
-    { "name": "Sessions", "description": "Server-issued session identity" },
-    { "name": "Catalog", "description": "Product catalog (read-only)" },
-    { "name": "AI Agent", "description": "Natural-language cart builder" },
-    { "name": "Policy", "description": "Human-in-the-loop price & spend policy" },
-    { "name": "Orders", "description": "Order creation, capture, cancel (PayPal)" },
-    { "name": "Ops Copilot", "description": "Read-only merchant assistant (PayPal Agent Toolkit)" },
-    { "name": "Audit", "description": "Immutable policy-decision events" }
+    {
+      "name": "Sessions",
+      "description": "Server-issued session identity"
+    },
+    {
+      "name": "Catalog",
+      "description": "Product catalog (read-only)"
+    },
+    {
+      "name": "AI Agent",
+      "description": "Natural-language cart builder"
+    },
+    {
+      "name": "Policy",
+      "description": "Human-in-the-loop price & spend policy"
+    },
+    {
+      "name": "Orders",
+      "description": "Order creation, capture, cancel (PayPal)"
+    },
+    {
+      "name": "Ops Copilot",
+      "description": "Read-only merchant assistant (PayPal Agent Toolkit)"
+    },
+    {
+      "name": "Audit",
+      "description": "Immutable policy-decision events"
+    },
+    {
+      "name": "MCP (Agentic Commerce)",
+      "description": "Model Context Protocol server: lets any external AI agent shop at AI Café and start a PayPal checkout that only a human can approve"
+    }
   ],
   "components": {
     "securitySchemes": {
@@ -38,65 +74,157 @@
       "Error": {
         "type": "object",
         "properties": {
-          "error": { "type": "string" },
-          "message": { "type": "string" },
-          "code": { "type": "string" },
-          "policyDecision": { "type": "string", "enum": ["AUTO_ALLOW", "REQUIRE_CONFIRMATION", "BLOCK"] },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "policyDecision": {
+            "type": "string",
+            "enum": [
+              "AUTO_ALLOW",
+              "REQUIRE_CONFIRMATION",
+              "BLOCK"
+            ]
+          },
           "violations": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "type": { "type": "string" },
-                "rule": { "type": "string" },
-                "message": { "type": "string" }
+                "type": {
+                  "type": "string"
+                },
+                "rule": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
               }
             }
           },
-          "reason": { "type": "string" },
-          "suggestion": { "type": "string" }
+          "reason": {
+            "type": "string"
+          },
+          "suggestion": {
+            "type": "string"
+          }
         }
       },
       "IssuedSession": {
         "type": "object",
-        "required": ["sessionId", "sessionToken", "expiresAt"],
+        "required": [
+          "sessionId",
+          "sessionToken",
+          "expiresAt"
+        ],
         "properties": {
-          "sessionId": { "type": "string", "format": "uuid" },
-          "sessionToken": { "type": "string", "description": "Returned exactly once; present as Bearer token." },
-          "expiresAt": { "type": "string", "format": "date-time" }
+          "sessionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "sessionToken": {
+            "type": "string",
+            "description": "Returned exactly once; present as Bearer token."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "Product": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "name": { "type": "string" },
-          "description": { "type": "string" },
-          "priceMinor": { "type": "integer", "description": "Price in minor units (e.g. cents)." },
-          "currency": { "type": "string" },
-          "dietary": { "type": "array", "items": { "type": "string" }, "description": "e.g. vegan, vegetarian, gluten-free" },
-          "tags": { "type": "array", "items": { "type": "string" } },
-          "category": { "type": "string" },
-          "occasion": { "type": "array", "items": { "type": "string" } }
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "priceMinor": {
+            "type": "integer",
+            "description": "Price in minor units (e.g. cents)."
+          },
+          "currency": {
+            "type": "string"
+          },
+          "dietary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "e.g. vegan, vegetarian, gluten-free"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "type": "string"
+          },
+          "occasion": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "CatalogResponse": {
         "type": "object",
         "properties": {
-          "count": { "type": "integer" },
-          "products": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } }
+          "count": {
+            "type": "integer"
+          },
+          "products": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Product"
+            }
+          }
         }
       },
       "AIChatRequest": {
         "type": "object",
-        "required": ["message"],
+        "required": [
+          "message"
+        ],
         "properties": {
-          "message": { "type": "string", "minLength": 1 },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
           "preferences": {
             "type": "object",
             "properties": {
-              "dietary": { "type": "array", "items": { "type": "string", "enum": ["vegetarian", "vegan", "gluten-free"] }, "maxItems": 3 },
-              "maxBudgetMinor": { "type": "integer", "minimum": 100, "maximum": 10000 }
+              "dietary": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "vegetarian",
+                    "vegan",
+                    "gluten-free"
+                  ]
+                },
+                "maxItems": 3
+              },
+              "maxBudgetMinor": {
+                "type": "integer",
+                "minimum": 100,
+                "maximum": 10000
+              }
             }
           }
         }
@@ -104,448 +232,1536 @@
       "AIChatResponse": {
         "type": "object",
         "properties": {
-          "sessionId": { "type": "string" },
-          "response": { "type": "string" },
-          "preparedCart": { "type": "object", "nullable": true },
-          "checkoutReady": { "type": "boolean" },
-          "toolRounds": { "type": "integer" },
-          "messageCount": { "type": "integer" }
+          "sessionId": {
+            "type": "string"
+          },
+          "response": {
+            "type": "string"
+          },
+          "preparedCart": {
+            "type": "object",
+            "nullable": true
+          },
+          "checkoutReady": {
+            "type": "boolean"
+          },
+          "toolRounds": {
+            "type": "integer"
+          },
+          "messageCount": {
+            "type": "integer"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "ai",
+              "rule-based"
+            ],
+            "description": "\"ai\" when an LLM answered; \"rule-based\" when every AI provider was exhausted and the clearly-labelled non-AI Quick Planner answered. Rule-based carts are attributed to HUMAN, never AI_AGENT."
+          }
         }
       },
       "OrderItem": {
         "type": "object",
-        "required": ["productId", "quantity"],
+        "required": [
+          "productId",
+          "quantity"
+        ],
         "properties": {
-          "productId": { "type": "string" },
-          "quantity": { "type": "integer", "minimum": 1 }
+          "productId": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          }
         }
       },
       "CreateOrderRequest": {
         "type": "object",
-        "required": ["items"],
-        "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderItem" }, "minItems": 1 } }
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            },
+            "minItems": 1
+          }
+        }
       },
       "CreateOrderResponse": {
         "type": "object",
         "properties": {
-          "orderId": { "type": "string" },
-          "paypalOrderId": { "type": "string" },
-          "status": { "type": "string" },
-          "origin": { "type": "string", "enum": ["AI_AGENT", "HUMAN"] },
-          "totalMinor": { "type": "integer" },
-          "totalFormatted": { "type": "string" },
-          "currency": { "type": "string" },
-          "approvalUrl": { "type": "string", "format": "uri", "nullable": true }
+          "orderId": {
+            "type": "string"
+          },
+          "paypalOrderId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "AI_AGENT",
+              "HUMAN"
+            ]
+          },
+          "totalMinor": {
+            "type": "integer"
+          },
+          "totalFormatted": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "approvalUrl": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true
+          }
         }
       },
       "Order": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "sessionId": { "type": "string", "description": "Public, non-reversible ref." },
-          "status": { "type": "string" },
-          "origin": { "type": "string", "enum": ["AI_AGENT", "HUMAN"] },
-          "totalMinor": { "type": "integer" },
-          "totalFormatted": { "type": "string" },
-          "currency": { "type": "string" },
-          "itemCount": { "type": "integer" },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" },
-          "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderItem" } }
+          "id": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "Public, non-reversible ref."
+          },
+          "status": {
+            "type": "string"
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "AI_AGENT",
+              "HUMAN"
+            ]
+          },
+          "totalMinor": {
+            "type": "integer"
+          },
+          "totalFormatted": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "itemCount": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          }
         }
       },
       "OrdersListResponse": {
         "type": "object",
         "properties": {
-          "orders": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } },
-          "total": { "type": "integer" },
-          "returned": { "type": "integer" }
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "returned": {
+            "type": "integer"
+          }
         }
       },
       "OrdersStats": {
         "type": "object",
         "properties": {
-          "total": { "type": "integer" },
-          "aiAssisted": { "type": "integer" },
-          "aiAssistedPercentage": { "type": "number" },
-          "revenueMinor": { "type": "integer" },
-          "revenueFormatted": { "type": "string" }
+          "total": {
+            "type": "integer"
+          },
+          "aiAssisted": {
+            "type": "integer"
+          },
+          "aiAssistedPercentage": {
+            "type": "number"
+          },
+          "revenueMinor": {
+            "type": "integer"
+          },
+          "revenueFormatted": {
+            "type": "string"
+          }
         }
       },
       "PolicyCheck": {
         "type": "object",
         "properties": {
-          "rule": { "type": "string" },
-          "label": { "type": "string" },
-          "status": { "type": "string", "enum": ["pass", "confirm", "fail"] },
-          "detail": { "type": "string" }
+          "rule": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "confirm",
+              "fail"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
         }
       },
       "PolicyLimits": {
         "type": "object",
         "properties": {
-          "currency": { "type": "string" },
-          "maxPerPurchaseMinor": { "type": "integer" },
-          "confirmationThresholdMinor": { "type": "integer" },
-          "dailySpendLimitMinor": { "type": "integer" },
-          "dailySpentMinor": { "type": "integer" },
-          "dailyPendingMinor": { "type": "integer" },
-          "dailyRemainingMinor": { "type": "integer" },
-          "blockedDietaryAttributes": { "type": "array", "items": { "type": "string" } },
-          "policyEnabled": { "type": "boolean" }
+          "currency": {
+            "type": "string"
+          },
+          "maxPerPurchaseMinor": {
+            "type": "integer"
+          },
+          "confirmationThresholdMinor": {
+            "type": "integer"
+          },
+          "dailySpendLimitMinor": {
+            "type": "integer"
+          },
+          "dailySpentMinor": {
+            "type": "integer"
+          },
+          "dailyPendingMinor": {
+            "type": "integer"
+          },
+          "dailyRemainingMinor": {
+            "type": "integer"
+          },
+          "blockedDietaryAttributes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "policyEnabled": {
+            "type": "boolean"
+          }
         }
       },
       "PolicyPreviewRequest": {
         "type": "object",
-        "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderItem" } } }
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderItem"
+            }
+          }
+        }
       },
       "PolicyPreviewResponse": {
         "type": "object",
         "properties": {
-          "empty": { "type": "boolean" },
-          "decision": { "type": "string", "enum": ["AUTO_ALLOW", "REQUIRE_CONFIRMATION", "BLOCK", null] },
-          "reason": { "type": "string", "nullable": true },
-          "suggestion": { "type": "string", "nullable": true },
-          "requiresExplicitApproval": { "type": "boolean" },
-          "totalMinor": { "type": "integer" },
-          "totalFormatted": { "type": "string" },
-          "currency": { "type": "string" },
-          "checks": { "type": "array", "items": { "$ref": "#/components/schemas/PolicyCheck" } },
-          "violations": { "type": "array", "items": { "type": "object" } },
-          "limits": { "$ref": "#/components/schemas/PolicyLimits" },
-          "enforcedBy": { "type": "string" }
+          "empty": {
+            "type": "boolean"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "AUTO_ALLOW",
+              "REQUIRE_CONFIRMATION",
+              "BLOCK"
+            ],
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "suggestion": {
+            "type": "string",
+            "nullable": true
+          },
+          "requiresExplicitApproval": {
+            "type": "boolean"
+          },
+          "totalMinor": {
+            "type": "integer"
+          },
+          "totalFormatted": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyCheck"
+            }
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "limits": {
+            "$ref": "#/components/schemas/PolicyLimits"
+          },
+          "enforcedBy": {
+            "type": "string"
+          }
         }
       },
       "PolicyEvent": {
         "type": "object",
         "properties": {
-          "id": { "type": "string" },
-          "timestamp": { "type": "string", "format": "date-time" },
-          "sessionId": { "type": "string", "description": "Public, non-reversible ref." },
-          "cartId": { "type": "string" },
-          "orderId": { "type": "string", "nullable": true },
-          "agent": { "type": "string" },
-          "amountMinor": { "type": "integer" },
-          "amountFormatted": { "type": "string" },
-          "currency": { "type": "string" },
-          "decision": { "type": "string", "enum": ["AUTO_ALLOW", "REQUIRE_CONFIRMATION", "BLOCK"] },
-          "violatedRules": { "type": "array", "items": { "type": "object" } },
-          "reason": { "type": "string" },
-          "policySnapshot": { "type": "object" }
+          "id": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "Public, non-reversible ref."
+          },
+          "cartId": {
+            "type": "string"
+          },
+          "orderId": {
+            "type": "string",
+            "nullable": true
+          },
+          "agent": {
+            "type": "string"
+          },
+          "amountMinor": {
+            "type": "integer"
+          },
+          "amountFormatted": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "AUTO_ALLOW",
+              "REQUIRE_CONFIRMATION",
+              "BLOCK"
+            ]
+          },
+          "violatedRules": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "reason": {
+            "type": "string"
+          },
+          "policySnapshot": {
+            "type": "object"
+          }
         }
       },
       "PolicyEventsResponse": {
         "type": "object",
         "properties": {
-          "events": { "type": "array", "items": { "$ref": "#/components/schemas/PolicyEvent" } },
-          "total": { "type": "integer" }
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyEvent"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
         }
       },
       "PolicyEventsStats": {
         "type": "object",
         "properties": {
-          "totalRequests": { "type": "integer" },
-          "allowed": { "type": "integer" },
-          "blocked": { "type": "integer" },
-          "spentMinor": { "type": "integer" },
-          "spentFormatted": { "type": "string" }
+          "totalRequests": {
+            "type": "integer"
+          },
+          "allowed": {
+            "type": "integer"
+          },
+          "blocked": {
+            "type": "integer"
+          },
+          "spentMinor": {
+            "type": "integer"
+          },
+          "spentFormatted": {
+            "type": "string"
+          }
         }
       },
       "OpsStatus": {
         "type": "object",
         "properties": {
-          "enabled": { "type": "boolean" },
-          "requiresKey": { "type": "boolean" },
-          "readOnly": { "type": "boolean" },
-          "reason": { "type": "string" },
-          "paypalTools": { "type": "array", "items": { "type": "string" } },
-          "internalTools": { "type": "array", "items": { "type": "string" } }
+          "enabled": {
+            "type": "boolean"
+          },
+          "requiresKey": {
+            "type": "boolean"
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "paypalTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "internalTools": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "OpsAskRequest": {
         "type": "object",
-        "required": ["question"],
-        "properties": { "question": { "type": "string", "minLength": 3, "maxLength": 500 } }
+        "required": [
+          "question"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 500
+          }
+        }
+      },
+      "McpRequest": {
+        "type": "object",
+        "required": [
+          "jsonrpc",
+          "method"
+        ],
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "enum": [
+              "2.0"
+            ]
+          },
+          "id": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "initialize",
+              "ping",
+              "tools/list",
+              "tools/call",
+              "notifications/initialized"
+            ]
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "McpResponse": {
+        "type": "object",
+        "properties": {
+          "jsonrpc": {
+            "type": "string",
+            "enum": [
+              "2.0"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "nullable": true,
+            "description": "Echo of the request id (string or integer in JSON-RPC; shown as string here)"
+          },
+          "result": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        }
       }
     }
   },
   "security": [
-    { "sessionId": [], "bearerAuth": [] }
+    {
+      "sessionId": [],
+      "bearerAuth": []
+    }
   ],
   "paths": {
     "/api/health": {
       "get": {
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "summary": "Liveness/readiness",
         "security": [],
         "responses": {
-          "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object" } } } }
-        }
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getHealth"
       }
     },
     "/api/sessions": {
       "post": {
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "summary": "Mint a server-side session",
         "security": [],
         "responses": {
-          "201": { "description": "Session issued", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/IssuedSession" } } } },
-          "429": { "description": "Per-IP session rate limit reached", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
-        }
+          "201": {
+            "description": "Session issued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IssuedSession"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Per-IP session rate limit reached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postSessions"
       }
     },
     "/api/sessions/current": {
       "delete": {
-        "tags": ["Sessions"],
+        "tags": [
+          "Sessions"
+        ],
         "summary": "End the current session",
         "responses": {
-          "200": { "description": "Session ended", "content": { "application/json": { "schema": { "type": "object" } } } }
-        }
+          "200": {
+            "description": "Session ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteSessionsCurrent"
       }
     },
     "/api/catalog": {
       "get": {
-        "tags": ["Catalog"],
+        "tags": [
+          "Catalog"
+        ],
         "summary": "List all products",
         "security": [],
         "responses": {
-          "200": { "description": "Catalog", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogResponse" } } } }
-        }
+          "200": {
+            "description": "Catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getCatalog"
       }
     },
     "/api/catalog/{id}": {
       "get": {
-        "tags": ["Catalog"],
+        "tags": [
+          "Catalog"
+        ],
         "summary": "Get a product by id",
         "security": [],
-        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
-          "404": { "description": "Not found" }
-        }
+          "200": {
+            "description": "Product",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Product"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "operationId": "getCatalogId"
       }
     },
     "/api/catalog/search": {
       "get": {
-        "tags": ["Catalog"],
+        "tags": [
+          "Catalog"
+        ],
         "summary": "Search the catalog (server-side filtering)",
         "security": [],
         "parameters": [
-          { "name": "query", "in": "query", "schema": { "type": "string" } },
-          { "name": "category", "in": "query", "schema": { "type": "string" } },
-          { "name": "tags", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated" },
-          { "name": "dietary", "in": "query", "schema": { "type": "string" }, "description": "Comma-separated; e.g. vegan,gluten-free" },
-          { "name": "occasion", "in": "query", "schema": { "type": "string" } },
-          { "name": "maxPriceMinor", "in": "query", "schema": { "type": "integer" } },
-          { "name": "matchMode", "in": "query", "schema": { "type": "string", "enum": ["all", "any"] } }
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated"
+          },
+          {
+            "name": "dietary",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated; e.g. vegan,gluten-free"
+          },
+          {
+            "name": "occasion",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "maxPriceMinor",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "matchMode",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "any"
+              ]
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Search results", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CatalogResponse" } } } }
-        }
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponse"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getCatalogSearch"
       }
     },
     "/api/ai/chat": {
       "post": {
-        "tags": ["AI Agent"],
+        "tags": [
+          "AI Agent"
+        ],
         "summary": "Chat with the shopping agent (builds a cart)",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AIChatRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AIChatRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Agent reply + prepared cart", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AIChatResponse" } } } },
-          "400": { "description": "Invalid input", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "429": { "description": "AI rate limit", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "503": { "description": "AI provider not configured" }
-        }
+          "200": {
+            "description": "Agent reply + prepared cart",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AIChatResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "AI rate limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "AI provider not configured"
+          }
+        },
+        "operationId": "postAiChat"
       }
     },
     "/api/ai/chat/{sessionId}": {
       "delete": {
-        "tags": ["AI Agent"],
+        "tags": [
+          "AI Agent"
+        ],
         "summary": "Clear conversation history for this session",
-        "parameters": [{ "name": "sessionId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Cleared", "content": { "application/json": { "schema": { "type": "object" } } } },
-          "403": { "description": "Not your session" }
-        }
+          "200": {
+            "description": "Cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not your session"
+          }
+        },
+        "operationId": "deleteAiChatSessionId"
       }
     },
     "/api/ai/cart/{sessionId}": {
       "delete": {
-        "tags": ["AI Agent"],
+        "tags": [
+          "AI Agent"
+        ],
         "summary": "Clear the AI-prepared cart for this session",
-        "parameters": [{ "name": "sessionId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Cleared", "content": { "application/json": { "schema": { "type": "object" } } } },
-          "403": { "description": "Not your session" }
-        }
+          "200": {
+            "description": "Cleared",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not your session"
+          }
+        },
+        "operationId": "deleteAiCartSessionId"
       }
     },
     "/api/policy/preview": {
       "post": {
-        "tags": ["Policy"],
+        "tags": [
+          "Policy"
+        ],
         "summary": "Preview the authoritative policy decision for a cart (side-effect free)",
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PolicyPreviewRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicyPreviewRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Preview", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PolicyPreviewResponse" } } } },
-          "400": { "description": "Invalid items" }
-        }
+          "200": {
+            "description": "Preview",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid items"
+          }
+        },
+        "operationId": "postPolicyPreview"
       }
     },
     "/api/orders/create": {
       "post": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "Create an order from items (server re-prices; policy enforced)",
         "parameters": [
-          { "name": "Idempotency-Key", "in": "header", "schema": { "type": "string" }, "description": "Client key; server hashes it with the session and reuses as PayPal-Request-Id." }
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Client key; server hashes it with the session and reuses as PayPal-Request-Id."
+          }
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrderRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrderRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "201": { "description": "Order created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrderResponse" } } } },
-          "403": { "description": "Blocked by policy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "503": { "description": "PayPal not configured" }
-        }
+          "201": {
+            "description": "Order created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateOrderResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Blocked by policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PayPal not configured"
+          }
+        },
+        "operationId": "postOrdersCreate"
       }
     },
     "/api/orders/{orderId}/capture": {
       "post": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "Capture the PayPal order (after human approval)",
-        "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Captured", "content": { "application/json": { "schema": { "type": "object" } } } },
-          "400": { "description": "Not approved yet / not payable" },
-          "402": { "description": "Payment declined" },
-          "404": { "description": "Order not found" },
-          "409": { "description": "Already captured / in progress" },
-          "502": { "description": "PayPal transport error" },
-          "503": { "description": "PayPal not configured" }
-        }
+          "200": {
+            "description": "Captured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not approved yet / not payable"
+          },
+          "402": {
+            "description": "Payment declined"
+          },
+          "404": {
+            "description": "Order not found"
+          },
+          "409": {
+            "description": "Already captured / in progress"
+          },
+          "502": {
+            "description": "PayPal transport error"
+          },
+          "503": {
+            "description": "PayPal not configured"
+          }
+        },
+        "operationId": "postOrdersOrderIdCapture"
       }
     },
     "/api/orders/{orderId}/cancel": {
       "post": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "Cancel a not-yet-captured checkout",
-        "parameters": [{ "name": "orderId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Cancelled", "content": { "application/json": { "schema": { "type": "object" } } } },
-          "404": { "description": "Order not found" },
-          "409": { "description": "Already captured / capture in progress" }
-        }
+          "200": {
+            "description": "Cancelled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Order not found"
+          },
+          "409": {
+            "description": "Already captured / capture in progress"
+          }
+        },
+        "operationId": "postOrdersOrderIdCancel"
       }
     },
     "/api/orders": {
       "get": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "List orders (public, read-only)",
         "parameters": [
-          { "name": "origin", "in": "query", "schema": { "type": "string", "enum": ["AI_AGENT", "HUMAN"] } },
-          { "name": "status", "in": "query", "schema": { "type": "string" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } }
+          {
+            "name": "origin",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "AI_AGENT",
+                "HUMAN"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Orders", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrdersListResponse" } } } },
-          "400": { "description": "Invalid filter" }
-        }
+          "200": {
+            "description": "Orders",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdersListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filter"
+          }
+        },
+        "operationId": "getOrders"
       }
     },
     "/api/orders/stats": {
       "get": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "Aggregate order statistics",
         "responses": {
-          "200": { "description": "Stats", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrdersStats" } } } }
-        }
+          "200": {
+            "description": "Stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrdersStats"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrdersStats"
       }
     },
     "/api/checkout/return": {
       "get": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "PayPal return redirect (deep-links to app / web storefront)",
         "security": [],
-        "parameters": [{ "name": "token", "in": "query", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "HTML redirect page" } }
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML redirect page"
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getCheckoutReturn"
       }
     },
     "/api/checkout/cancel": {
       "get": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "PayPal cancel redirect",
         "security": [],
-        "parameters": [{ "name": "token", "in": "query", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "HTML redirect page" } }
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "HTML redirect page"
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getCheckoutCancel"
       }
     },
     "/api/ops/status": {
       "get": {
-        "tags": ["Ops Copilot"],
+        "tags": [
+          "Ops Copilot"
+        ],
         "summary": "Ops Copilot capability status",
         "security": [],
         "responses": {
-          "200": { "description": "Status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OpsStatus" } } } }
-        }
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpsStatus"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOpsStatus"
       }
     },
     "/api/ops/ask": {
       "post": {
-        "tags": ["Ops Copilot"],
+        "tags": [
+          "Ops Copilot"
+        ],
         "summary": "Ask the read-only merchant copilot",
-        "parameters": [{ "name": "X-Ops-Key", "in": "header", "schema": { "type": "string" }, "description": "Required when Ops Copilot is enabled." }],
+        "parameters": [
+          {
+            "name": "X-Ops-Key",
+            "in": "header",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when Ops Copilot is enabled."
+          }
+        ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OpsAskRequest" } } }
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpsAskRequest"
+              }
+            }
+          }
         },
         "responses": {
-          "200": { "description": "Answer (read-only)", "content": { "application/json": { "schema": { "type": "object" } } } },
-          "401": { "description": "Missing/invalid X-Ops-Key" },
-          "429": { "description": "Rate limited" },
-          "503": { "description": "Ops Copilot disabled" }
-        }
+          "200": {
+            "description": "Answer (read-only)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/invalid X-Ops-Key"
+          },
+          "429": {
+            "description": "Rate limited"
+          },
+          "503": {
+            "description": "Ops Copilot disabled"
+          }
+        },
+        "operationId": "postOpsAsk"
       }
     },
     "/api/policy-events": {
       "get": {
-        "tags": ["Audit"],
+        "tags": [
+          "Audit"
+        ],
         "summary": "Immutable audit trail of every policy decision",
         "security": [],
         "parameters": [
-          { "name": "decision", "in": "query", "schema": { "type": "string", "enum": ["AUTO_ALLOW", "REQUIRE_CONFIRMATION", "BLOCK"] } },
-          { "name": "userId", "in": "query", "schema": { "type": "string" } },
-          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100 } }
+          {
+            "name": "decision",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "AUTO_ALLOW",
+                "REQUIRE_CONFIRMATION",
+                "BLOCK"
+              ]
+            }
+          },
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
         ],
         "responses": {
-          "200": { "description": "Events", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PolicyEventsResponse" } } } },
-          "400": { "description": "Invalid decision/limit" }
-        }
+          "200": {
+            "description": "Events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyEventsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid decision/limit"
+          }
+        },
+        "operationId": "getPolicyEvents"
       }
     },
     "/api/policy-events/stats": {
       "get": {
-        "tags": ["Audit"],
+        "tags": [
+          "Audit"
+        ],
         "summary": "Counts of allowed/blocked decisions and confirmed spend",
         "security": [],
-        "parameters": [{ "name": "userId", "in": "query", "schema": { "type": "string" } }],
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": { "description": "Stats", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PolicyEventsStats" } } } }
-        }
+          "200": {
+            "description": "Stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyEventsStats"
+                }
+              }
+            }
+          },
+          "4XX": {
+            "description": "Client error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getPolicyEventsStats"
       }
     },
     "/api/webhooks/paypal": {
       "post": {
-        "tags": ["Orders"],
+        "tags": [
+          "Orders"
+        ],
         "summary": "PayPal webhook receiver (signature-verified)",
         "security": [],
         "responses": {
-          "200": { "description": "Processed / duplicate acknowledged" },
-          "401": { "description": "Invalid signature / missing headers" }
+          "200": {
+            "description": "Processed / duplicate acknowledged"
+          },
+          "401": {
+            "description": "Invalid signature / missing headers"
+          }
+        },
+        "operationId": "postWebhooksPaypal"
+      }
+    },
+    "/api/mcp": {
+      "post": {
+        "tags": [
+          "MCP (Agentic Commerce)"
+        ],
+        "operationId": "mcpRpc",
+        "summary": "MCP Streamable-HTTP endpoint (JSON-RPC 2.0)",
+        "description": "Tools: `search_menu`, `prepare_cart`, `check_policy`, `start_checkout`, `get_order_status`. There is deliberately NO capture/pay/refund tool: `start_checkout` returns a PayPal sandbox approval URL that a human must approve. Call `initialize` first and send the returned `Mcp-Session-Id` header on every later request. A GET on this path returns 405 (the optional SSE stream is not offered).",
+        "parameters": [
+          {
+            "name": "Mcp-Session-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Returned by `initialize`."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/McpRequest"
+              },
+              "examples": {
+                "initialize": {
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                      "protocolVersion": "2025-06-18",
+                      "capabilities": {},
+                      "clientInfo": {
+                        "name": "my-agent",
+                        "version": "1.0"
+                      }
+                    }
+                  }
+                },
+                "startCheckout": {
+                  "value": {
+                    "jsonrpc": "2.0",
+                    "id": 4,
+                    "method": "tools/call",
+                    "params": {
+                      "name": "start_checkout",
+                      "arguments": {
+                        "items": [
+                          {
+                            "productId": "coffee",
+                            "quantity": 1
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC result or error",
+            "headers": {
+              "Mcp-Session-Id": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Only on initialize"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpResponse"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Notification accepted (no body)"
+          },
+          "403": {
+            "description": "Origin not allowed"
+          },
+          "404": {
+            "description": "Unknown session — send initialize again"
+          },
+          "429": {
+            "description": "Rate limit"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "MCP (Agentic Commerce)"
+        ],
+        "operationId": "mcpEndSession",
+        "summary": "End an MCP session",
+        "parameters": [
+          {
+            "name": "Mcp-Session-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ended"
+          },
+          "404": {
+            "description": "Unknown session"
+          }
         }
       }
     }

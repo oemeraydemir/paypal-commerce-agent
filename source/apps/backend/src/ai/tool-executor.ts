@@ -35,7 +35,7 @@ export interface ToolExecutionContext {
   userId?: string;
 }
 
-function meetsDietaryPreferences(
+export function meetsDietaryPreferences(
   product: { dietary: string[]; category: string },
   preferences: string[]
 ): boolean {

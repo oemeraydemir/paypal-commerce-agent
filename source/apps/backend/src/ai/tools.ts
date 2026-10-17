@@ -17,7 +17,7 @@ export const AI_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
           },
           category: {
             type: 'string',
-            enum: ['breakfast', 'drinks', 'desserts', 'gifts'],
+            enum: ['breakfast', 'lunch', 'drinks', 'desserts', 'snacks', 'gifts', 'catering'],
             description: 'Product category',
           },
           tags: {

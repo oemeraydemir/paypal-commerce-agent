@@ -28,7 +28,7 @@ derives the default checkout return URLs from `RENDER_EXTERNAL_URL`.
 
 ## Build and start
 
-Render will build and run from `apps/backend` using:
+Render will build and run from `source/apps/backend` using:
 
 - Build command: `npm install && npm run build`
 - Start command: `npm start`

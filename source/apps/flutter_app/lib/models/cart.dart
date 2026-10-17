@@ -31,14 +31,16 @@ class CartLine {
     required this.lineTotalFormatted,
   });
 
+  /// Tolerant of missing/empty fields: the server is authoritative, but a
+  /// partial payload must never crash the chat UI.
   factory CartLine.fromJson(Map<String, dynamic> json) => CartLine(
-    productId: json['productId'] as String,
-    name: json['name'] as String,
-    quantity: json['quantity'] as int,
-    unitPriceMinor: json['unitPriceMinor'] as int,
-    unitPriceFormatted: json['unitPriceFormatted'] as String,
-    lineTotalMinor: json['lineTotalMinor'] as int,
-    lineTotalFormatted: json['lineTotalFormatted'] as String,
+    productId: json['productId'] as String? ?? '',
+    name: json['name'] as String? ?? '',
+    quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+    unitPriceMinor: (json['unitPriceMinor'] as num?)?.toInt() ?? 0,
+    unitPriceFormatted: json['unitPriceFormatted'] as String? ?? '',
+    lineTotalMinor: (json['lineTotalMinor'] as num?)?.toInt() ?? 0,
+    lineTotalFormatted: json['lineTotalFormatted'] as String? ?? '',
   );
 
   double get lineTotal => lineTotalMinor / 100.0;
@@ -61,15 +63,23 @@ class PreparedCart {
     required this.message,
   });
 
-  factory PreparedCart.fromJson(Map<String, dynamic> json) => PreparedCart(
-    items: (json['items'] as List? ?? const <dynamic>[])
-        .map((e) => CartLine.fromJson(e as Map<String, dynamic>))
-        .toList(),
-    totalMinor: json['totalMinor'] as int,
-    totalFormatted: json['totalFormatted'] as String,
-    currency: json['currency'] as String,
-    message: json['message'] as String? ?? '',
-  );
+  /// Tolerant of missing/empty fields (and of malformed list entries) so a
+  /// partial cart payload degrades gracefully instead of throwing.
+  factory PreparedCart.fromJson(Map<String, dynamic> json) {
+    final rawItems = json['items'];
+    return PreparedCart(
+      items: rawItems is List
+          ? rawItems
+                .whereType<Map<String, dynamic>>()
+                .map(CartLine.fromJson)
+                .toList()
+          : const <CartLine>[],
+      totalMinor: (json['totalMinor'] as num?)?.toInt() ?? 0,
+      totalFormatted: json['totalFormatted'] as String? ?? '',
+      currency: json['currency'] as String? ?? 'EUR',
+      message: json['message'] as String? ?? '',
+    );
+  }
 
   double get total => totalMinor / 100.0;
 

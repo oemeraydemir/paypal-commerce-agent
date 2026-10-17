@@ -8,7 +8,7 @@
 # so those two tests could not pass there. The logic itself was verified
 # separately and is correct. On a normal machine / CI runner they pass.
 #
-# Run this to get the authoritative result (expected: 143/143).
+# Run this to get the authoritative result (all tests must pass).
 set -euo pipefail
 
 cd "$(dirname "$0")/apps/backend"
@@ -16,7 +16,7 @@ cd "$(dirname "$0")/apps/backend"
 echo "== Node =="; node -v
 echo "== Install =="; npm ci
 echo "== Type-check =="; npx tsc --noEmit -p tsconfig.json && echo "tsc: PASS"
-echo "== Tests (expect 143/143) =="; npm test
+echo "== Tests (all tests must pass) =="; npm test
 echo "== Build =="; npm run build
 echo "== Build artifact checks =="
 test -f dist/src/server.js && echo "dist/src/server.js OK"

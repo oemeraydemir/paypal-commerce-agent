@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { aiService } from '../ai/service';
+import { runFallbackAssistant } from '../ai/fallback-planner';
 import { markSessionAIPrepared, clearAIPreparedSession } from '../ai/session-tracker';
 import { AppError } from '../middleware/error-handler';
 import { requireSession } from '../middleware/session-auth';
@@ -91,13 +92,37 @@ router.post('/ai/chat', requireSession, rateLimit, async (req, res, next) => {
     }
 
     const history = conversationHistory.get(sessionId) || [];
-    const result = await aiService.chat(
-      sessionId,
-      message,
-      history,
-      preferencesResult.data,
-      userId
-    );
+    let result;
+    try {
+      result = await aiService.chat(
+        sessionId,
+        message,
+        history,
+        preferencesResult.data,
+        userId
+      );
+    } catch (aiErr) {
+      // Every AI provider is exhausted (free-tier quotas). Degrade to the clearly
+      // labelled rule-based planner instead of a dead end. It is NOT AI: it never
+      // marks the session AI-prepared, so the order stays attributed to HUMAN.
+      if (aiErr instanceof AppError && aiErr.details?.code === 'AI_UNAVAILABLE') {
+        const fallback = runFallbackAssistant(message, preferencesResult.data, { sessionId, userId });
+        conversationHistory.set(
+          sessionId,
+          [...history, { role: 'user', content: message }, { role: 'assistant', content: fallback.response }].slice(-MAX_HISTORY)
+        );
+        return res.json({
+          sessionId,
+          response: fallback.response,
+          preparedCart: fallback.preparedCart,
+          checkoutReady: fallback.checkoutReady,
+          toolRounds: 0,
+          messageCount: history.length + 2,
+          mode: fallback.mode,
+        });
+      }
+      throw aiErr;
+    }
 
     conversationHistory.set(sessionId, result.updatedHistory.slice(-MAX_HISTORY));
 
@@ -112,6 +137,7 @@ router.post('/ai/chat', requireSession, rateLimit, async (req, res, next) => {
       checkoutReady: result.checkoutReady,
       toolRounds: result.toolRounds,
       messageCount: result.updatedHistory.length,
+      mode: 'ai',
     });
   } catch (err) {
     next(err);

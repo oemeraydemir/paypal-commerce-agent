@@ -30,7 +30,10 @@ customer—not the agent—in control of the financial decision.
 4. Open PayPal sandbox, approve using a sandbox buyer, return to AI Café, and
    confirm payment capture.
 5. View the resulting order in the AG Grid dashboard.
-6. In the dashboard's **Ops Copilot** panel, paste the shared `OPS_COPILOT_KEY` into **Ops access key**
+6. Agentic commerce: run `npm run mcp:demo` (or point the MCP Inspector / `claude mcp add --transport http
+   ai-cafe <url>/api/mcp` at the server) and watch an external agent search, get a policy BLOCK, shrink its
+   cart and obtain a PayPal approval link it cannot pay.
+7. In the dashboard's **Ops Copilot** panel, paste the shared `OPS_COPILOT_KEY` into **Ops access key**
    and ask "which payments were blocked today and why?". Then ask "refund my last order" — the copilot
    refuses and explains that it is read-only.
 
@@ -54,6 +57,11 @@ and manual cart can still be explored without credentials.
   by-name allow-list that refuses any write tool the model asks for. Off by default; **enabled on the
   live demo** with `OPS_COPILOT_ENABLED=true` and an `OPS_COPILOT_KEY`. Judges receive the key through
   the private testing-instructions field and paste it into the dashboard's **Ops access key** box.
+- **Model Context Protocol (MCP) server (`/api/mcp`):** lets any external AI agent (Claude, ChatGPT, an
+  agent framework, the MCP Inspector) discover the menu, prepare a cart and start a PayPal sandbox
+  checkout. It exposes five tools and **no** capture/pay/refund tool (asserted by a test); `start_checkout`
+  runs through the normal `/api/orders/create` pipeline (policy, reservation, idempotency) and returns an
+  approval link that only a human can use. Scripted proof without any LLM or key: `npm run mcp:demo`.
 - **AG Grid:** public, read-only order operations dashboard.
 - **Flutter:** Android/iOS shopper application.
 - **Node.js, TypeScript, Express:** catalog, AI orchestration, PayPal
@@ -154,6 +162,9 @@ AG Grid dashboard shows every order, who prepared it (AI or human), and what the
 - **PayPal Agent Toolkit (read-only)** — powers a merchant Ops Copilot on the dashboard: configured with
   read permissions only (8 of 47 tools, enforced by a test and a by-name allow-list that refuses any write
   tool), so it can answer "what was blocked today and why?" but can never issue a refund.
+- **PayPal checkout as the human-approval boundary for *external* agents (MCP)** — any MCP client can
+  shop and start a PayPal sandbox checkout, but no tool can capture or pay: the agent gets a link, the human
+  approves in PayPal. Same server-side policy, daily-budget reservation and idempotency as the app.
 - **OpenAI-compatible function calling** (a provider chain — Gemini → Groq → Cerebras → OpenRouter →
   OpenAI — with automatic fallback on 429/5xx and retired models; a free Groq or Gemini key is enough and
   OpenAI is optional) — restricted to catalog/cart tools; the model has no PayPal
@@ -163,8 +174,20 @@ AG Grid dashboard shows every order, who prepared it (AI or human), and what the
 human approval, and the Ops Copilot is read-only with a refusal path for any write request. Verifying
 PayPal's webhook signature and making capture idempotent so retries never double-count were also key.
 
-*What's next.* Persisting orders beyond in-memory, adding more categories and languages, and a hosted
-demo with stable uptime.
+*What's next.* Persisting orders beyond in-memory, merchant-approved refunds and PayPal Subscriptions for
+recurring orders, a merchant-embeddable agent checkout (bring your own catalog), more categories and
+languages, and a hosted demo with stable uptime.
+
+## Reliability notes (honest)
+
+- When every AI provider is rate-limited (free tiers), chat degrades to a clearly labelled **rule-based
+  Quick Planner** (`"mode": "rule-based"`). It is not AI: it never marks the session AI-prepared (order
+  stays `HUMAN`), writes no `AI_AGENT` policy event, never adds alcohol, and prices/policy still come from
+  the server. Covered by `tests/unit/fallback-planner.test.ts` and `tests/integration/ai-fallback.test.ts`.
+- MCP adapter: `tests/integration/mcp.test.ts` (23 tests). Full backend suite: see the current count in the latest test run.
+- The MCP server and the rule-based fallback are covered by automated tests and a local scripted run;
+  they have **not** yet been exercised against the deployed Render instance or a third-party MCP client
+  — redeploy, then run `npm run mcp:demo -- <url>` and record the result before claiming it as live-proven.
 
 ## Prototype limitations
 

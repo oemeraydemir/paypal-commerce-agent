@@ -1,0 +1,529 @@
+diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.html AiCafe/source/apps/backend/public/dashboard.html
+--- AiCafe/source/apps/backend/public/dashboard.html	2026-10-17 06:19:01.000000000 +0000
++++ AiCafe/source/apps/backend/public/dashboard.html	2026-10-17 08:21:16.144580096 +0000
+@@ -61,7 +61,7 @@
+       body.dark .badge-allow,
+       body.dark .badge-paid { color: #34d399; background: rgba(52, 211, 153, 0.16); }
+       body.dark .badge-confirm { color: #fbbf24; background: rgba(251, 191, 36, 0.16); }
+-      body.dark .badge-block { color: #f87171; background: rgba(248, 113, 113, 0.16); }
++      body.dark .badge-block { color: #fca5a5; background: rgba(248, 113, 113, 0.16); }
+       body.dark .badge-neutral,
+       body.dark .badge-ai { color: #7cb0ff; background: rgba(124, 176, 255, 0.16); }
+       body.dark .badge-human,
+@@ -235,13 +235,14 @@
+         text-transform: uppercase;
+         letter-spacing: 0.02em;
+       }
+-      .badge-allow { background: rgba(31, 157, 98, 0.14); color: var(--success); }
+-      .badge-confirm { background: rgba(217, 119, 6, 0.14); color: var(--warning); }
+-      .badge-block { background: rgba(220, 38, 38, 0.14); color: var(--danger); }
+-      .badge-paid { background: rgba(31, 157, 98, 0.14); color: var(--success); }
+-      .badge-cancelled { background: rgba(107, 114, 128, 0.16); color: var(--muted); }
+-      .badge-neutral { background: rgba(45, 108, 223, 0.12); color: var(--primary); }
+-      .badge-ai { background: rgba(45, 108, 223, 0.16); color: var(--primary); }
++      /* Badge text colours are measured against the real blended tint (badge background is translucent), not the bare panel: see tests/unit/dashboard-contrast.test.ts. */
++      .badge-allow { background: rgba(31, 157, 98, 0.14); color: #166534; }
++      .badge-confirm { background: rgba(217, 119, 6, 0.14); color: #92400e; }
++      .badge-block { background: rgba(220, 38, 38, 0.14); color: #b91c1c; }
++      .badge-paid { background: rgba(31, 157, 98, 0.14); color: #166534; }
++      .badge-cancelled { background: rgba(107, 114, 128, 0.16); color: #4b5563; }
++      .badge-neutral { background: rgba(45, 108, 223, 0.12); color: #1d4ed8; }
++      .badge-ai { background: rgba(45, 108, 223, 0.16); color: #1d4ed8; }
+       .badge-human { background: rgba(107, 114, 128, 0.14); color: var(--muted); }
+ 
+       /* Accessible status / error announcements for the grids (polite + alert
+@@ -369,7 +370,7 @@
+       <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
+ 
+       <section class="grid-section" role="region" aria-label="Orders data grid">
+-        <h2>Orders</h2>
++        <h2 id="ordersHeading">Orders</h2>
+         <div class="grid-toolbar">
+           <input type="text" id="ordersQuickFilter" placeholder="Quick filter orders…" aria-label="Quick filter orders" />
+           <label for="ordersGroupBy">Group by</label>
+@@ -384,11 +385,11 @@
+         </div>
+         <p class="grid-status" id="ordersStatus" role="status" aria-live="polite"></p>
+         <p class="grid-error" id="ordersError" role="alert" hidden></p>
+-        <div id="ordersGrid" role="grid" aria-label="Orders"></div>
++        <div id="ordersGrid"></div>
+       </section>
+ 
+       <section class="grid-section" role="region" aria-label="Policy events data grid">
+-        <h2>Policy events</h2>
++        <h2 id="eventsHeading">Policy events</h2>
+         <div class="grid-toolbar">
+           <input type="text" id="eventsQuickFilter" placeholder="Quick filter policy events…" aria-label="Quick filter policy events" />
+           <label for="eventsGroupBy">Group by</label>
+@@ -402,7 +403,7 @@
+         </div>
+         <p class="grid-status" id="eventsStatus" role="status" aria-live="polite"></p>
+         <p class="grid-error" id="eventsError" role="alert" hidden></p>
+-        <div id="eventsGrid" role="grid" aria-label="Policy events"></div>
++        <div id="eventsGrid"></div>
+       </section>
+     </main>
+ 
+diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.js AiCafe/source/apps/backend/public/dashboard.js
+--- AiCafe/source/apps/backend/public/dashboard.js	2026-10-17 06:31:25.000000000 +0000
++++ AiCafe/source/apps/backend/public/dashboard.js	2026-10-17 08:17:57.987789922 +0000
+@@ -461,6 +461,19 @@
+     };
+   }
+ 
++  // AG Grid puts role="grid" (or "treegrid" once rows are grouped) on its OWN
++  // inner root element and does not copy anything from our container. So the
++  // container carries no ARIA role, and the accessible name is attached to
++  // AG Grid's real root, tied to the visible section heading.
++  function labelGridRoot(containerId, headingId) {
++    var container = el(containerId);
++    if (!container || typeof container.querySelector !== 'function') return;
++    var root = container.querySelector('.ag-root');
++    if (root && typeof root.setAttribute === 'function') {
++      root.setAttribute('aria-labelledby', headingId);
++    }
++  }
++
+   var ordersApi = agGrid.createGrid(el('ordersGrid'), {
+     columnDefs: ordersColumnDefs,
+     defaultColDef: defaultColDef,
+@@ -482,6 +495,7 @@
+     onCellKeyDown: makeCellOpenHandler('orders')
+   });
+   state.orders.api = ordersApi;
++  labelGridRoot('ordersGrid', 'ordersHeading');
+ 
+   var eventsApi = agGrid.createGrid(el('eventsGrid'), {
+     columnDefs: eventsColumnDefs,
+@@ -504,6 +518,7 @@
+     onCellKeyDown: makeCellOpenHandler('events')
+   });
+   state.events.api = eventsApi;
++  labelGridRoot('eventsGrid', 'eventsHeading');
+ 
+   // Attach line items onto order rows for the side panel (not shown in grid).
+   function attachOrderItems(orders, jsonOrders) {
+diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts
+--- AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts	2026-10-17 08:19:22.505529922 +0000
+@@ -0,0 +1,192 @@
++// Wire-contract tests for POST /api/ai/chat.
++//
++// The Flutter client (lib/services/api_service.dart, lib/models/cart.dart) parses this
++// envelope. These tests pin the exact shape and the error behaviour so a backend change
++// cannot silently break the app. All AI providers are mocked: no network, no real PayPal,
++// no money moves. Test-only file: it does not touch orders, storage or idempotency state.
++import request from 'supertest';
++import { createApp } from '../../src/app';
++import { aiClient } from '../../src/ai/client';
++import { AppError } from '../../src/middleware/error-handler';
++import { newSession, resetSessionState, TestSession } from '../helpers/session';
++import { peekAIPreparedSession } from '../../src/ai/session-tracker';
++
++jest.mock('../../src/ai/client', () => ({ aiClient: { chat: jest.fn() } }));
++const mockChat = aiClient.chat as jest.Mock;
++const app = createApp();
++let sess: TestSession;
++
++const msg = (content: string, tool_calls: any = null) => ({
++  choices: [{ message: { content, tool_calls } }],
++});
++const toolCall = (id: string, name: string, args: any) => ({
++  id,
++  type: 'function',
++  function: { name, arguments: JSON.stringify(args) },
++});
++const exhausted = () =>
++  new AppError(503, 'AI is temporarily at capacity', { code: 'AI_UNAVAILABLE' });
++
++const ENVELOPE_KEYS = [
++  'checkoutReady',
++  'messageCount',
++  'mode',
++  'preparedCart',
++  'response',
++  'sessionId',
++  'toolRounds',
++];
++// Exactly the fields the Flutter models read.
++const CART_KEYS = ['currency', 'items', 'message', 'totalFormatted', 'totalMinor'];
++const LINE_KEYS = [
++  'lineTotalFormatted',
++  'lineTotalMinor',
++  'name',
++  'productId',
++  'quantity',
++  'unitPriceFormatted',
++  'unitPriceMinor',
++];
++
++function expectEnvelope(body: any) {
++  expect(Object.keys(body)).toEqual(expect.arrayContaining(ENVELOPE_KEYS));
++  expect(typeof body.sessionId).toBe('string');
++  expect(typeof body.response).toBe('string');
++  expect(typeof body.checkoutReady).toBe('boolean');
++  expect(typeof body.toolRounds).toBe('number');
++  expect(typeof body.messageCount).toBe('number');
++  expect(['ai', 'rule-based']).toContain(body.mode);
++  // null (not undefined/missing): the client distinguishes "no cart" from a malformed body.
++  expect(body.preparedCart === null || typeof body.preparedCart === 'object').toBe(true);
++}
++
++function expectCartShape(cart: any) {
++  expect(Object.keys(cart)).toEqual(expect.arrayContaining(CART_KEYS));
++  expect(Array.isArray(cart.items)).toBe(true);
++  expect(cart.items.length).toBeGreaterThan(0);
++  for (const line of cart.items) {
++    expect(Object.keys(line)).toEqual(expect.arrayContaining(LINE_KEYS));
++    expect(Number.isInteger(line.quantity)).toBe(true);
++    expect(Number.isInteger(line.unitPriceMinor)).toBe(true);
++    expect(Number.isInteger(line.lineTotalMinor)).toBe(true);
++  }
++  expect(Number.isInteger(cart.totalMinor)).toBe(true);
++  expect(typeof cart.currency).toBe('string');
++}
++
++beforeEach(async () => {
++  resetSessionState();
++  sess = await newSession(app);
++  mockChat.mockReset();
++  mockChat.mockResolvedValue(msg('Hello!', null));
++});
++
++describe('POST /api/ai/chat wire contract', () => {
++  test('normal AI reply without a cart: full envelope, preparedCart is JSON null, mode "ai"', async () => {
++    const res = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'hi' });
++    expect(res.status).toBe(200);
++    expect(res.type).toBe('application/json');
++    expectEnvelope(res.body);
++    expect(res.body.mode).toBe('ai');
++    expect(res.body.preparedCart).toBeNull();
++    expect(res.body.checkoutReady).toBe(false);
++    expect(peekAIPreparedSession(sess.sessionId)).toBe(false);
++  });
++
++  test('AI cart: cart + line shape match what Flutter parses; session is AI-attributed', async () => {
++    mockChat
++      .mockResolvedValueOnce(msg('ok', [toolCall('c1', 'prepare_cart', { items: [{ productId: 'coffee', quantity: 2 }] })]))
++      .mockResolvedValueOnce(msg('Here is your cart.', null));
++    const res = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: '2 coffees' });
++    expect(res.status).toBe(200);
++    expectEnvelope(res.body);
++    expect(res.body.mode).toBe('ai');
++    expect(res.body.checkoutReady).toBe(true);
++    expectCartShape(res.body.preparedCart);
++    expect(res.body.preparedCart.totalMinor).toBe(600);
++    expect(peekAIPreparedSession(sess.sessionId)).toBe(true);
++  });
++
++  test('rule-based fallback with a cart: same envelope + cart shape, never AI-attributed', async () => {
++    mockChat.mockRejectedValue(exhausted());
++    const res = await request(app)
++      .post('/api/ai/chat').set(sess.headers)
++      .send({ message: 'coffee and a croissant' });
++    expect(res.status).toBe(200);
++    expectEnvelope(res.body);
++    expect(res.body.mode).toBe('rule-based');
++    expect(res.body.checkoutReady).toBe(true);
++    expectCartShape(res.body.preparedCart);
++    expect(peekAIPreparedSession(sess.sessionId)).toBe(false);
++  });
++
++  test('rule-based fallback with no plan: honest text, preparedCart null, checkoutReady false', async () => {
++    mockChat.mockRejectedValue(exhausted());
++    const res = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'zzz' });
++    expect(res.status).toBe(200);
++    expectEnvelope(res.body);
++    expect(res.body.mode).toBe('rule-based');
++    expect(res.body.preparedCart).toBeNull();
++    expect(res.body.checkoutReady).toBe(false);
++    expect(res.body.response.trim().length).toBeGreaterThan(0);
++  });
++
++  test('checkoutReady is never true without a cart (client must not invent readiness)', async () => {
++    for (const reject of [false, true]) {
++      if (reject) mockChat.mockRejectedValue(exhausted());
++      const res = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'hello there' });
++      expect(res.status).toBe(200);
++      if (res.body.checkoutReady) expect(res.body.preparedCart).not.toBeNull();
++    }
++  });
++});
++
++describe('POST /api/ai/chat error contract (JSON, non-2xx, `error` string)', () => {
++  const expectJsonError = (res: request.Response, status: number) => {
++    expect(res.status).toBe(status);
++    expect(res.type).toBe('application/json');
++    expect(typeof res.body.error).toBe('string');
++    // An error body must never look like a successful envelope.
++    expect(res.body).not.toHaveProperty('mode');
++    expect(res.body).not.toHaveProperty('preparedCart');
++    expect(mockChat).not.toHaveBeenCalled();
++  };
++
++  test('missing message -> 400', async () => {
++    expectJsonError(await request(app).post('/api/ai/chat').set(sess.headers).send({}), 400);
++  });
++
++  test('non-string message -> 400', async () => {
++    expectJsonError(await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 42 }), 400);
++  });
++
++  test('invalid preferences -> 400 before any AI call', async () => {
++    const res = await request(app)
++      .post('/api/ai/chat').set(sess.headers)
++      .send({ message: 'x', preferences: { maxBudgetMinor: -1 } });
++    expectJsonError(res, 400);
++  });
++
++  test('no session credentials -> 401', async () => {
++    expectJsonError(await request(app).post('/api/ai/chat').send({ message: 'hi' }), 401);
++  });
++
++  test('only AI_UNAVAILABLE degrades; any other 503 passes through unmasked', async () => {
++    mockChat.mockRejectedValue(new AppError(503, 'upstream down', { code: 'SOMETHING_ELSE' }));
++    const res = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'coffee' });
++    expect(res.status).toBe(503);
++    expect(res.body).not.toHaveProperty('mode');
++    expect(res.body).not.toHaveProperty('preparedCart');
++  });
++
++  test('429 carries a JSON error the client can show', async () => {
++    for (let i = 0; i < 10; i++) {
++      await request(app).post('/api/ai/chat').set(sess.headers).send({ message: `m${i}` });
++    }
++    const res = await request(app).post('/api/ai/chat').set(sess.headers).send({ message: 'one more' });
++    expect(res.status).toBe(429);
++    expect(res.type).toBe('application/json');
++    expect(typeof res.body.error).toBe('string');
++    expect(res.body).not.toHaveProperty('mode');
++  });
++});
+diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/integration/dashboard.test.ts AiCafe/source/apps/backend/tests/integration/dashboard.test.ts
+--- AiCafe/source/apps/backend/tests/integration/dashboard.test.ts	2026-10-17 06:31:29.000000000 +0000
++++ AiCafe/source/apps/backend/tests/integration/dashboard.test.ts	2026-10-17 08:18:15.298743495 +0000
+@@ -192,4 +192,22 @@
+     // No new grid library was introduced — AG Grid remains the only one used.
+     expect(t).toContain('agGrid.createGrid');
+   });
++
++  test('grid containers carry no ARIA role (AG Grid owns grid/treegrid) and are named via heading', async () => {
++    const html = (await request(app).get('/dashboard.html')).text;
++    const js = (await request(app).get('/dashboard.js')).text;
++
++    // A hand-written role="grid" would nest inside AG Grid's own root
++    // (role="grid", or role="treegrid" while rows are grouped).
++    expect(html).not.toMatch(/role="(tree)?grid"/);
++    expect(html).toMatch(/<div id="ordersGrid"><\/div>/);
++    expect(html).toMatch(/<div id="eventsGrid"><\/div>/);
++
++    // The accessible name comes from the visible headings, attached in JS to AG Grid's real root.
++    expect(html).toContain('id="ordersHeading"');
++    expect(html).toContain('id="eventsHeading"');
++    expect(js).toContain("labelGridRoot('ordersGrid', 'ordersHeading')");
++    expect(js).toContain("labelGridRoot('eventsGrid', 'eventsHeading')");
++    expect(js).toContain("setAttribute('aria-labelledby', headingId)");
++  });
+ });
+diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts
+--- AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts	2026-10-17 06:28:09.000000000 +0000
++++ AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts	2026-10-17 08:18:15.299120913 +0000
+@@ -50,6 +50,7 @@
+   removeEventListener(t: string, fn: Function) { this.listeners[t] = (this.listeners[t] || []).filter((f) => f !== fn); }
+   dispatch(t: string, ev: any) { (this.listeners[t] || []).slice().forEach((fn) => fn(ev)); }
+   querySelectorAll() { return []; }
++  querySelector(sel: string) { return sel === '.ag-root' ? this._root || null : null; }
+   focus() { doc.activeElement = this; }
+ }
+ 
+@@ -71,6 +72,9 @@
+     'ordersGrid', 'eventsGrid', 'eventModal', 'sideBody', 'sideTitle',
+     'ordersStatus', 'ordersError', 'eventsStatus', 'eventsError',
+   ].forEach((id) => { ids[id] = new FakeElement('div', id); });
++  // AG Grid renders its real root (.ag-root) inside each container.
++  ids.ordersGrid._root = new FakeElement('div');
++  ids.eventsGrid._root = new FakeElement('div');
+   ids.eventModal.className = 'side-panel';
+   ids.eventModal.setAttribute('aria-hidden', 'true');
+   ids.sideBackdrop.hidden = true;
+@@ -186,4 +190,15 @@
+     expect(ids.eventsError.hidden).toBe(false);
+     expect(ids.ordersStatus.textContent).toMatch(/Loading orders/i);
+   });
++
++  test('names AG Grid\'s inner root from the section heading and adds no role of its own', () => {
++    expect(ids.ordersGrid._root.getAttribute('aria-labelledby')).toBe('ordersHeading');
++    expect(ids.eventsGrid._root.getAttribute('aria-labelledby')).toBe('eventsHeading');
++    // The container must stay role-less so AG Grid's own grid/treegrid role is the only one.
++    expect(ids.ordersGrid.getAttribute('role')).toBeNull();
++    expect(ids.eventsGrid.getAttribute('role')).toBeNull();
++    // Every heading we point at exists in the served markup.
++    expect(html).toContain('id="ordersHeading"');
++    expect(html).toContain('id="eventsHeading"');
++  });
+ });
+diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/unit/dashboard-contrast.test.ts AiCafe/source/apps/backend/tests/unit/dashboard-contrast.test.ts
+--- AiCafe/source/apps/backend/tests/unit/dashboard-contrast.test.ts	1970-01-01 00:00:00.000000000 +0000
++++ AiCafe/source/apps/backend/tests/unit/dashboard-contrast.test.ts	2026-10-17 08:21:07.165278843 +0000
+@@ -0,0 +1,78 @@
++// Reproducible WCAG 2.x contrast check for the dashboard badges.
++// Badge backgrounds are translucent tints, so the text is measured against the tint
++// BLENDED over the panel it sits on (not against the bare panel colour).
++import fs from 'fs';
++import path from 'path';
++
++// Strip CSS comments so they cannot bleed into selectors.
++const html = fs
++  .readFileSync(path.join(__dirname, '../../public/dashboard.html'), 'utf8')
++  .replace(/\/\*[\s\S]*?\*\//g, '');
++
++type RGB = [number, number, number];
++const hex = (h: string): RGB => {
++  const v = h.replace('#', '');
++  return [0, 2, 4].map((i) => parseInt(v.slice(i, i + 2), 16)) as RGB;
++};
++const lum = ([r, g, b]: RGB) => {
++  const f = (c: number) => ((c /= 255) <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
++  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
++};
++const ratio = (a: RGB, b: RGB) => {
++  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
++  return (hi + 0.05) / (lo + 0.05);
++};
++const blend = (fg: RGB, a: number, bg: RGB): RGB =>
++  fg.map((c, i) => Math.round(a * c + (1 - a) * bg[i])) as RGB;
++
++// Panels a badge can sit on (grid cell / detail panel), per theme.
++const PANELS = { light: ['#ffffff', '#f8fafc'], dark: ['#1b2530', '#16202b'] };
++
++function badgeRules(dark: boolean) {
++  const out: { name: string; text: RGB; tint: RGB; alpha: number }[] = [];
++  const re = /([^{}]+)\{([^{}]*)\}/g;
++  let m: RegExpExecArray | null;
++  while ((m = re.exec(html))) {
++    const selectors = m[1].split(',').map((s) => s.trim());
++    const body = m[2];
++    const bg = /background:\s*rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(body);
++    const col = /(?:^|[;\s])color:\s*(#[0-9a-fA-F]{6})/.exec(body);
++    if (!bg || !col) continue;
++    for (const sel of selectors) {
++      const isDark = sel.startsWith('body.dark ');
++      const mm = /\.(badge-[a-z]+)$/.exec(sel);
++      if (!mm || isDark !== dark) continue;
++      out.push({
++        name: mm[1],
++        text: hex(col[1]),
++        tint: [Number(bg[1]), Number(bg[2]), Number(bg[3])],
++        alpha: Number(bg[4]),
++      });
++    }
++  }
++  return out;
++}
++
++describe.each([['light', false], ['dark', true]] as const)('badge text contrast (%s theme)', (theme, dark) => {
++  const rules = badgeRules(dark);
++
++  test('every badge variant is covered by the check', () => {
++    const names = rules.map((r) => r.name).sort();
++    const expected = dark
++      ? ['badge-ai', 'badge-allow', 'badge-block', 'badge-cancelled', 'badge-confirm', 'badge-human', 'badge-neutral', 'badge-paid']
++      : ['badge-ai', 'badge-allow', 'badge-block', 'badge-cancelled', 'badge-confirm', 'badge-neutral', 'badge-paid'];
++    expect(names).toEqual(expected);
++  });
++
++  test.each(PANELS[theme])('all badge text is >= 4.5:1 (small text) on panel %s', (panel) => {
++    for (const r of rules) {
++      const bg = blend(r.tint, r.alpha, hex(panel));
++      const got = ratio(r.text, bg);
++      expect({ badge: r.name, ok: got >= 4.5, got: Number(got.toFixed(2)) }).toEqual({
++        badge: r.name,
++        ok: true,
++        got: Number(got.toFixed(2)),
++      });
++    }
++  });
++});
+diff -ruN --strip-trailing-cr AiCafe/docs/KNOWN_LIMITATIONS.md AiCafe/docs/KNOWN_LIMITATIONS.md
+--- AiCafe/docs/KNOWN_LIMITATIONS.md	1970-01-01 00:00:00.000000000 +0000
++++ AiCafe/docs/KNOWN_LIMITATIONS.md	2026-10-17 08:21:35.068632769 +0000
+@@ -0,0 +1,68 @@
++# Known limitations and design decisions
++
++AiCafe is a hackathon prototype built around one question: *how can an AI agent
++help someone shop without ever being able to move their money?* This page lists
++what is deliberately out of scope and what is simply not done yet, so a reviewer
++does not have to discover it.
++
++Every statement below can be checked in the code or the tests named next to it.
++
++## Deliberate design decisions
++
++**The AI can prepare a cart, but never pay, capture or refund.**
++- The shopping assistant only has catalog/cart tools. A model request for any
++  other tool (for example `capture_payment`) is refused before anything runs
++  (`tests/integration/ai.test.ts`, "Safety boundary").
++- The Ops Copilot uses the PayPal Agent Toolkit with a strict read-only
++  allow-list, enforced twice: in the toolkit permissions and again by tool name
++  (`src/ops/ops-tools.ts`).
++- Payment approval is always a human action in PayPal. The MCP surface can
++  *start* a checkout, never approve or capture it.
++
++**The server, not the client or the AI, decides what is allowed.**
++- Policy is evaluated on the server in `POST /api/orders/create`, right before
++  the PayPal call (`src/routes/orders.ts`). A cart shown in the app is only a
++  proposal.
++- When all AI providers are unavailable, the assistant falls back to a
++  deterministic rule-based planner. The response says so (`mode: "rule-based"`),
++  the order is never attributed to an AI agent, and only that one failure code
++  triggers the fallback (`tests/integration/ai-fallback.test.ts`,
++  `tests/integration/ai-contract.test.ts`).
++
++## Not implemented
++
++**Refunds.** There is no refund endpoint and no refund method on the PayPal
++client. Refunded payments are *recognized* when PayPal reports them
++(`src/orders/payment-lifecycle.ts`) but cannot be *issued* from this app. This is
++a scope limit, not a security feature: a refund tool would need its own policy
++rules, human approval and idempotency before any agent could go near it.
++
++**Subscriptions and other PayPal APIs.** Only the Orders API is used.
++
++**Single-merchant demo.** One cafe catalog. The architecture does not depend on
++that, but multi-merchant onboarding is not built.
++
++## Client limitations
++
++**Policy metadata is not shown in the Flutter app.** The server returns
++`policyDecision`, `requiresExplicitApproval` and `reason` with a prepared cart,
++but the app does not display them yet, so it cannot explain *why* a cart needs
++approval. It does honor the server's `checkoutReady` flag and the `mode` field.
++
++## Accessibility (AG Grid dashboard)
++
++Checked by automated tests, not by assistive technology. Not yet verified: a
++real screen reader (NVDA, JAWS, VoiceOver) and real-browser keyboard traversal.
++Contrast of badge text is verified programmatically against the blended
++background (`tests/unit/dashboard-contrast.test.ts`).
++
++## State and persistence
++
++> Update this section when the persistent-storage work is merged. Until then,
++> orders, sessions, policy events and idempotency records live in process memory
++> and are lost on restart; do not describe the app as durable.
++
++## Deployment
++
++The Render free plan sleeps when idle, so the first request after a pause can
++take about a minute. Keep the service warm before a demo.
+--- AiCafe/source/apps/backend/SUBMISSION.md	2026-10-16 20:23:34.000000000 +0000
++++ AiCafe/source/apps/backend/SUBMISSION.md	2026-10-17 08:21:35.070303315 +0000
+@@ -184,7 +184,7 @@
+   Quick Planner** (`"mode": "rule-based"`). It is not AI: it never marks the session AI-prepared (order
+   stays `HUMAN`), writes no `AI_AGENT` policy event, never adds alcohol, and prices/policy still come from
+   the server. Covered by `tests/unit/fallback-planner.test.ts` and `tests/integration/ai-fallback.test.ts`.
+-- MCP adapter: `tests/integration/mcp.test.ts` (23 tests). Full backend suite: 393 tests passing.
++- MCP adapter: `tests/integration/mcp.test.ts` (23 tests). Full backend suite: see the current count in the latest test run.
+ - The MCP server and the rule-based fallback are covered by automated tests and a local scripted run;
+   they have **not** yet been exercised against the deployed Render instance or a third-party MCP client
+   — redeploy, then run `npm run mcp:demo -- <url>` and record the result before claiming it as live-proven.

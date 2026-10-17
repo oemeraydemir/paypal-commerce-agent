@@ -13,12 +13,29 @@
         --text: #1f2937;
         --muted: #6b7280;
         --primary: #2d6cdf;
-        --success: #1f9d62;
-        --warning: #d97706;
+        /* Darkened from #1f9d62 so small badge text meets WCAG AA (≥4.5:1) on white. */
+        --success: #15803d;
+        /* Darkened from #d97706 so small badge text meets WCAG AA (≥4.5:1) on white. */
+        --warning: #b45309;
         --danger: #dc2626;
+        /* High-contrast focus ring colour (overridden in dark mode below). */
+        --focus: #1d4ed8;
       }
 
       * { box-sizing: border-box; }
+
+      /* Visible focus indicator for all interactive controls (keyboard users).
+         AG Grid manages its own cell-focus border, so this is scoped to native
+         controls and the detail dialog, not the grid cells. */
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
 
       body {
         margin: 0;
@@ -34,7 +51,21 @@
         --border: #2c3a47;
         --text: #dbe4ee;
         --muted: #8da0b3;
+        /* Lighter focus ring for the dark surface. */
+        --focus: #93c5fd;
       }
+
+      /* Dark-mode badge colours: the light-theme greens/ambers/reds fail WCAG AA
+         on the dark panel, so badge text + tints are lightened for contrast
+         while keeping the same semantic hue families. */
+      body.dark .badge-allow,
+      body.dark .badge-paid { color: #34d399; background: rgba(52, 211, 153, 0.16); }
+      body.dark .badge-confirm { color: #fbbf24; background: rgba(251, 191, 36, 0.16); }
+      body.dark .badge-block { color: #fca5a5; background: rgba(248, 113, 113, 0.16); }
+      body.dark .badge-neutral,
+      body.dark .badge-ai { color: #7cb0ff; background: rgba(124, 176, 255, 0.16); }
+      body.dark .badge-human,
+      body.dark .badge-cancelled { color: #b6c2cf; background: rgba(182, 194, 207, 0.16); }
 
       .demo-banner {
         background: #111827;
@@ -204,14 +235,30 @@
         text-transform: uppercase;
         letter-spacing: 0.02em;
       }
-      .badge-allow { background: rgba(31, 157, 98, 0.14); color: var(--success); }
-      .badge-confirm { background: rgba(217, 119, 6, 0.14); color: var(--warning); }
-      .badge-block { background: rgba(220, 38, 38, 0.14); color: var(--danger); }
-      .badge-paid { background: rgba(31, 157, 98, 0.14); color: var(--success); }
-      .badge-cancelled { background: rgba(107, 114, 128, 0.16); color: var(--muted); }
-      .badge-neutral { background: rgba(45, 108, 223, 0.12); color: var(--primary); }
-      .badge-ai { background: rgba(45, 108, 223, 0.16); color: var(--primary); }
+      /* Badge text colours are measured against the real blended tint (badge background is translucent), not the bare panel: see tests/unit/dashboard-contrast.test.ts. */
+      .badge-allow { background: rgba(31, 157, 98, 0.14); color: #166534; }
+      .badge-confirm { background: rgba(217, 119, 6, 0.14); color: #92400e; }
+      .badge-block { background: rgba(220, 38, 38, 0.14); color: #b91c1c; }
+      .badge-paid { background: rgba(31, 157, 98, 0.14); color: #166534; }
+      .badge-cancelled { background: rgba(107, 114, 128, 0.16); color: #4b5563; }
+      .badge-neutral { background: rgba(45, 108, 223, 0.12); color: #1d4ed8; }
+      .badge-ai { background: rgba(45, 108, 223, 0.16); color: #1d4ed8; }
       .badge-human { background: rgba(107, 114, 128, 0.14); color: var(--muted); }
+
+      /* Accessible status / error announcements for the grids (polite + alert
+         live regions). Kept out of the visual flow until they carry a message. */
+      .grid-status {
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin: 0 0 8px;
+        min-height: 1.1em;
+      }
+      .grid-error {
+        font-size: 0.85rem;
+        color: var(--danger);
+        margin: 0 0 8px;
+      }
+      body.dark .grid-error { color: #f87171; }
 
       .side-backdrop {
         position: fixed;
@@ -323,7 +370,7 @@
       <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
 
       <section class="grid-section" role="region" aria-label="Orders data grid">
-        <h2>Orders</h2>
+        <h2 id="ordersHeading">Orders</h2>
         <div class="grid-toolbar">
           <input type="text" id="ordersQuickFilter" placeholder="Quick filter orders…" aria-label="Quick filter orders" />
           <label for="ordersGroupBy">Group by</label>
@@ -336,11 +383,13 @@
           <button type="button" id="ordersCsvBtn">Export CSV</button>
           <span class="hint">sort · filter · group · aggregate · pin · paginate</span>
         </div>
-        <div id="ordersGrid" role="grid" aria-label="Orders"></div>
+        <p class="grid-status" id="ordersStatus" role="status" aria-live="polite"></p>
+        <p class="grid-error" id="ordersError" role="alert" hidden></p>
+        <div id="ordersGrid"></div>
       </section>
 
       <section class="grid-section" role="region" aria-label="Policy events data grid">
-        <h2>Policy events</h2>
+        <h2 id="eventsHeading">Policy events</h2>
         <div class="grid-toolbar">
           <input type="text" id="eventsQuickFilter" placeholder="Quick filter policy events…" aria-label="Quick filter policy events" />
           <label for="eventsGroupBy">Group by</label>
@@ -352,12 +401,14 @@
           <button type="button" id="eventsCsvBtn">Export CSV</button>
           <span class="hint">click a row for reason &amp; violated rules</span>
         </div>
-        <div id="eventsGrid" role="grid" aria-label="Policy events"></div>
+        <p class="grid-status" id="eventsStatus" role="status" aria-live="polite"></p>
+        <p class="grid-error" id="eventsError" role="alert" hidden></p>
+        <div id="eventsGrid"></div>
       </section>
     </main>
 
     <div id="sideBackdrop" class="side-backdrop" hidden></div>
-    <aside id="eventModal" class="side-panel" aria-hidden="true" aria-label="Detail panel">
+    <aside id="eventModal" class="side-panel" role="dialog" aria-modal="true" aria-labelledby="sideTitle" aria-hidden="true" tabindex="-1">
       <div class="side-header">
         <h3 id="sideTitle">Detail</h3>
         <button type="button" class="side-close" id="closeSide" aria-label="Close">&times;</button>

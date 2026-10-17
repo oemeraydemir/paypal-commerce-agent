@@ -14,7 +14,7 @@
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │ Catalog      │  │ AI Agent     │  │ Orders       │      │
-│  │ (8 products) │  │ (AI+fallback)│  │ (in-memory)  │      │
+│  │ (25 products) │  │ (AI+fallback)│  │ (in-memory)  │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
@@ -38,6 +38,30 @@
 10. PayPal sends a webhook event such as `PAYMENT.CAPTURE.COMPLETED`.
 11. The backend verifies the webhook signature and reconciles the order to `PAID`.
 12. The AG Grid dashboard reads the same authoritative orders source and updates with new metrics.
+
+## External agents: MCP adapter
+
+`routes/mcp.ts` exposes the café as an MCP server (Streamable HTTP, JSON-RPC 2.0) at `POST /api/mcp`.
+It is a thin adapter, not a second implementation: read-only tools reuse the same `executeTool` /
+policy-preview code as the web agent, and `start_checkout` calls the normal `/api/orders/create`
+endpoint over loopback, so session auth, idempotency, the spending policy, daily-spend reservations and
+PayPal idempotency are shared. There is intentionally no capture/pay/refund tool; the agent only receives
+an approval link that a human must open. Orders it prepares are attributed `AI_AGENT` server-side.
+
+```text
+External agent ──MCP──▶ /api/mcp ──▶ search_menu / prepare_cart / check_policy  (read-only, server prices)
+                                 └─▶ start_checkout ─▶ /api/orders/create ─▶ policy ─▶ PayPal (sandbox)
+                                                                 │
+                                          human opens approvalUrl, approves, confirms capture in the app
+```
+
+## Graceful degradation: rule-based planner
+
+If every AI provider is exhausted (`503 AI_UNAVAILABLE`) `routes/ai.ts` answers with
+`ai/fallback-planner.ts`: a pure, deterministic planner (budget / head-count / dietary / category parsing).
+It is labelled `mode: "rule-based"`, never marks the session AI-prepared (order origin stays `HUMAN`),
+records no `AI_AGENT` policy event, never adds alcohol, and still gets prices and the policy decision
+from the server. Unrelated AI errors are not masked.
 
 ## Safety Boundaries
 

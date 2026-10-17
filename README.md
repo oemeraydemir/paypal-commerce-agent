@@ -17,7 +17,7 @@ off to PayPal sandbox only after you choose to check out.
 
 ```bash
 git clone https://github.com/oemeraydemir/paypal-commerce-agent.git
-cd paypal-commerce-agent/apps/backend && npm install
+cd paypal-commerce-agent/source/apps/backend && npm install
 npm run dev            # then open http://localhost:3000
 ```
 
@@ -31,11 +31,21 @@ AI or PayPal credentials — only a live PayPal sandbox payment needs keys.
 See [Try it in your browser](#try-it-in-your-browser--no-emulator-needed)
 below for the scenario table.
 
+## Repository layout
+
+```
+source/apps/backend      Node.js + TypeScript API, AI agent, MCP server, PayPal, AG Grid dashboard (public/)
+source/apps/flutter_app  Flutter Android/iOS shopper app
+openapi.json, postman/   API spec + Postman collection (incl. MCP folder)
+evidence/, reports/      Live-verification evidence and archived sprint reports
+.github/workflows/ci.yml Typecheck + tests + build + Flutter analyze/test
+```
+
 ## License & architecture
 
 - **MIT License** — see [LICENSE](./LICENSE).
-- **Architecture** — see [apps/backend/ARCHITECTURE.md](./apps/backend/ARCHITECTURE.md).
-- **Older reports** — see [_ARCHIVE_OLD_REPORTS](./_ARCHIVE_OLD_REPORTS).
+- **Architecture** — see [source/apps/backend/ARCHITECTURE.md](./source/apps/backend/ARCHITECTURE.md).
+- **Older reports** — see [reports/archive-old-reports](./reports/archive-old-reports).
 
 ## Why this matters
 
@@ -60,7 +70,7 @@ The backend serves a responsive web storefront, so the full flow runs with only 
 
 ```bash
 git clone https://github.com/oemeraydemir/paypal-commerce-agent.git
-cd paypal-commerce-agent/apps/backend
+cd paypal-commerce-agent/source/apps/backend
 npm install
 cp .env.example .env    # then add ONE free AI key (Groq or Gemini); PayPal keys optional
 npm run dev             # open http://localhost:3000
@@ -91,6 +101,53 @@ PayPal credentials:
 
 The catalog now has 25 products in 7 categories (breakfast, lunch, drinks, desserts, snacks, gifts,
 catering) with dietary labels; the web menu renders `GET /api/catalog` directly.
+
+## Agent-ready: MCP server (agentic commerce)
+
+AI Café is also a **merchant that other AI agents can shop at**. The backend speaks the
+[Model Context Protocol](https://modelcontextprotocol.io) (Streamable HTTP, JSON-RPC 2.0) at
+`POST /api/mcp`, so Claude, ChatGPT, an agent framework or the MCP Inspector can discover the menu,
+build a cart and **start a PayPal checkout** — while the human stays the only one who can pay.
+
+| Tool | What the external agent gets | Money moves? |
+|---|---|---|
+| `search_menu` | Live menu, dietary filters, server prices | No |
+| `prepare_cart` | Server-computed total + the shopper's policy decision (`AUTO_ALLOW` / `REQUIRE_CONFIRMATION` / `BLOCK`) | No |
+| `check_policy` | The authoritative policy verdict (or the shopper's limits) | No |
+| `start_checkout` | Order + PayPal **sandbox** approval link for a human | No — a human must approve |
+| `get_order_status` | Order status (only for orders created in that MCP session) | No |
+
+There is **no capture, pay or refund tool** — by design, and a test asserts it. `start_checkout` goes
+through the normal `/api/orders/create` pipeline, so session auth, idempotency, the spending policy,
+daily-budget reservations and PayPal-Request-Id are the same code the app uses. Orders prepared by an
+external agent are attributed `AI_AGENT` on the dashboard (server-side, never client-supplied).
+
+```bash
+# scripted external agent (no LLM, no keys): initialize → search → prepare → policy → checkout link
+cd source/apps/backend && npm run mcp:demo                      # local server on :3000
+npm run mcp:demo -- https://paypal-commerce-agent.onrender.com   # hosted demo
+```
+
+Connect a real MCP client (the endpoint needs no key — a session is minted on `initialize`):
+
+```bash
+npx @modelcontextprotocol/inspector     # transport: Streamable HTTP, URL: http://localhost:3000/api/mcp
+claude mcp add --transport http ai-cafe http://localhost:3000/api/mcp
+```
+
+Safety properties: browser `Origin` headers other than the server's own are rejected (DNS-rebinding
+guard), 60 requests/min/IP, unguessable `Mcp-Session-Id`, one MCP session can never read another's
+order, and unknown/payment-style tool names are refused. See `tests/integration/mcp.test.ts` (23 tests)
+and the `MCP (Agentic Commerce)` folder in the Postman collection.
+
+## Reliability: honest rule-based fallback
+
+Free AI-provider tiers rate-limit. When **every** provider is exhausted the chat no longer dead-ends:
+a small deterministic *Quick Planner* (budget, head-count, dietary words, categories → cart) answers
+and the response says `"mode": "rule-based"`. It is **not** AI and is never presented as such: the UI
+labels it, it never marks the session as AI-prepared (the order stays attributed `HUMAN`), it writes no
+`AI_AGENT` policy event, and it never adds alcohol. Prices and the policy decision still come from the
+server. Other failures are not masked.
 
 ## AI provider setup
 
@@ -123,7 +180,7 @@ round trip, and the model id echoed back), and the deployed demo answers AI chat
 key was available for them, so treat them as untested. The chain is provider-agnostic, so any
 OpenAI-compatible endpoint you configure should work; only Gemini and Groq are *proven*.
 
-**Never commit keys.** Put them in `apps/backend/.env` locally (git-ignored) and in the host's
+**Never commit keys.** Put them in `source/apps/backend/.env` locally (git-ignored) and in the host's
 environment-variable panel in production (e.g. Render). `.env.example` and `render.yaml` list the
 variable **names** only.
 
@@ -160,6 +217,8 @@ sandbox-only.
 - Authoritative catalog pricing, order idempotency, webhook verification, and
   clear separation between AI cart preparation and human-authorized payment.
 - Public, read-only operations dashboard built with AG Grid.
+- MCP server (`/api/mcp`) so external AI agents can shop and start a human-approved PayPal checkout.
+- Honest rule-based fallback when every AI provider is rate-limited.
 
 The order store is in-memory and clears on server restart. This is a hackathon
 prototype, not a production payment service.
@@ -188,12 +247,12 @@ Open PowerShell in the repository root.
 1. Configure the backend:
 
     ```powershell
-    cd apps/backend
+    cd source/apps/backend
     npm install
     Copy-Item .env.example .env
     ```
 
-2. Open `apps/backend/.env` locally and set:
+2. Open `source/apps/backend/.env` locally and set:
 
     ```dotenv
     # ONE free AI key is enough (Gemini or Groq); OpenAI is optional.
@@ -223,7 +282,7 @@ Open PowerShell in the repository root.
 4. In a second terminal, build and launch the app:
 
     ```powershell
-    cd apps/flutter_app
+    cd source/apps/flutter_app
     flutter pub get
     flutter run
     ```
@@ -252,7 +311,7 @@ provides public, read-only order and payment metrics for the demo.
 From the repository root:
 
 ```powershell
-cd apps/backend
+cd source/apps/backend
 npm test -- --runInBand
 npm run build
 
@@ -271,6 +330,7 @@ and AI services and do not charge or call those providers.
 | ---- | -------------- |
 | OpenAI-compatible LLM chain (Gemini → Groq → Cerebras → OpenRouter → OpenAI; automatic fallback, a free key is enough) | Interprets shopping intent and invokes restricted catalog/cart tools |
 | PayPal Orders API | Creates and captures buyer-approved sandbox payments |
+| Model Context Protocol (MCP) | Lets external AI agents (Claude, ChatGPT, frameworks) shop and start a PayPal checkout that only a human can approve |
 | AG Grid | Displays live order and payment metrics in the read-only dashboard |
 | Flutter | Builds the shopper's Android/iOS application |
 | Node.js, TypeScript, Express | Hosts the catalog, AI orchestration, PayPal API, and webhook service |
@@ -283,7 +343,7 @@ No other hackathon sponsor tools are claimed.
 - Open-source license: see [LICENSE](./LICENSE).
 - Public repository: publish this project to a public GitHub, GitLab, or
   Bitbucket repository before submitting; add its URL to
-  [the submission notes](./apps/backend/SUBMISSION.md).
+  [the submission notes](./source/apps/backend/SUBMISSION.md).
 - Functional demo: run locally with sandbox credentials using the steps above,
   or deploy the backend and record its public URL in the submission notes.
 - Demo video: record the app running on the emulator, keep it under three
@@ -292,5 +352,5 @@ No other hackathon sponsor tools are claimed.
 - Project description and tool usage: summarized above and in the submission
   notes.
 
-See [the demo checklist](./apps/backend/DEMO_CHECKLIST.md) and
-[the architecture](./apps/backend/ARCHITECTURE.md) for more detail.
+See [the demo checklist](./source/apps/backend/DEMO_CHECKLIST.md) and
+[the architecture](./source/apps/backend/ARCHITECTURE.md) for more detail.

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_app/services/api_service.dart';
+import 'package:flutter_app/models/chat_message.dart';
 import 'package:flutter_app/models/product.dart';
 import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/services/session_service.dart';
@@ -467,6 +468,172 @@ void main() {
       // A resolve against the public endpoint must target the injected host.
       final res = await api.getCatalog();
       expect(res, isA<List<Product>>());
+    });
+  });
+
+  group('AI chat response compatibility (mode + safe parsing)', () {
+    ApiService apiReturning(Object body, {int status = 200}) => ApiService(
+      baseUrl: 'http://localhost:3000',
+      storage: InMemorySessionStorage(),
+      client: withSession(
+        (_) async => http.Response(
+          body is String ? body : jsonEncode(body),
+          status,
+          // UTF-8 so formatted prices (€) survive the mock response encoding.
+          headers: {'content-type': 'application/json; charset=utf-8'},
+        ),
+      ),
+    );
+
+    test('parses a normal AI reply (mode "ai") with a prepared cart', () async {
+      final api = apiReturning({
+        'sessionId': 'sess-abc',
+        'response': 'Here is your cart.',
+        'checkoutReady': true,
+        'toolRounds': 2,
+        'messageCount': 4,
+        'mode': 'ai',
+        'preparedCart': {
+          'items': [
+            {
+              'productId': 'coffee',
+              'name': 'Fresh Brewed Coffee',
+              'quantity': 2,
+              'unitPriceMinor': 300,
+              'unitPriceFormatted': '€3.00',
+              'lineTotalMinor': 600,
+              'lineTotalFormatted': '€6.00',
+            },
+          ],
+          'totalMinor': 600,
+          'totalFormatted': '€6.00',
+          'currency': 'EUR',
+          'message': 'Cart prepared',
+        },
+      });
+
+      final resp = await api.sendChat(message: 'coffee');
+      expect(resp.mode, ChatMode.ai);
+      expect(resp.isRuleBased, isFalse);
+      expect(resp.checkoutReady, isTrue);
+      expect(resp.toolRounds, 2);
+      expect(resp.messageCount, 4);
+      expect(resp.preparedCart, isNotNull);
+      expect(resp.preparedCart!.items, hasLength(1));
+      expect(resp.preparedCart!.items.single.productId, 'coffee');
+      expect(resp.preparedCart!.items.single.quantity, 2);
+      expect(resp.preparedCart!.totalMinor, 600);
+      api.dispose();
+    });
+
+    test('parses a rule-based fallback (mode "rule-based")', () async {
+      final api = apiReturning({
+        'sessionId': 'sess-abc',
+        'response': 'Our AI models are at capacity (no AI).',
+        'checkoutReady': true,
+        'toolRounds': 0,
+        'messageCount': 2,
+        'mode': 'rule-based',
+        'preparedCart': {
+          'items': <dynamic>[],
+          'totalMinor': 0,
+          'totalFormatted': '€0.00',
+          'currency': 'EUR',
+        },
+      });
+
+      final resp = await api.sendChat(message: 'breakfast');
+      expect(resp.mode, ChatMode.ruleBased);
+      expect(resp.isRuleBased, isTrue);
+      expect(resp.checkoutReady, isTrue);
+      api.dispose();
+    });
+
+    test('treats a missing or unknown mode as unknown', () async {
+      final api = apiReturning({
+        'sessionId': 'sess-abc',
+        'response': 'hi',
+        'checkoutReady': false,
+        'mode': 'something-else',
+      });
+
+      final resp = await api.sendChat(message: 'hi');
+      expect(resp.mode, isNull);
+      expect(resp.isRuleBased, isFalse);
+      api.dispose();
+    });
+
+    test('tolerates missing cart fields and malformed item entries', () async {
+      final api = apiReturning({
+        'sessionId': 'sess-abc',
+        'response': 'partial',
+        'mode': 'ai',
+        'preparedCart': {
+          'items': [
+            {'productId': 'coffee', 'quantity': 2},
+            'not-a-map',
+          ],
+        },
+      });
+
+      final resp = await api.sendChat(message: 'coffee');
+      expect(resp.preparedCart, isNotNull);
+      expect(resp.preparedCart!.items, hasLength(1));
+      final line = resp.preparedCart!.items.single;
+      expect(line.productId, 'coffee');
+      expect(line.name, '');
+      expect(line.quantity, 2);
+      expect(line.unitPriceMinor, 0);
+      expect(resp.preparedCart!.totalMinor, 0);
+      expect(resp.preparedCart!.currency, 'EUR');
+      expect(resp.preparedCart!.message, '');
+      api.dispose();
+    });
+
+    test('treats a non-object preparedCart as no cart', () async {
+      final api = apiReturning({
+        'sessionId': 'sess-abc',
+        'response': 'ok',
+        'checkoutReady': false,
+        'preparedCart': 'not-an-object',
+      });
+
+      final resp = await api.sendChat(message: 'hi');
+      expect(resp.preparedCart, isNull);
+      expect(resp.checkoutReady, isFalse);
+      api.dispose();
+    });
+
+    test('tolerates an empty or non-JSON body', () async {
+      for (final body in <String>['', 'not json']) {
+        final api = apiReturning(body);
+        final resp = await api.sendChat(message: 'hi');
+        expect(resp.sessionId, '');
+        expect(resp.response, '');
+        expect(resp.preparedCart, isNull);
+        expect(resp.checkoutReady, isFalse);
+        expect(resp.toolRounds, 0);
+        expect(resp.messageCount, 0);
+        expect(resp.mode, isNull);
+        api.dispose();
+      }
+    });
+
+    test('surfaces a rate-limit HTTP error as ApiException', () async {
+      final api = apiReturning(
+        {'error': 'Rate limit exceeded', 'retryAfter': 12},
+        status: 429,
+      );
+
+      await expectLater(
+        api.sendChat(message: 'hi'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.statusCode, 'status', 429)
+              .having((e) => e.message, 'message', 'Rate limit exceeded'),
+        ),
+      );
+      api.dispose();
     });
   });
 }

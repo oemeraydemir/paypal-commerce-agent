@@ -17,6 +17,7 @@ import webhookRoutes from './routes/webhooks';
 import dashboardRoutes from './routes/dashboard';
 import checkoutRoutes from './routes/checkout';
 import sessionRoutes from './routes/sessions';
+import mcpRoutes from './routes/mcp';
 
 // CRITICAL FIX #1: createApp() builds the Express application with NO listen().
 // server.ts imports this and calls listen(). This separation prevents test
@@ -84,6 +85,7 @@ export function createApp() {
   app.use('/api', policyPreviewRoutes);
   app.use('/api', opsRoutes);
   app.use('/api', aiRoutes);
+  app.use('/api', mcpRoutes);
 
   app.use(errorHandler);
 

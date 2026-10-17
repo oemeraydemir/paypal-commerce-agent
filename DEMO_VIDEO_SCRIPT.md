@@ -1,4 +1,4 @@
-# Demo video script — AI Café (target: 2:50, hard cap 3:00)
+# Demo video script — AI Café (target: 2:52, hard cap 3:00)
 
 **Style.** Screen-capture of the live demo in a desktop browser (and the AG Grid
 dashboard + Ops Copilot in a second window). Calm voiceover, no music, no
@@ -31,11 +31,12 @@ live **AG Grid** dashboard proves every decision, and (6) the merchant copilot i
 | # | Time | Shot / On-screen | Voiceover | Why it scores |
 | --- | --- | --- | --- | --- |
 | 1 | 0:00–0:14 | Storefront home, AI chat box, profile chips ("Gluten-free · Vegetarian · Budget ≤ €34"). | "Shopping apps make you translate what you want into filters. AI Café lets you just say it — and it never gets control of your money." | Immediate hook + the core thesis (human stays in control). |
-| 2 | 0:14–0:50 | Click **scenario** buttons: Everyday (€13) → "needs approval"; Quick coffee (€3) → auto-allowed; Over-limit (€55) and Alcohol → server **blocks before PayPal**. | "Every cart is judged by the server-side policy engine using the backend's own prices. €13 needs my approval; €3 is automatic; over-limit or alcohol is blocked — even a forged request is refused." | Shows the **server-owned pricing + authoritative policy** (security/creativity criteria). |
-| 3 | 0:50–1:30 | "Vegetarian breakfast for two under €20" → AI prepares cart; review; **Review & pay with PayPal**; PayPal sandbox approve (sandbox buyer); return; **Confirm payment**; receipt card (items, total, masked capture ID, 4-step timeline). | "The agent has no PayPal credential — only I can approve. Capture happens only after my explicit confirmation, and the receipt proves a single capture." | The **human-in-the-loop PayPal** moment (PayPal + AI prize). |
-| 4 | 1:30–2:05 | `/dashboard`: KPI cards (orders, AI-assisted share, blocked, revenue); **Orders** grid; click **Group by → Origin** to show AI vs Human groups with summed totals; show the **status bar** count/sum; open a row's side panel (reason + violated rules); note 5 s live refresh. | "Every order and policy decision is audited live in an **AG Grid** dashboard — grouping, aggregation, and a status bar — showing who prepared the cart, AI or human, and what the policy said." | Showcases **meaningful AG Grid** use (the AG Grid prize): grouping, sum aggregation, status bar, live refresh. |
-| 5 | 2:05–2:35 | Dashboard Ops Copilot: ask "Which payments were blocked today and why?" → answer from audit trail. Then "Refund my last order." → copilot **refuses** (read-only; zero write-tool calls). | "A merchant Ops Copilot can explain what happened, but it's read-only — it can't issue a refund, even when asked." | Demonstrates the **read-only PayPal Agent Toolkit** copilot (PayPal + AI, security). |
-| 6 | 2:35–2:50 | Title card over the storefront; quick flashes of the API/Postman/OpenAPI badges. | "AI Café: agentic commerce where the human stays in control of every payment. Try the live demo, the Postman collection, and the OpenAPI spec." | Closing impact + pointers to **tryability** (Postman / APIMatic / Render). |
+| 2 | 0:14–0:42 | Click **scenario** buttons: Everyday (€13) → "needs approval"; Quick coffee (€3) → auto-allowed; Over-limit (€55) and Alcohol → server **blocks before PayPal**. | "Every cart is judged by the server-side policy engine using the backend's own prices. €13 needs my approval; €3 is automatic; over-limit or alcohol is blocked — even a forged request is refused." | Shows the **server-owned pricing + authoritative policy** (security/creativity criteria). |
+| 3 | 0:42–1:20 | "Vegetarian breakfast for two under €20" → AI prepares cart; review; **Review & pay with PayPal**; PayPal sandbox approve (sandbox buyer); return; **Confirm payment**; receipt card (items, total, masked capture ID, 4-step timeline). | "The agent has no PayPal credential — only I can approve. Capture happens only after my explicit confirmation, and the receipt proves a single capture." | The **human-in-the-loop PayPal** moment (PayPal + AI prize). |
+| 4 | 1:20–1:52 | `/dashboard`: KPI cards (orders, AI-assisted share, blocked, revenue); **Orders** grid; click **Group by → Origin** to show AI vs Human groups with summed totals; show the **status bar** count/sum; open a row's side panel (reason + violated rules); note 5 s live refresh. | "Every order and policy decision is audited live in an **AG Grid** dashboard — grouping, aggregation, and a status bar — showing who prepared the cart, AI or human, and what the policy said." | Showcases **meaningful AG Grid** use (the AG Grid prize): grouping, sum aggregation, status bar, live refresh. |
+| 5 | 1:52–2:12 | Dashboard Ops Copilot: ask "Which payments were blocked today and why?" → answer from audit trail. Then "Refund my last order." → copilot **refuses** (read-only; zero write-tool calls). | "A merchant Ops Copilot can explain what happened, but it's read-only — it can't issue a refund, even when asked." | Demonstrates the **read-only PayPal Agent Toolkit** copilot (PayPal + AI, security). |
+| 5b | 2:12–2:37 | Terminal beside the browser: `npm run mcp:demo`. An **external agent** initializes, lists **5 tools (there is no pay tool)**, gets a policy **BLOCK**, shrinks its cart, then receives a PayPal approval link it cannot use. | "AI Café is also agent-ready. Any MCP agent can shop here — but it can only start a checkout. A human still approves the payment." | Shows **agentic commerce** beyond one app (Best Use of Agentic Commerce / PayPal + AI). |
+| 6 | 2:37–2:52 | Title card over the storefront; quick flashes of the API/Postman/OpenAPI badges. | "AI Café: agentic commerce where the human stays in control of every payment. Try the live demo, the Postman collection, and the OpenAPI spec." | Closing impact + pointers to **tryability** (Postman / APIMatic / Render). |
 
 ---
 
@@ -48,6 +49,8 @@ live **AG Grid** dashboard proves every decision, and (6) the merchant copilot i
 - **Beat 4:** the **Group by** dropdown is the new AG Grid feature — use it on camera;
   the status bar at the bottom updates with count + sum as you select a numeric cell.
 - **Beat 5:** the refusal is the punchline — let it sit for a beat.
+- **Beat 5b:** run `npm run mcp:demo` in `source/apps/backend` (against the live URL: `npm run mcp:demo -- https://paypal-commerce-agent.onrender.com`). Pause on the "no capture / pay / refund tool exists" line and on the printed approval link.
+- **Fallback:** if the AI answers with `rule-based` (free-tier quota), say so — it is labelled in the UI; re-record in a minute or use a warm provider key.
 
 ---
 

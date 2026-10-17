@@ -7,6 +7,7 @@ import 'package:flutter_app/models/order.dart';
 import 'package:flutter_app/models/product.dart';
 import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/models/cart.dart';
+import 'package:flutter_app/models/chat_message.dart';
 import 'package:flutter_app/services/session_service.dart';
 
 /// Raised when the backend responds with a non-2xx status.
@@ -238,7 +239,11 @@ class ApiService {
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final products = (body['products'] as List? ?? const <dynamic>[]);
     return products
-        .map((e) => Product.fromJson(e as Map<String, dynamic>))
+        .whereType<Map<String, dynamic>>()
+        .map(Product.fromJson)
+        // A product without an id cannot be ordered; skip it rather than
+        // surfacing an unusable chip.
+        .where((product) => product.id.isNotEmpty)
         .toList();
   }
 
@@ -270,8 +275,22 @@ class ApiService {
       );
     });
     _ensureOk(res, 'sendChat');
-    final body = jsonDecode(res.body) as Map<String, dynamic>;
-    return ChatResponse.fromJson(body);
+    return ChatResponse.fromJson(_decodeChatBody(res));
+  }
+
+  /// Decodes a chat body defensively: an empty, non-JSON or non-object 2xx body
+  /// yields an empty map so [ChatResponse] falls back to safe defaults instead
+  /// of throwing on a malformed payload.
+  Map<String, dynamic> _decodeChatBody(http.Response res) {
+    if (res.body.trim().isEmpty) return const <String, dynamic>{};
+    try {
+      final decoded = jsonDecode(res.body);
+      return decoded is Map<String, dynamic>
+          ? decoded
+          : const <String, dynamic>{};
+    } on FormatException {
+      return const <String, dynamic>{};
+    }
   }
 
   Future<void> deleteChat() async {
@@ -417,6 +436,11 @@ class OrderCancelResult {
 }
 
 /// Response of `POST /api/ai/chat`.
+///
+/// Contract (from `apps/backend/src/routes/ai.ts`):
+/// `{ sessionId, response, preparedCart, checkoutReady, toolRounds,
+///    messageCount, mode }` — `mode` is `"ai"` for a normal AI answer and
+/// `"rule-based"` for the deterministic, explicitly non-AI fallback.
 class ChatResponse {
   final String sessionId;
   final String response;
@@ -425,6 +449,9 @@ class ChatResponse {
   final int toolRounds;
   final int messageCount;
 
+  /// Backend-declared mode; `null` when omitted/unknown (backward compatible).
+  final ChatMode? mode;
+
   ChatResponse({
     required this.sessionId,
     required this.response,
@@ -432,16 +459,23 @@ class ChatResponse {
     required this.checkoutReady,
     required this.toolRounds,
     required this.messageCount,
+    this.mode,
   });
 
-  factory ChatResponse.fromJson(Map<String, dynamic> json) => ChatResponse(
-    sessionId: json['sessionId'] as String,
-    response: json['response'] as String? ?? '',
-    preparedCart: json['preparedCart'] == null
-        ? null
-        : PreparedCart.fromJson(json['preparedCart'] as Map<String, dynamic>),
-    checkoutReady: json['checkoutReady'] as bool? ?? false,
-    toolRounds: json['toolRounds'] as int? ?? 0,
-    messageCount: json['messageCount'] as int? ?? 0,
-  );
+  bool get isRuleBased => mode == ChatMode.ruleBased;
+
+  factory ChatResponse.fromJson(Map<String, dynamic> json) {
+    final rawCart = json['preparedCart'];
+    return ChatResponse(
+      sessionId: json['sessionId'] as String? ?? '',
+      response: json['response'] as String? ?? '',
+      preparedCart: rawCart is Map<String, dynamic>
+          ? PreparedCart.fromJson(rawCart)
+          : null,
+      checkoutReady: json['checkoutReady'] as bool? ?? false,
+      toolRounds: (json['toolRounds'] as num?)?.toInt() ?? 0,
+      messageCount: (json['messageCount'] as num?)?.toInt() ?? 0,
+      mode: chatModeFromJson(json['mode']),
+    );
+  }
 }

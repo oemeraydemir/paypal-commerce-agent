@@ -4,7 +4,11 @@
   var VALID_DECISIONS = ['AUTO_ALLOW', 'REQUIRE_CONFIRMATION', 'BLOCK'];
 
   // ----- Theming API (AG Grid Community, v33) -----
-  var lightTheme = agGrid.themeQuartz;
+  // Explicit high-contrast accent so the focused-cell border and row selection
+  // are clearly visible (WCAG 2.4.7 — visible focus). Quartz defaults otherwise.
+  var lightTheme = agGrid.themeQuartz.withParams({
+    accentColor: '#1d4ed8'
+  });
   var darkTheme = agGrid.themeQuartz.withParams({
     backgroundColor: '#1b2530',
     foregroundColor: '#dbe4ee',
@@ -129,8 +133,8 @@
 
   // ----- Grid state with change-tracking for applyTransaction -----
   var state = {
-    orders: { api: null, rows: new Map() },
-    events: { api: null, rows: new Map() }
+    orders: { api: null, rows: new Map(), initial: true },
+    events: { api: null, rows: new Map(), initial: true }
   };
 
   function normalizeOrder(o) {
@@ -205,6 +209,9 @@
   }
 
   // ----- Side panel (textContent only) -----
+  var panelOpen = false;
+  var lastFocusedEl = null;
+
   function openSidePanel(data, kind) {
     var side = el('eventModal');
     var body = el('sideBody');
@@ -257,6 +264,39 @@
     side.classList.add('visible');
     side.setAttribute('aria-hidden', 'false');
     el('sideBackdrop').hidden = false;
+
+    // Move focus into the dialog (keyboard users) and remember what opened it so
+    // we can restore focus on close. The panel is focusable via tabindex="-1".
+    panelOpen = true;
+    lastFocusedEl = document.activeElement;
+    side.addEventListener('keydown', trapPanelKeys);
+    // Defer one frame so the panel's open transition/layout is ready for focus.
+    window.requestAnimationFrame(function () { side.focus(); });
+  }
+
+  // Keep keyboard focus inside the modal dialog and close it on Escape.
+  function trapPanelKeys(e) {
+    if (!panelOpen) return;
+    var side = el('eventModal');
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeSidePanel();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    var focusables = side.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (!focusables.length) return;
+    var first = focusables[0];
+    var last = focusables[focusables.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
   }
 
   function addDetail(parent, label, value) {
@@ -292,6 +332,33 @@
     side.classList.remove('visible');
     side.setAttribute('aria-hidden', 'true');
     el('sideBackdrop').hidden = true;
+    side.removeEventListener('keydown', trapPanelKeys);
+    panelOpen = false;
+    // Restore focus to whatever opened the panel (best effort).
+    if (lastFocusedEl && typeof lastFocusedEl.focus === 'function') {
+      lastFocusedEl.focus();
+    }
+    lastFocusedEl = null;
+  }
+
+  // ----- Screen-reader cell labels -----
+  // The compact visual chips ("AI"/"HUMAN", "PAID", "BLOCK") are not descriptive
+  // enough for a screen reader, so we give each semantic cell a fuller aria-label
+  // that still carries the column context. AG Grid merges these onto the cell.
+  function originAria(params) {
+    var value = (params.value || '').toUpperCase();
+    return { 'aria-label': value === 'AI_AGENT' ? 'Origin: AI agent' : 'Origin: Human' };
+  }
+  function statusAria(params) {
+    var value = (params.value || '').toUpperCase();
+    return { 'aria-label': 'Status: ' + (value || 'unknown') };
+  }
+  function decisionAria(params) {
+    var value = (params.value || '').toUpperCase();
+    var label = value === 'REQUIRE_CONFIRMATION' ? 'Require confirmation'
+      : value === 'AUTO_ALLOW' ? 'Auto allow'
+      : value === 'BLOCK' ? 'Blocked' : (value || 'unknown');
+    return { 'aria-label': 'Decision: ' + label };
   }
 
   // ----- Grid definitions -----
@@ -301,8 +368,8 @@
   var ordersColumnDefs = [
     { headerName: 'Order ID', field: 'id', pinned: 'left', minWidth: 200, cellRenderer: shortIdRenderer },
     { headerName: 'Created', field: 'createdAt', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
-    { headerName: 'Origin', field: 'origin', cellRenderer: originBadge, filter: 'agTextColumnFilter', minWidth: 120, enableRowGroup: true },
-    { headerName: 'Status', field: 'status', cellRenderer: statusChip, filter: 'agTextColumnFilter', minWidth: 130, enableRowGroup: true },
+    { headerName: 'Origin', field: 'origin', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120, enableRowGroup: true },
+    { headerName: 'Status', field: 'status', cellRenderer: statusChip, getCellAria: statusAria, filter: 'agTextColumnFilter', minWidth: 130, enableRowGroup: true },
     { headerName: 'Items', field: 'itemCount', filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 100, aggFunc: 'sum', enableValue: true },
     { headerName: 'Total', field: 'totalMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130, aggFunc: 'sum', enableValue: true },
     { headerName: 'Currency', field: 'currency', filter: 'agTextColumnFilter', minWidth: 110, enableRowGroup: true }
@@ -310,10 +377,10 @@
 
   var eventsColumnDefs = [
     { headerName: 'Time', field: 'timestamp', pinned: 'left', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
-    { headerName: 'Agent', field: 'agent', cellRenderer: originBadge, filter: 'agTextColumnFilter', minWidth: 120, enableRowGroup: true },
+    { headerName: 'Agent', field: 'agent', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120, enableRowGroup: true },
     { headerName: 'Cart ID', field: 'cartId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
     { headerName: 'Order ID', field: 'orderId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
-    { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, filter: 'agTextColumnFilter', minWidth: 180, enableRowGroup: true },
+    { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, getCellAria: decisionAria, filter: 'agTextColumnFilter', minWidth: 180, enableRowGroup: true },
     { headerName: 'Amount', field: 'amountMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130, aggFunc: 'sum', enableValue: true },
     { headerName: 'Reason', field: 'reason', filter: 'agTextColumnFilter', minWidth: 220, tooltipField: 'reason' },
     {
@@ -365,6 +432,48 @@
     ]
   };
 
+  // Accessible overlays for empty / loading states (Community string templates).
+  var NO_ROWS_TEMPLATE = '<span class="ag-overlay-no-rows">No data to display yet.</span>';
+  var LOADING_TEMPLATE = '<span class="ag-overlay-loading">Loading data…</span>';
+
+  // Live-region helpers for each grid's status (polite) and error (alert) text.
+  function setGridStatus(name, msg) {
+    var node = el(name + 'Status');
+    if (node) node.textContent = msg;
+  }
+  function setGridError(name, msg) {
+    var node = el(name + 'Error');
+    if (!node) return;
+    if (msg) { node.textContent = msg; node.hidden = false; }
+    else { node.textContent = ''; node.hidden = true; }
+  }
+
+  // Open the detail dialog when a focused cell is activated with Enter or Space,
+  // so the grid is fully keyboard-operable (mouse click still works via onRowClicked).
+  function makeCellOpenHandler(kind) {
+    return function (params) {
+      if (params.editing) return;
+      var key = params.event && params.event.key;
+      if ((key === 'Enter' || key === ' ') && params.data) {
+        params.event.preventDefault();
+        openSidePanel(params.data, kind);
+      }
+    };
+  }
+
+  // AG Grid puts role="grid" (or "treegrid" once rows are grouped) on its OWN
+  // inner root element and does not copy anything from our container. So the
+  // container carries no ARIA role, and the accessible name is attached to
+  // AG Grid's real root, tied to the visible section heading.
+  function labelGridRoot(containerId, headingId) {
+    var container = el(containerId);
+    if (!container || typeof container.querySelector !== 'function') return;
+    var root = container.querySelector('.ag-root');
+    if (root && typeof root.setAttribute === 'function') {
+      root.setAttribute('aria-labelledby', headingId);
+    }
+  }
+
   var ordersApi = agGrid.createGrid(el('ordersGrid'), {
     columnDefs: ordersColumnDefs,
     defaultColDef: defaultColDef,
@@ -376,9 +485,17 @@
     statusBar: statusBar,
     theme: lightTheme,
     rowData: [],
-    onRowClicked: function (params) { openSidePanel(params.data, 'orders'); }
+    // AG Grid's documented screen-reader options: keep row/column DOM order
+    // stable and stop grouped rows from "sticking" (which breaks row indices).
+    ensureDomOrder: true,
+    suppressGroupRowsSticky: true,
+    overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
+    overlayLoadingTemplate: LOADING_TEMPLATE,
+    onRowClicked: function (params) { openSidePanel(params.data, 'orders'); },
+    onCellKeyDown: makeCellOpenHandler('orders')
   });
   state.orders.api = ordersApi;
+  labelGridRoot('ordersGrid', 'ordersHeading');
 
   var eventsApi = agGrid.createGrid(el('eventsGrid'), {
     columnDefs: eventsColumnDefs,
@@ -391,9 +508,17 @@
     statusBar: statusBar,
     theme: lightTheme,
     rowData: [],
-    onRowClicked: function (params) { openSidePanel(params.data, 'events'); }
+    // AG Grid's documented screen-reader options: keep row/column DOM order
+    // stable and stop grouped rows from "sticking" (which breaks row indices).
+    ensureDomOrder: true,
+    suppressGroupRowsSticky: true,
+    overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
+    overlayLoadingTemplate: LOADING_TEMPLATE,
+    onRowClicked: function (params) { openSidePanel(params.data, 'events'); },
+    onCellKeyDown: makeCellOpenHandler('events')
   });
   state.events.api = eventsApi;
+  labelGridRoot('eventsGrid', 'eventsHeading');
 
   // Attach line items onto order rows for the side panel (not shown in grid).
   function attachOrderItems(orders, jsonOrders) {
@@ -405,20 +530,31 @@
 
   // ----- Refresh loop (5s) -----
   async function refreshData() {
+    // Clear any previous error announcement at the start of each cycle.
+    setGridError('orders', '');
+    setGridError('events', '');
+
     var oResp, oStatsResp, eResp, eStatsResp;
     try {
+      // Show the loading overlay only on the first load (not every 5s poll).
+      if (state.orders.initial) { ordersApi.showLoadingOverlay(); setGridStatus('orders', 'Loading orders…'); }
+      if (state.events.initial) { eventsApi.showLoadingOverlay(); setGridStatus('events', 'Loading policy events…'); }
       oResp = await fetch('/api/orders');
       oStatsResp = await fetch('/api/orders/stats');
       eResp = await fetch('/api/policy-events?limit=100');
       eStatsResp = await fetch('/api/policy-events/stats');
     } catch (err) {
-      // Non-fatal: keep previous rows; surface via warn, not error.
+      // Non-fatal: keep previous rows; surface an accessible error message.
       console.warn('dashboard refresh skipped:', err && err.message);
+      if (state.orders.initial) setGridError('orders', 'Could not load orders (connection error). Retrying automatically.');
+      if (state.events.initial) setGridError('events', 'Could not load policy events (connection error). Retrying automatically.');
       return;
     }
 
     if (!oResp.ok || !eResp.ok) {
       console.warn('dashboard refresh: upstream returned non-200');
+      if (state.orders.initial) setGridError('orders', 'Could not load orders (server error). Retrying automatically.');
+      if (state.events.initial) setGridError('events', 'Could not load policy events (server error). Retrying automatically.');
       return;
     }
 
@@ -431,10 +567,29 @@
     applyDiff('orders', ordersRaw);
     applyDiff('events', eventsRaw);
 
+    // Reflect empty / populated state with the accessible overlay.
+    if (ordersRaw.length === 0) ordersApi.showNoRowsOverlay(); else ordersApi.hideOverlay();
+    if (eventsRaw.length === 0) eventsApi.showNoRowsOverlay(); else eventsApi.hideOverlay();
+
     var oStats = oStatsResp.ok ? await oStatsResp.json() : {};
     var eStats = eStatsResp.ok ? await eStatsResp.json() : {};
     updateKpis(oStats, eStats);
     setLastUpdated();
+
+    var ordersLabel = ordersRaw.length + ' order' + (ordersRaw.length === 1 ? '' : 's');
+    var eventsLabel = eventsRaw.length + ' policy event' + (eventsRaw.length === 1 ? '' : 's');
+    if (state.orders.initial) {
+      state.orders.initial = false;
+      setGridStatus('orders', ordersRaw.length ? ('Showing ' + ordersLabel + '.') : 'No orders to display yet.');
+    } else {
+      setGridStatus('orders', 'Updated: ' + ordersLabel + '.');
+    }
+    if (state.events.initial) {
+      state.events.initial = false;
+      setGridStatus('events', eventsRaw.length ? ('Showing ' + eventsLabel + '.') : 'No policy events to display yet.');
+    } else {
+      setGridStatus('events', 'Updated: ' + eventsLabel + '.');
+    }
   }
 
   // ----- Wiring -----
