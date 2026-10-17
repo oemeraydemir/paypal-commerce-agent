@@ -83,7 +83,7 @@ export async function initPersistence(): Promise<PersistenceStatus> {
     connectionTimeoutMillis: 10_000,
     ssl: env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
   });
-  pool.on('error', (err) => console.error(`DB_POOL_ERROR ${err.message}`));
+  pool.on('error', (err: any) => console.error(`DB_POOL_ERROR ${err.message}`));
   // Any failure here must stop the boot: silently falling back to memory would
   // hide data loss behind a healthy-looking service.
   return attachPersistence(pool as unknown as PoolLike, { startTimers: true });

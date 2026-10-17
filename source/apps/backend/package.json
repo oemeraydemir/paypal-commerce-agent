@@ -1,7 +1,7 @@
 {
   "name": "paypal-commerce-agent-backend",
   "version": "1.0.0",
-  "description": "AI Caf\u00e9 backend \u2014 PayPal + AI agentic commerce (Express/TypeScript, MCP server, AG Grid dashboard)",
+  "description": "AI Café backend — PayPal + AI agentic commerce (Express/TypeScript, MCP server, AG Grid dashboard)",
   "main": "dist/src/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
