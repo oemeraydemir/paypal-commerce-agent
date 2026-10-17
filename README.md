@@ -205,6 +205,27 @@ and requires `OPS_COPILOT_ENABLED=true` plus `OPS_COPILOT_KEY` (16+ characters, 
 `X-Ops-Key` header, compared in constant time, rate limited per IP). The PayPal environment stays
 sandbox-only.
 
+## Human-approved refunds (AI proposes, merchant approves)
+
+The same rule that protects checkout also protects refunds: **no AI can move money.**
+
+1. In the dashboard's Ops Copilot, ask *"Propose a refund for my last paid order"*. The copilot
+   (PayPal Agent Toolkit stays read-only) calls an internal `propose_refund` tool. That only adds a
+   `PROPOSED` request to the **Refund queue**; it has no PayPal credential and cannot call PayPal.
+2. A merchant reviews the request in the dashboard's **Refund queue** and presses
+   **Approve & refund** (or **Reject**). Approving is the *only* code path that calls PayPal's
+   Payments API (`POST /v2/payments/captures/{id}/refund`, sandbox).
+3. The server validates everything the model cannot be trusted with: the order must be paid with a
+   captured payment, the amount can never exceed what is still refundable, an order can have only one
+   open request, two concurrent approvals cannot both reach PayPal, and the PayPal-Request-Id
+   (`aicafe-refund-<id>`) is stable so a retry after a timeout never refunds twice. If PayPal fails,
+   the request stays `PROPOSED` and can be retried.
+
+Endpoints (all need the merchant key `OPS_COPILOT_KEY` in `X-Ops-Key`): `GET /api/refunds`,
+`POST /api/refunds/propose`, `POST /api/refunds/{id}/approve`, `POST /api/refunds/{id}/reject`.
+Tests: `tests/integration/refunds.test.ts`. The queue is held in memory (see
+[docs/KNOWN_LIMITATIONS.md](./docs/KNOWN_LIMITATIONS.md)).
+
 ## What is in the prototype
 
 - Flutter Android/iOS app with an AI chat, guided example requests, searchable
@@ -218,6 +239,7 @@ sandbox-only.
   clear separation between AI cart preparation and human-authorized payment.
 - Public, read-only operations dashboard built with AG Grid.
 - MCP server (`/api/mcp`) so external AI agents can shop and start a human-approved PayPal checkout.
+- Merchant refund queue: the Ops Copilot can only *propose* refunds; a merchant approval issues them via the PayPal Payments API.
 - Honest rule-based fallback when every AI provider is rate-limited.
 
 Orders, spend reservations, sessions and idempotency keys are stored in PostgreSQL when

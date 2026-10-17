@@ -50,6 +50,7 @@ configuration, test commands, and demo flow.
 | GET | `/api/health` | Backend, AI, and PayPal sandbox readiness |
 | GET | `/api/catalog` | Available products with authoritative prices |
 | GET | `/api/ops/status` | Whether the read-only Ops Copilot is enabled, and which tools it may use |
+| GET/POST | `/api/refunds`, `/api/refunds/propose`, `/api/refunds/:id/approve`, `/api/refunds/:id/reject` | Merchant refund queue (`X-Ops-Key`); approve is the only call to PayPal's refund API |
 | POST | `/api/ops/ask` | Ops Copilot question (`X-Ops-Key` required; PayPal Agent Toolkit, read permissions only) |
 | POST | `/api/policy/preview` | Session-scoped, side-effect-free policy decision and per-rule checks for a cart (same engine as order creation) |
 | GET | `/api/catalog/search?query=&category=&dietary=&maxPriceMinor=` | Free-text and structured search |

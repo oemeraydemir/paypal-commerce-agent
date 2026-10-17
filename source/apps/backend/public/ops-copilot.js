@@ -7,7 +7,7 @@
     'Which payments were blocked by policy today, and why?',
     'Compare AI-prepared orders with human orders',
     'List recent PayPal transactions',
-    'Refund my last order'
+    'Propose a refund for my last paid order'
   ];
 
   function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; }
@@ -18,7 +18,7 @@
     root.textContent = '';
     var head = el('div', 'ops-head');
     head.appendChild(el('h2', '', 'Ops Copilot'));
-    head.appendChild(el('span', 'ops-badge', 'read-only · PayPal Agent Toolkit'));
+    head.appendChild(el('span', 'ops-badge', 'read-only PayPal · proposes refunds'));
     root.appendChild(head);
 
     if (!status.enabled) {
@@ -27,7 +27,7 @@
       return;
     }
 
-    root.appendChild(el('p', 'ops-muted', 'Ask about PayPal sandbox activity and the policy audit trail. The copilot cannot move money: it only has read permissions (' + status.paypalTools.length + ' PayPal tools + ' + status.internalTools.length + ' audit tools).'));
+    root.appendChild(el('p', 'ops-muted', 'Ask about PayPal sandbox activity and the policy audit trail. The copilot cannot move money: PayPal access is read-only (' + status.paypalTools.length + ' PayPal tools); it can only PROPOSE a refund, which a merchant approves in the queue below. (' + status.internalTools.length + ' internal tools)'));
 
     var keyRow = el('div', 'ops-row');
     var key = el('input'); key.type = 'password'; key.placeholder = 'Ops access key'; key.autocomplete = 'off'; key.value = getKey();
@@ -58,7 +58,7 @@
           }
           out.appendChild(el('div', 'ops-answer', r.body.answer));
           var used = el('div', 'ops-tools');
-          (r.body.toolsUsed || []).forEach(function (t) { used.appendChild(el('span', 'ops-tool ' + t.source + (t.ok ? '' : ' fail'), t.name + (t.source === 'rejected' ? ' (refused: read-only)' : ''))); });
+          (r.body.toolsUsed || []).forEach(function (t) { used.appendChild(el('span', 'ops-tool ' + t.source + (t.ok ? '' : ' fail'), t.name + (t.source === 'rejected' ? ' (refused: not permitted)' : ''))); });
           if (!used.childNodes.length) used.appendChild(el('span', 'ops-muted', 'No tools were needed.'));
           out.appendChild(used);
         })

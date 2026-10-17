@@ -3,6 +3,7 @@ import {
   Environment,
   LogLevel,
   OrdersController,
+  PaymentsController,
 } from '@paypal/paypal-server-sdk';
 import * as https from 'https';
 import { env } from '../config/environment';
@@ -13,6 +14,13 @@ export interface PayPalClient {
   captureOrder(orderId: string, paypalRequestId: string): Promise<any>;
   // Read-only lookup of the real PayPal order state (used for reconciliation).
   getOrder(orderId: string): Promise<any>;
+  // Refund (full or partial) of a captured payment via the Payments API. Only ever called
+  // from the merchant-approval path in src/refunds — never from an AI tool.
+  refundCapture(
+    captureId: string,
+    body: { amount?: { currencyCode: string; value: string }; noteToPayer?: string; invoiceId?: string },
+    paypalRequestId: string
+  ): Promise<any>;
   // S5: verify a webhook signature via PayPal's verify-webhook-signature API.
   // (NOT HMAC — PayPal validates against their own certificate.)
   verifyWebhookSignature(payload: any): Promise<any>;
@@ -23,6 +31,7 @@ export interface PayPalClient {
 class PayPalClientImpl implements PayPalClient {
   private client?: Client;
   private ordersController?: OrdersController;
+  private paymentsController?: PaymentsController;
 
   // FIX (engineering): the SDK Client is constructed lazily. Building it at
   // module load would read env.paypal!.* and crash the whole app when PayPal is
@@ -45,6 +54,7 @@ class PayPalClientImpl implements PayPalClient {
         },
       });
       this.ordersController = new OrdersController(this.client);
+      this.paymentsController = new PaymentsController(this.client);
     }
     return this.ordersController!;
   }
@@ -72,6 +82,22 @@ class PayPalClientImpl implements PayPalClient {
   async getOrder(orderId: string): Promise<any> {
     const controller = this.ensure();
     const response = await controller.getOrder({ id: orderId });
+    return response.result;
+  }
+
+  async refundCapture(
+    captureId: string,
+    body: { amount?: { currencyCode: string; value: string }; noteToPayer?: string; invoiceId?: string },
+    paypalRequestId: string
+  ): Promise<any> {
+    this.ensure();
+    // PayPal-Request-Id makes a retried refund idempotent: the same id never refunds twice.
+    const response = await this.paymentsController!.refundCapturedPayment({
+      captureId,
+      paypalRequestId,
+      prefer: 'return=representation',
+      body,
+    });
     return response.result;
   }
 

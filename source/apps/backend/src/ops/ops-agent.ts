@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { redactSecrets } from '../utils/redact';
 import { aiClient, AIClient } from '../ai/client';
 import { env } from '../config/environment';
 import {
@@ -40,11 +41,13 @@ const MAX_TOOL_OUTPUT_CHARS = 6000;
 const MAX_ARGUMENT_CHARS = 2000;
 
 export const OPS_SYSTEM_PROMPT = [
-  'You are the AI Café Ops Copilot, a READ-ONLY analyst for the merchant.',
+  'You are the AI Café Ops Copilot, a READ-ONLY analyst for the merchant: you can read data but you cannot move money.',
   'You can look up PayPal sandbox data (transactions, orders, disputes, invoices, refunds, shipment tracking)',
   "and AI Café's own policy audit trail and orders.",
-  'You cannot create, change, capture, refund, cancel or send anything. If asked to, say you are read-only',
-  'and that payments are approved only by the shopper in PayPal.',
+  'You cannot create, change, capture, refund, cancel or send anything yourself.',
+  'If asked to refund an order, look the order up (list_internal_orders) and call propose_refund: that only adds',
+  'a request to the merchant refund queue, and you must say clearly that nothing was refunded and that the merchant',
+  'has to approve it in the dashboard. Never claim a refund was issued. Payments are approved only by the shopper in PayPal.',
   'Ground every number and identifier in tool results. If a tool fails or returns nothing, say so plainly.',
   'Never invent IDs or amounts. Answer in under 150 words. This is a PayPal sandbox: no real money moves.',
 ].join(' ');
@@ -97,18 +100,7 @@ function toolMessage(id: string, payload: unknown): OpenAI.Chat.ChatCompletionTo
   return { role: 'tool', tool_call_id: id, content: truncate(stringifyContent(payload), MAX_TOOL_OUTPUT_CHARS) };
 }
 
-/** Masks credential-looking fragments so an upstream error can never leak a secret into the model context. */
-export function redactSecrets(text: string): string {
-  return text
-    .replace(/(client[_-]?secret|secret|password|api[_-]?key|access[_-]?token|token)(["']?\s*[=:]\s*["']?)[^\s"',;}]+/gi, '$1$2[redacted]')
-    // Bare provider keys that appear without a "key=" label, e.g. OpenAI's
-    // "Incorrect API key provided: sk-proj-..." (OpenAI sk-, Groq gsk_, Google AIza).
-    .replace(/\bsk-[A-Za-z0-9_-]{3,}/g, 'sk-[redacted]')
-    .replace(/\bgsk_[A-Za-z0-9_-]{3,}/g, 'gsk_[redacted]')
-    .replace(/\bAIza[0-9A-Za-z_-]{10,}/g, 'AIza[redacted]')
-    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer [redacted]')
-    .replace(/Basic\s+[A-Za-z0-9+/]+=*/gi, 'Basic [redacted]');
-}
+export { redactSecrets };
 
 function errorText(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err);

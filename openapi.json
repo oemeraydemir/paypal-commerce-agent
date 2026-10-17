@@ -54,6 +54,10 @@
     {
       "name": "MCP (Agentic Commerce)",
       "description": "Model Context Protocol server: lets any external AI agent shop at AI Café and start a PayPal checkout that only a human can approve"
+    },
+    {
+      "name": "Refunds",
+      "description": "Merchant refund queue. An AI (Ops Copilot) or merchant may PROPOSE a refund; only an authenticated approval calls PayPal's refund API."
     }
   ],
   "components": {
@@ -68,6 +72,12 @@
         "type": "http",
         "scheme": "bearer",
         "description": "Server-issued session token (from POST /api/sessions), sent as `Authorization: Bearer <token>`."
+      },
+      "opsKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Ops-Key",
+        "description": "Merchant key (OPS_COPILOT_KEY, 16+ characters)."
       }
     },
     "schemas": {
@@ -733,6 +743,106 @@
                 "type": "string"
               }
             }
+          }
+        }
+      },
+      "RefundRequest": {
+        "type": "object",
+        "required": [
+          "id",
+          "orderId",
+          "amountMinor",
+          "currency",
+          "reason",
+          "proposedBy",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orderId": {
+            "type": "string"
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1300,
+            "description": "Amount in minor units (cents)."
+          },
+          "currency": {
+            "type": "string",
+            "example": "EUR"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200,
+            "example": "Coffee arrived cold"
+          },
+          "proposedBy": {
+            "type": "string",
+            "enum": [
+              "OPS_COPILOT",
+              "MERCHANT"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PROPOSED",
+              "PROCESSING",
+              "REFUNDED",
+              "REJECTED"
+            ]
+          },
+          "paypalRefundId": {
+            "type": "string"
+          },
+          "paypalRefundStatus": {
+            "type": "string",
+            "example": "COMPLETED"
+          },
+          "lastError": {
+            "type": "string",
+            "description": "Set when PayPal could not process an approval; the request stays PROPOSED and can be retried safely."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProposeRefundRequest": {
+        "type": "object",
+        "required": [
+          "orderId",
+          "reason"
+        ],
+        "properties": {
+          "orderId": {
+            "type": "string"
+          },
+          "amountMinor": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optional partial refund; omit for the full remaining amount."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 200
           }
         }
       }
@@ -1483,7 +1593,7 @@
         "tags": [
           "Ops Copilot"
         ],
-        "summary": "Ask the read-only merchant copilot",
+        "summary": "Ask the merchant copilot (read-only PayPal access; may only propose refunds)",
         "parameters": [
           {
             "name": "X-Ops-Key",
@@ -1761,6 +1871,250 @@
           },
           "404": {
             "description": "Unknown session"
+          }
+        }
+      }
+    },
+    "/api/refunds": {
+      "get": {
+        "tags": [
+          "Refunds"
+        ],
+        "operationId": "listRefunds",
+        "summary": "List refund requests (newest first)",
+        "security": [
+          {
+            "opsKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Ops-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Merchant key."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Refund queue",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "sandbox": {
+                      "type": "boolean"
+                    },
+                    "paypalEnabled": {
+                      "type": "boolean"
+                    },
+                    "refunds": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RefundRequest"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/invalid X-Ops-Key"
+          },
+          "429": {
+            "description": "Rate limited"
+          },
+          "503": {
+            "description": "Refund queue disabled (no OPS_COPILOT_KEY)"
+          }
+        }
+      }
+    },
+    "/api/refunds/propose": {
+      "post": {
+        "tags": [
+          "Refunds"
+        ],
+        "operationId": "proposeRefund",
+        "summary": "Propose a refund (moves no money)",
+        "security": [
+          {
+            "opsKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Ops-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Merchant key."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeRefundRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Proposed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input"
+          },
+          "401": {
+            "description": "Missing/invalid X-Ops-Key"
+          },
+          "404": {
+            "description": "Order not found"
+          },
+          "409": {
+            "description": "Order not paid, fully refunded, or already has an open request"
+          },
+          "422": {
+            "description": "Amount exceeds the refundable amount"
+          }
+        }
+      }
+    },
+    "/api/refunds/{id}/approve": {
+      "post": {
+        "tags": [
+          "Refunds"
+        ],
+        "operationId": "approveRefund",
+        "summary": "Approve and issue the refund via PayPal (sandbox)",
+        "description": "The only endpoint that calls PayPal's refund API. Uses a stable PayPal-Request-Id (`aicafe-refund-<id>`), so retries never refund twice.",
+        "security": [
+          {
+            "opsKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Ops-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Merchant key."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Refunded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/invalid X-Ops-Key"
+          },
+          "404": {
+            "description": "Unknown refund request"
+          },
+          "409": {
+            "description": "Not in PROPOSED state"
+          },
+          "502": {
+            "description": "PayPal could not process it; request remains PROPOSED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundRequest"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PayPal not configured"
+          }
+        }
+      }
+    },
+    "/api/refunds/{id}/reject": {
+      "post": {
+        "tags": [
+          "Refunds"
+        ],
+        "operationId": "rejectRefund",
+        "summary": "Reject a proposed refund",
+        "security": [
+          {
+            "opsKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "X-Ops-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Merchant key."
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rejected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RefundRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing/invalid X-Ops-Key"
+          },
+          "404": {
+            "description": "Unknown refund request"
+          },
+          "409": {
+            "description": "Not in PROPOSED state"
           }
         }
       }

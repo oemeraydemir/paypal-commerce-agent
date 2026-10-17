@@ -34,8 +34,7 @@ customer—not the agent—in control of the financial decision.
    ai-cafe <url>/api/mcp` at the server) and watch an external agent search, get a policy BLOCK, shrink its
    cart and obtain a PayPal approval link it cannot pay.
 7. In the dashboard's **Ops Copilot** panel, paste the shared `OPS_COPILOT_KEY` into **Ops access key**
-   and ask "which payments were blocked today and why?". Then ask "refund my last order" — the copilot
-   refuses and explains that it is read-only.
+   and ask "which payments were blocked today and why?". Then ask "propose a refund for my last paid order" — the copilot only adds a request to the **Refund queue**; approve or reject it there (that approval is the only thing that calls PayPal's refund API).
 
 The backend must be configured with at least one AI provider key (a free Groq or
 Gemini key is enough; OpenAI is optional) and PayPal sandbox credentials for
@@ -51,6 +50,7 @@ and manual cart can still be explored without credentials.
   list with automatic fallback on 429/5xx and on retired models (HTTP 404).
 - **PayPal Orders API:** server-side order creation and capture after buyer
   approval in sandbox. No live mode is supported.
+- **PayPal Payments API (refunds):** a merchant-approved refund queue. The Ops Copilot can only *propose* a refund (internal `propose_refund` tool, no PayPal access); approving in the dashboard is the only path that calls `refundCapturedPayment`, with a stable PayPal-Request-Id so retries never double-refund.
 - **PayPal Agent Toolkit (`@paypal/agent-toolkit`, OpenAI adapter):** powers the merchant Ops Copilot on the
   dashboard. Configured with read permissions only — with that configuration the toolkit advertises
   exactly 8 read-only tools and zero write tools (verified by a test and by a live probe), plus a
@@ -118,7 +118,7 @@ repository page HTTP 200, `LICENSE` blob HTTP 200, GitHub API reports
   `enabled = true` (the earlier smoke run recorded `false`). Against the deployed demo, all five probe
   questions returned HTTP 200: "which payments were blocked today and why?" (policy audit trail),
   "list my recent PayPal transactions", "summarise orders by origin", plus the two write requests.
-  **"Refund my last order" and "Pay order X" were refused with zero tool calls** — no PayPal write was
+  **"Refund my last order" and "Pay order X" were refused with zero tool calls** (recorded before the refund queue existed; the copilot now answers a refund request by *proposing* it for merchant approval, which has not been re-verified live yet) — no PayPal write was
   ever attempted, and the copilot explained it is read-only. Without a key → `401`; with a wrong key →
   `401`; the 7th request within a minute → `429` (per-IP limit 6/min). Three questions first hit the free
   Groq tier's rate limit and returned `502` in <1 s (provider in cooldown), then returned 200 on retry
@@ -162,6 +162,7 @@ AG Grid dashboard shows every order, who prepared it (AI or human), and what the
 - **PayPal Agent Toolkit (read-only)** — powers a merchant Ops Copilot on the dashboard: configured with
   read permissions only (8 of 47 tools, enforced by a test and a by-name allow-list that refuses any write
   tool), so it can answer "what was blocked today and why?" but can never issue a refund.
+- **PayPal Payments API refunds, human-approved** — the Ops Copilot can propose a refund but only a merchant's approval in the dashboard calls PayPal; amounts are validated server-side and retries are idempotent.
 - **PayPal checkout as the human-approval boundary for *external* agents (MCP)** — any MCP client can
   shop and start a PayPal sandbox checkout, but no tool can capture or pay: the agent gets a link, the human
   approves in PayPal. Same server-side policy, daily-budget reservation and idempotency as the app.
@@ -174,8 +175,8 @@ AG Grid dashboard shows every order, who prepared it (AI or human), and what the
 human approval, and the Ops Copilot is read-only with a refusal path for any write request. Verifying
 PayPal's webhook signature and making capture idempotent so retries never double-count were also key.
 
-*What's next.* Merchant-approved refunds and PayPal Subscriptions for
-recurring orders, a merchant-embeddable agent checkout (bring your own catalog), more categories and
+*What's next.* PayPal Subscriptions for
+recurring orders, persisting the refund queue, a merchant-embeddable agent checkout (bring your own catalog), more categories and
 languages, and a hosted demo with stable uptime.
 
 ## Reliability notes (honest)

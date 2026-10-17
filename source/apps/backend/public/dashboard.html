@@ -163,6 +163,13 @@
 
       .ops { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
       .ops:empty { display: none; }
+      .refund-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+      .refund-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+      .refund-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .refund-actions { display: flex; gap: 8px; margin-top: 8px; }
+      .refund-state { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+      .refund-status { margin: 8px 0 0; font-size: 0.9rem; color: var(--muted); }
+      .refund-err { color: var(--danger, #b91c1c); }
 
       .grid-section {
         background: var(--panel);
@@ -371,6 +378,7 @@
       </div>
 
       <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
+      <section id="refundQueue" class="ops" aria-label="Refund queue"></section>
 
       <section class="grid-section" role="region" aria-label="Orders data grid">
         <h2 id="ordersHeading">Orders</h2>
@@ -409,5 +417,6 @@
     <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.0.0/dist/ag-grid-community.min.js"></script>
     <script src="/dashboard.js"></script>
     <script src="/ops-copilot.js" defer></script>
+    <script src="/refund-queue.js" defer></script>
   </body>
 </html>

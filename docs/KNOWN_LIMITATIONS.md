@@ -31,13 +31,15 @@ Every statement below can be checked in the code or the tests named next to it.
 
 ## Not implemented
 
-**Refunds.** There is no refund endpoint and no refund method on the PayPal
-client. Refunded payments are *recognized* when PayPal reports them
-(`src/orders/payment-lifecycle.ts`) but cannot be *issued* from this app. This is
-a scope limit, not a security feature: a refund tool would need its own policy
-rules, human approval and idempotency before any agent could go near it.
+**Autonomous refunds.** By design, no AI can issue a refund. The Ops Copilot can only *propose* one;
+a merchant approval in the dashboard issues it through PayPal's Payments API (`src/refunds`,
+`tests/integration/refunds.test.ts`). Not built: automatic refund policies, refunds triggered by
+PayPal dispute events, and shopper-initiated refund requests. The refund queue is held in memory and
+is lost on restart, unlike orders (a `refund_requests` table would be the next migration). Refunds
+that happen outside AI Café (for example in the PayPal dashboard) are only *recognized* when PayPal
+reports them (`src/orders/payment-lifecycle.ts`).
 
-**Subscriptions and other PayPal APIs.** Only the Orders API is used.
+**Subscriptions and other PayPal APIs.** Only the Orders API (create, capture, get), the Payments API (refund) and webhook verification are used.
 
 **Single-merchant demo.** One cafe catalog. The architecture does not depend on
 that, but multi-merchant onboarding is not built.
@@ -58,9 +60,9 @@ background (`tests/unit/dashboard-contrast.test.ts`).
 
 ## State and persistence
 
-> Update this section when the persistent-storage work is merged. Until then,
-> orders, sessions, policy events and idempotency records live in process memory
-> and are lost on restart; do not describe the app as durable.
+With `DATABASE_URL` set, orders, spend reservations, sessions and idempotency records are stored in
+PostgreSQL (see [DATABASE.md](./DATABASE.md)); without it they live in process memory and are lost on
+restart. Policy events and the refund queue are in memory in both modes.
 
 ## Deployment
 

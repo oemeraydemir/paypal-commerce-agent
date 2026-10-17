@@ -8,6 +8,7 @@ import { PolicyDecision } from '../policy/domain';
 import { policyStorage } from '../policy/storage';
 import { publicSessionRef } from '../session';
 import { formatMoney } from '../utils/money';
+import { RefundError, refundService } from '../refunds/service';
 
 // ---------------------------------------------------------------------------------------------
 // PayPal Agent Toolkit: strictly READ-ONLY allow-list.
@@ -39,7 +40,9 @@ export const READ_ONLY_PAYPAL_TOOLS: ReadonlyArray<string> = [
   'get_refund',
 ];
 
-export const INTERNAL_TOOL_NAMES = ['list_internal_orders', 'get_policy_audit', 'get_policy_summary'] as const;
+// propose_refund only creates a PROPOSED record in the merchant's refund queue. It cannot call PayPal:
+// a merchant must approve it in the dashboard (src/refunds, src/routes/refunds.ts).
+export const INTERNAL_TOOL_NAMES = ['list_internal_orders', 'get_policy_audit', 'get_policy_summary', 'propose_refund'] as const;
 export type InternalToolName = (typeof INTERNAL_TOOL_NAMES)[number];
 
 export function isInternalTool(name: string): name is InternalToolName {
@@ -88,6 +91,23 @@ export const INTERNAL_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
   {
     type: 'function',
     function: {
+      name: 'propose_refund',
+      description:
+        'PROPOSE a refund for a paid AI Café order. This only adds a request to the merchant refund queue; it moves no money and a human merchant must approve it. Omit amountMinor for a full refund.',
+      parameters: {
+        type: 'object',
+        properties: {
+          orderId: { type: 'string', description: 'AI Café order id (from list_internal_orders)' },
+          amountMinor: { type: 'integer', minimum: 1, description: 'Optional partial amount in minor units (cents)' },
+          reason: { type: 'string', description: 'Short reason shown to the merchant and the shopper (3-200 chars)' },
+        },
+        required: ['orderId', 'reason'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_policy_summary',
       description: 'Summarise the default purchase-policy limits plus order and policy-event counters. Read-only.',
       parameters: { type: 'object', properties: {} },
@@ -100,12 +120,17 @@ const ordersArgs = z.object({
   origin: z.nativeEnum(OrderOrigin).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_ROWS).default(10),
 });
+const proposeRefundArgs = z.object({
+  orderId: z.string().min(1).max(100),
+  amountMinor: z.coerce.number().int().min(1).optional(),
+  reason: z.string().min(3).max(200),
+});
 const auditArgs = z.object({
   decision: z.enum(['AUTO_ALLOW', 'REQUIRE_CONFIRMATION', 'BLOCK']).optional(),
   limit: z.coerce.number().int().min(1).max(MAX_ROWS).default(10),
 });
 
-/** Executes one of the three internal, read-only tools. Throws a ZodError on invalid arguments. */
+/** Executes one of the internal tools (read-only, plus propose_refund which only queues a request). Throws a ZodError on invalid arguments. */
 export function executeInternalTool(name: InternalToolName, rawArguments: string): unknown {
   const args = rawArguments?.trim() ? JSON.parse(rawArguments) : {};
 
@@ -156,6 +181,24 @@ export function executeInternalTool(name: InternalToolName, rawArguments: string
         orderId: e.orderId ?? null,
       })),
     };
+  }
+
+  if (name === 'propose_refund') {
+    const a = proposeRefundArgs.parse(args);
+    try {
+      const r = refundService.propose({ ...a, proposedBy: 'OPS_COPILOT' });
+      return {
+        proposed: true,
+        refundRequestId: r.id,
+        orderId: r.orderId,
+        amount: money(r.amountMinor, r.currency),
+        status: r.status,
+        note: 'Nothing was refunded. A merchant must approve this request in the dashboard refund queue.',
+      };
+    } catch (err) {
+      if (err instanceof RefundError) return { proposed: false, error: err.message };
+      throw err;
+    }
   }
 
   // get_policy_summary

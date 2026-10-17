@@ -12,6 +12,7 @@ import orderRoutes from './routes/orders';
 import policyEventsRoutes from './routes/policy-events';
 import policyPreviewRoutes from './routes/policy-preview';
 import opsRoutes from './routes/ops';
+import refundRoutes from './routes/refunds';
 import aiRoutes from './routes/ai';
 import webhookRoutes from './routes/webhooks';
 import dashboardRoutes from './routes/dashboard';
@@ -84,6 +85,7 @@ export function createApp() {
   app.use('/api', policyEventsRoutes);
   app.use('/api', policyPreviewRoutes);
   app.use('/api', opsRoutes);
+  app.use('/api', refundRoutes);
   app.use('/api', aiRoutes);
   app.use('/api', mcpRoutes);
 
