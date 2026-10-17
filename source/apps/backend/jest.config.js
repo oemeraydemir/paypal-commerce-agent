@@ -5,7 +5,10 @@ module.exports = {
   testMatch: ['**/tests/**/*.test.ts'],
   // Smoke tests hit the REAL PayPal sandbox and need real credentials, so they
   // are excluded from `npm test` and run only via `npm run test:smoke`.
-  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/tests/smoke/'],
+  // Browser tests drive a real Chrome against the real dashboard (AG Grid from
+  // the CDN), so they are excluded from `npm test` and run via
+  // `npm run test:browser`.
+  testPathIgnorePatterns: ['/node_modules/', '/dist/', '/tests/smoke/', '/tests/browser/'],
   // Provide dummy-but-valid PayPal config so the orders API believes PayPal is
   // "enabled" under test. The PayPal client itself is mocked in integration
   // tests, so no real SDK call is made. setupFiles run before module imports.

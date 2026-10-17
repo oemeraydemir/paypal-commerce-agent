@@ -173,14 +173,25 @@ describe('Sprint dashboard accessibility markers', () => {
 
     // Keyboard activation of a focused cell opens the detail dialog.
     expect(t).toContain('onCellKeyDown');
-    // Descriptive screen-reader labels for the semantic badge columns.
-    expect(t).toContain('getCellAria');
-    expect(t).toContain('originAria');
-    expect(t).toContain('decisionAria');
-    // Loading / empty / error states are handled and announced.
-    expect(t).toContain('showLoadingOverlay');
-    expect(t).toContain('showNoRowsOverlay');
-    expect(t).toContain('hideOverlay');
+    // Descriptive screen-reader labels for the semantic badge columns, applied
+    // through the supported v33 route: the renderer's eGridCell handle.
+    // `getCellAria` is NOT a colDef property in v33 and must never be passed as
+    // one (it logs "invalid colDef property"), so assert on the property syntax
+    // rather than on the bare word, which also appears in an explanatory comment.
+    expect(t).not.toMatch(/getCellAria\s*:/);
+    expect(t).toContain('withCellLabel');
+    expect(t).toContain('originLabel');
+    expect(t).toContain('statusLabel');
+    expect(t).toContain('decisionLabel');
+    expect(t).toContain('eGridCell');
+    expect(t).toContain("setAttribute('aria-label'");
+    // Loading / empty / error states use the v33 `loading` grid option, not the
+    // deprecated showLoadingOverlay()/hideOverlay() overlay API.
+    expect(t).toContain('loading: true');
+    expect(t).toContain("setGridOption('loading'");
+    expect(t).not.toMatch(/\.showLoadingOverlay\s*\(/);
+    expect(t).not.toMatch(/\.showNoRowsOverlay\s*\(/);
+    expect(t).not.toMatch(/\.hideOverlay\s*\(/);
     expect(t).toContain('setGridError');
     // Focus is moved into the dialog and restored on close (Escape).
     expect(t).toContain('requestAnimationFrame');

@@ -90,9 +90,9 @@ function loadDashboard() {
       const api = {
         options,
         applyTransaction: jest.fn(),
-        showLoadingOverlay: jest.fn(),
-        hideOverlay: jest.fn(),
-        showNoRowsOverlay: jest.fn(),
+        // v33: loading/empty overlays are driven by the `loading` grid option.
+        // The deprecated showLoadingOverlay()/showNoRowsOverlay()/hideOverlay()
+        // methods are deliberately NOT provided, so calling one would throw here.
         setGridOption: jest.fn(),
         exportDataAsCsv: jest.fn(),
       };
@@ -169,18 +169,45 @@ describe('dashboard.js accessibility behavior (DOM shim)', () => {
     expect(ids.eventModal.getAttribute('aria-hidden')).toBe('true');
   });
 
-  test('semantic cells expose descriptive screen-reader labels via getCellAria', () => {
+  test('semantic cells set a descriptive aria-label on the real cell element', () => {
     const ordersCols = grids.ordersGrid.options.columnDefs;
     const originCol = ordersCols.find((c: any) => c.field === 'origin');
     const statusCol = ordersCols.find((c: any) => c.field === 'status');
-    expect(originCol.getCellAria({ value: 'AI_AGENT' })['aria-label']).toBe('Origin: AI agent');
-    expect(originCol.getCellAria({ value: 'HUMAN' })['aria-label']).toBe('Origin: Human');
-    expect(statusCol.getCellAria({ value: 'PAID' })['aria-label']).toBe('Status: PAID');
+
+    // The renderer receives AG Grid's own cell element and labels it. This is the
+    // supported v33 route; `getCellAria` is not a colDef property in v33.
+    const renderCell = (col: any, value: string) => {
+      const cell = new FakeElement('div');
+      col.cellRenderer({ value, eGridCell: cell });
+      return cell.getAttribute('aria-label');
+    };
+
+    expect(originCol.getCellAria).toBeUndefined();
+    expect(renderCell(originCol, 'AI_AGENT')).toBe('Origin: AI agent');
+    expect(renderCell(originCol, 'HUMAN')).toBe('Origin: Human');
+    expect(renderCell(statusCol, 'PAID')).toBe('Status: PAID');
 
     const eventsCols = grids.eventsGrid.options.columnDefs;
     const decisionCol = eventsCols.find((c: any) => c.field === 'decision');
-    expect(decisionCol.getCellAria({ value: 'BLOCK' })['aria-label']).toBe('Decision: Blocked');
-    expect(decisionCol.getCellAria({ value: 'AUTO_ALLOW' })['aria-label']).toBe('Decision: Auto allow');
+    expect(decisionCol.getCellAria).toBeUndefined();
+    expect(renderCell(decisionCol, 'BLOCK')).toBe('Decision: Blocked');
+    expect(renderCell(decisionCol, 'AUTO_ALLOW')).toBe('Decision: Auto allow');
+    expect(renderCell(decisionCol, 'REQUIRE_CONFIRMATION')).toBe('Decision: Require confirmation');
+  });
+
+  test('drives loading/empty/error transitions through the v33 `loading` option', async () => {
+    // Both grids start in the loading state declared in their grid options.
+    expect(grids.ordersGrid.options.loading).toBe(true);
+    expect(grids.eventsGrid.options.loading).toBe(true);
+
+    await flush(10);
+
+    // A failed first refresh must clear the loading state (no endless spinner)
+    // and report the error both assertively (alert) and politely (status).
+    expect(grids.ordersGrid.api.setGridOption).toHaveBeenCalledWith('loading', false);
+    expect(grids.eventsGrid.api.setGridOption).toHaveBeenCalledWith('loading', false);
+    expect(ids.ordersError.hidden).toBe(false);
+    expect(ids.ordersStatus.textContent).not.toMatch(/Loading orders/i);
   });
 
   test('a failed refresh surfaces an accessible (role=alert) error message', async () => {
@@ -188,7 +215,9 @@ describe('dashboard.js accessibility behavior (DOM shim)', () => {
     expect(ids.ordersError.hidden).toBe(false);
     expect(ids.ordersError.textContent).toMatch(/connection error/i);
     expect(ids.eventsError.hidden).toBe(false);
-    expect(ids.ordersStatus.textContent).toMatch(/Loading orders/i);
+    // The polite status must not keep claiming a load is in progress after it
+    // failed; the assertive alert carries the error.
+    expect(ids.ordersStatus.textContent).toMatch(/could not be loaded/i);
   });
 
   test('names AG Grid\'s inner root from the section heading and adds no role of its own', () => {

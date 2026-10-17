@@ -343,22 +343,43 @@
 
   // ----- Screen-reader cell labels -----
   // The compact visual chips ("AI"/"HUMAN", "PAID", "BLOCK") are not descriptive
-  // enough for a screen reader, so we give each semantic cell a fuller aria-label
-  // that still carries the column context. AG Grid merges these onto the cell.
-  function originAria(params) {
+  // enough for a screen reader, so each semantic cell gets a fuller aria-label
+  // that still carries the column context.
+  //
+  // AG Grid v33 has NO `getCellAria` colDef property. The v33.0.0 bundle only
+  // contains a private `getCellAriaRole()` method on the cell controller, and
+  // `cellAriaRole` is a real colDef property but it sets the cell's ROLE, not its
+  // label. Passing `getCellAria` therefore logs "invalid colDef property".
+  // The supported way to label a cell is the documented cell-renderer param
+  // `ICellRendererParams.eGridCell`: the renderer owns the cell element and can
+  // set its aria-label directly.
+  function originLabel(params) {
     var value = (params.value || '').toUpperCase();
-    return { 'aria-label': value === 'AI_AGENT' ? 'Origin: AI agent' : 'Origin: Human' };
+    return value === 'AI_AGENT' ? 'Origin: AI agent' : 'Origin: Human';
   }
-  function statusAria(params) {
+  function statusLabel(params) {
     var value = (params.value || '').toUpperCase();
-    return { 'aria-label': 'Status: ' + (value || 'unknown') };
+    return 'Status: ' + (value || 'unknown');
   }
-  function decisionAria(params) {
+  function decisionLabel(params) {
     var value = (params.value || '').toUpperCase();
     var label = value === 'REQUIRE_CONFIRMATION' ? 'Require confirmation'
       : value === 'AUTO_ALLOW' ? 'Auto allow'
       : value === 'BLOCK' ? 'Blocked' : (value || 'unknown');
-    return { 'aria-label': 'Decision: ' + label };
+    return 'Decision: ' + label;
+  }
+
+  // Wraps a renderer so the grid cell itself carries the descriptive label.
+  function withCellLabel(renderer, labelFor) {
+    return function (params) {
+      var node = renderer(params);
+      var cell = params && params.eGridCell;
+      var label = labelFor(params || {});
+      if (cell && typeof cell.setAttribute === 'function' && label) {
+        cell.setAttribute('aria-label', label);
+      }
+      return node;
+    };
   }
 
   // ----- Grid definitions -----
@@ -368,8 +389,8 @@
   var ordersColumnDefs = [
     { headerName: 'Order ID', field: 'id', pinned: 'left', minWidth: 200, cellRenderer: shortIdRenderer },
     { headerName: 'Created', field: 'createdAt', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
-    { headerName: 'Origin', field: 'origin', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120 },
-    { headerName: 'Status', field: 'status', cellRenderer: statusChip, getCellAria: statusAria, filter: 'agTextColumnFilter', minWidth: 130 },
+    { headerName: 'Origin', field: 'origin', cellRenderer: withCellLabel(originBadge, originLabel), filter: 'agTextColumnFilter', minWidth: 120 },
+    { headerName: 'Status', field: 'status', cellRenderer: withCellLabel(statusChip, statusLabel), filter: 'agTextColumnFilter', minWidth: 130 },
     { headerName: 'Items', field: 'itemCount', filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 100 },
     { headerName: 'Total', field: 'totalMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
     { headerName: 'Currency', field: 'currency', filter: 'agTextColumnFilter', minWidth: 110 }
@@ -377,10 +398,10 @@
 
   var eventsColumnDefs = [
     { headerName: 'Time', field: 'timestamp', pinned: 'left', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
-    { headerName: 'Agent', field: 'agent', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120 },
+    { headerName: 'Agent', field: 'agent', cellRenderer: withCellLabel(originBadge, originLabel), filter: 'agTextColumnFilter', minWidth: 120 },
     { headerName: 'Cart ID', field: 'cartId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
     { headerName: 'Order ID', field: 'orderId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
-    { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, getCellAria: decisionAria, filter: 'agTextColumnFilter', minWidth: 180 },
+    { headerName: 'Decision', field: 'decision', cellRenderer: withCellLabel(decisionChip, decisionLabel), filter: 'agTextColumnFilter', minWidth: 180 },
     { headerName: 'Amount', field: 'amountMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
     { headerName: 'Reason', field: 'reason', filter: 'agTextColumnFilter', minWidth: 220, tooltipField: 'reason' },
     {
@@ -462,6 +483,11 @@
     rowData: [],
     // AG Grid's documented screen-reader option: keep row/column DOM order stable.
     ensureDomOrder: true,
+    // v33 overlay API: the `loading` grid option replaces the deprecated
+    // showLoadingOverlay()/hideOverlay() pair. `loading: true` shows the loading
+    // overlay on the first paint; setting it to false afterwards hides it and
+    // lets AG Grid show the no-rows overlay on its own when rowData is empty.
+    loading: true,
     overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
     overlayLoadingTemplate: LOADING_TEMPLATE,
     onRowClicked: function (params) { openSidePanel(params.data, 'orders'); },
@@ -482,6 +508,7 @@
     rowData: [],
     // AG Grid's documented screen-reader option: keep row/column DOM order stable.
     ensureDomOrder: true,
+    loading: true,
     overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
     overlayLoadingTemplate: LOADING_TEMPLATE,
     onRowClicked: function (params) { openSidePanel(params.data, 'events'); },
@@ -499,6 +526,16 @@
   }
 
   // ----- Refresh loop (5s) -----
+  // v33 overlay API: the `loading` grid option replaces showLoadingOverlay() and
+  // the showNoRowsOverlay()/hideOverlay() pair. Flipping `loading` to false hides
+  // the loading overlay and lets AG Grid show the no-rows overlay by itself when
+  // the row data is empty, so the empty state no longer needs manual handling.
+  function setGridLoading(api, isLoading) {
+    if (api && typeof api.setGridOption === 'function') {
+      api.setGridOption('loading', isLoading);
+    }
+  }
+
   async function refreshData() {
     // Clear any previous error announcement at the start of each cycle.
     setGridError('orders', '');
@@ -507,24 +544,42 @@
     var oResp, oStatsResp, eResp, eStatsResp;
     try {
       // Show the loading overlay only on the first load (not every 5s poll).
-      if (state.orders.initial) { ordersApi.showLoadingOverlay(); setGridStatus('orders', 'Loading orders…'); }
-      if (state.events.initial) { eventsApi.showLoadingOverlay(); setGridStatus('events', 'Loading policy events…'); }
+      if (state.orders.initial) { setGridLoading(ordersApi, true); setGridStatus('orders', 'Loading orders…'); }
+      if (state.events.initial) { setGridLoading(eventsApi, true); setGridStatus('events', 'Loading policy events…'); }
       oResp = await fetch('/api/orders');
       oStatsResp = await fetch('/api/orders/stats');
       eResp = await fetch('/api/policy-events?limit=100');
       eStatsResp = await fetch('/api/policy-events/stats');
     } catch (err) {
       // Non-fatal: keep previous rows; surface an accessible error message.
+      // Clear the loading state so a first-load failure cannot leave the grid
+      // spinning forever behind the error.
       console.warn('dashboard refresh skipped:', err && err.message);
-      if (state.orders.initial) setGridError('orders', 'Could not load orders (connection error). Retrying automatically.');
-      if (state.events.initial) setGridError('events', 'Could not load policy events (connection error). Retrying automatically.');
+      setGridLoading(ordersApi, false);
+      setGridLoading(eventsApi, false);
+      if (state.orders.initial) {
+        setGridError('orders', 'Could not load orders (connection error). Retrying automatically.');
+        setGridStatus('orders', 'Orders could not be loaded.');
+      }
+      if (state.events.initial) {
+        setGridError('events', 'Could not load policy events (connection error). Retrying automatically.');
+        setGridStatus('events', 'Policy events could not be loaded.');
+      }
       return;
     }
 
     if (!oResp.ok || !eResp.ok) {
       console.warn('dashboard refresh: upstream returned non-200');
-      if (state.orders.initial) setGridError('orders', 'Could not load orders (server error). Retrying automatically.');
-      if (state.events.initial) setGridError('events', 'Could not load policy events (server error). Retrying automatically.');
+      setGridLoading(ordersApi, false);
+      setGridLoading(eventsApi, false);
+      if (state.orders.initial) {
+        setGridError('orders', 'Could not load orders (server error). Retrying automatically.');
+        setGridStatus('orders', 'Orders could not be loaded.');
+      }
+      if (state.events.initial) {
+        setGridError('events', 'Could not load policy events (server error). Retrying automatically.');
+        setGridStatus('events', 'Policy events could not be loaded.');
+      }
       return;
     }
 
@@ -537,9 +592,11 @@
     applyDiff('orders', ordersRaw);
     applyDiff('events', eventsRaw);
 
-    // Reflect empty / populated state with the accessible overlay.
-    if (ordersRaw.length === 0) ordersApi.showNoRowsOverlay(); else ordersApi.hideOverlay();
-    if (eventsRaw.length === 0) eventsApi.showNoRowsOverlay(); else eventsApi.hideOverlay();
+    // Reflect empty / populated state. `loading: false` hides the loading
+    // overlay; AG Grid shows its no-rows overlay on its own when there are no
+    // rows, so no explicit showNoRowsOverlay()/hideOverlay() call is needed.
+    setGridLoading(ordersApi, false);
+    setGridLoading(eventsApi, false);
 
     var oStats = oStatsResp.ok ? await oStatsResp.json() : {};
     var eStats = eStatsResp.ok ? await eStatsResp.json() : {};

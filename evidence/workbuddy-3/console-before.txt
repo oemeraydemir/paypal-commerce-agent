@@ -1,0 +1,4 @@
+warning: AG Grid: Since v32 api.showLoadingOverlay is deprecated. `showLoadingOverlay` is deprecated. Use the grid option "loading"=true instead or setGridOption("loading", true).
+warning: AG Grid: invalid colDef property 'getCellAria' did you mean any of these: floatingFilterComponentParams, headerCheckboxSelectionFilteredOnly, headerCheckboxSelectionCurrentPageOnly, enableCellChangeFlash, getQuickFilterText, loadingCellRendererParams, cellAriaRole, headerGroupComponentParams.
+If you are trying to annotate colDef with application data, use the 'colDef.context' property instead.
+warning: AG Grid: to see all the valid colDef properties please check: https://www.ag-grid.com/javascript-data-grid/column-properties/

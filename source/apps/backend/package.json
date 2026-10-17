@@ -11,6 +11,7 @@
     "test:unit": "jest tests/unit",
     "test:integration": "jest tests/integration",
     "test:smoke": "jest tests/smoke --runInBand",
+    "test:browser": "jest --config jest.browser.config.js --runInBand",
     "register-webhook": "ts-node scripts/register-webhook.ts",
     "ai:check": "ts-node --transpile-only scripts/ai-provider-check.ts",
     "e2e:smoke": "ts-node --transpile-only scripts/e2e-smoke-test.ts",
