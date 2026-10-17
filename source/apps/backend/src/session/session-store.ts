@@ -1,4 +1,8 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'crypto';
+import { getRepos, writeQueue } from '../persistence/registry';
+
+// lastSeenAt is persisted at most this often per session (idle TTL is minutes+).
+const LAST_SEEN_PERSIST_INTERVAL_MS = 5 * 60 * 1000;
 
 // Server-issued anonymous sessions (P0 isolation).
 //
@@ -24,6 +28,8 @@ export interface SessionRecord {
   tokenHash: Buffer;
   createdAt: number;
   lastSeenAt: number;
+  /** in-memory only: when lastSeenAt was last written to the database */
+  persistedAt?: number;
 }
 
 export interface IssuedSession {
@@ -63,6 +69,68 @@ export class SessionStore {
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly createLog = new Map<string, number[]>();
   private onExpire: (record: SessionRecord) => void = () => undefined;
+  private readonly dirty = new Set<string>();
+
+  // ---- durability: sessions survive a restart so clients keep their orders --------
+  private async saveRow(sessionId: string): Promise<void> {
+    const repos = getRepos();
+    const record = this.sessions.get(sessionId);
+    if (!repos || !record) return;
+    await repos.sessions.save({
+      sessionId: record.sessionId,
+      userId: record.userId,
+      tokenHash: record.tokenHash.toString('hex'),
+      createdAt: new Date(record.createdAt),
+      lastSeenAt: new Date(record.lastSeenAt),
+    });
+    record.persistedAt = record.lastSeenAt;
+    this.dirty.delete(sessionId);
+  }
+
+  private persist(sessionId: string): void {
+    if (!getRepos()) return;
+    this.dirty.add(sessionId);
+    writeQueue.enqueue(`session:${sessionId}`, () => this.saveRow(sessionId)).catch(() => undefined);
+  }
+
+  /** Awaitable durable save (used before a new session id is handed to a client). */
+  async saveNow(sessionId: string): Promise<void> {
+    if (!getRepos()) return;
+    this.dirty.add(sessionId);
+    await writeQueue.enqueue(`session:${sessionId}`, () => this.saveRow(sessionId), { retries: 0 });
+  }
+
+  async retryDirty(): Promise<number> {
+    const ids = [...this.dirty];
+    for (const id of ids) {
+      await writeQueue.enqueue(`session-retry:${id}`, () => this.saveRow(id), { retries: 0 });
+    }
+    return ids.length;
+  }
+
+  /** Loads still-valid sessions at boot and drops expired rows. */
+  async hydrate(now: number = Date.now()): Promise<number> {
+    const repos = getRepos();
+    if (!repos) return 0;
+    let loaded = 0;
+    for (const row of await repos.sessions.loadAll()) {
+      const record: SessionRecord = {
+        sessionId: row.sessionId,
+        userId: row.userId,
+        tokenHash: Buffer.from(row.tokenHash, 'hex'),
+        createdAt: row.createdAt.getTime(),
+        lastSeenAt: row.lastSeenAt.getTime(),
+        persistedAt: row.lastSeenAt.getTime(),
+      };
+      if (this.isExpired(record, now)) {
+        await repos.sessions.remove(row.sessionId);
+        continue;
+      }
+      this.sessions.set(record.sessionId, record);
+      loaded++;
+    }
+    return loaded;
+  }
 
   constructor(public options: SessionStoreOptions) {}
 
@@ -94,6 +162,7 @@ export class SessionStore {
       createdAt: now,
       lastSeenAt: now,
     });
+    this.persist(sessionId);
     return {
       sessionId,
       sessionToken,
@@ -114,6 +183,7 @@ export class SessionStore {
       return null;
     }
     record.lastSeenAt = now;
+    if (now - (record.persistedAt ?? 0) > LAST_SEEN_PERSIST_INTERVAL_MS) this.persist(sessionId);
     return record;
   }
 
@@ -125,6 +195,13 @@ export class SessionStore {
     const record = this.sessions.get(sessionId);
     if (!record) return false;
     this.sessions.delete(sessionId);
+    this.dirty.delete(sessionId);
+    const repos = getRepos();
+    if (repos) {
+      writeQueue
+        .enqueue(`session-remove:${sessionId}`, () => repos.sessions.remove(sessionId))
+        .catch(() => undefined);
+    }
     this.onExpire(record);
     return true;
   }
@@ -154,6 +231,7 @@ export class SessionStore {
   // Test isolation only.
   reset(): void {
     this.sessions.clear();
+    this.dirty.clear();
     this.createLog.clear();
   }
 }

@@ -14,7 +14,7 @@
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │ Catalog      │  │ AI Agent     │  │ Orders       │      │
-│  │ (25 products) │  │ (AI+fallback)│  │ (in-memory)  │      │
+│  │ (25 products) │  │ (AI+fallback)│  │ (Postgres)   │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │                                                              │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
@@ -87,7 +87,7 @@ The backend applies dual-layer idempotency to prevent duplicate charges and repe
 
 ## Key Design Decisions
 
-- In-memory storage for a hackathon environment; no database required
+- Durable storage in PostgreSQL (write-through over an in-memory read model); without `DATABASE_URL` the app falls back to memory for tests and local catalog-only runs. See docs/DATABASE.md
 - PayPal sandbox by default for safe demo usage
 - No authentication on the public dashboard; demo-only read-only access
 - AG Grid served via CDN to keep the dashboard simple and static
@@ -110,7 +110,7 @@ This is enforced server-side and not by trusting client-supplied origin values. 
 - Payment: PayPal Orders API + webhooks
 - Client: Flutter app for chat and checkout
 - Dashboard: AG Grid 33.0.0 (CDN, Theming API)
-- Storage: in-memory singleton order service
+- Storage: in-memory read model + PostgreSQL write-through (orders, spend reservations, sessions, idempotency records)
 
 
 ## Reservation lifecycle and operational assumptions
@@ -140,14 +140,28 @@ sweeper's overlap guard are process-local; running two instances (horizontal
 scaling, rolling deploys with overlap) can double-process the same order. Run
 exactly one instance (the Render blueprint uses a single free-plan instance).
 
-### Known limits that require persistent storage
+### Persistence and crash recovery
 
-- After a restart, a real PayPal payment whose order is no longer in memory
-  cannot be attached to an order. The webhook is acknowledged and an
-  `UNRECONCILED_PAYMENT_EVENT` error is logged; the payment is not reflected in
-  the app or the dashboard.
-- Reservations pending at restart are forgotten, so the daily limit can be
-  exceeded by orders that were pending at that moment.
+With `DATABASE_URL` set, every mutation of an order, a spend reservation or a session is
+written through one serialized queue to PostgreSQL, and everything is reloaded before the
+server starts listening (`persistence/init.ts`). Details, schema and setup: docs/DATABASE.md.
+
+- Write-ahead: the order (and its reservation) is durable BEFORE PayPal is contacted; the
+  PayPal order id is durable BEFORE the approval link is returned; a capture attempt is
+  marked (`captureStartedAt`) BEFORE PayPal is asked to capture.
+- Crash after PayPal captured but before we saved: on boot, `reconcileAfterRestart()` asks
+  PayPal about every persisted PAYMENT_PENDING order and settles it (PAID + confirmed spend);
+  webhooks find the order again because the PayPal order id is persisted.
+- Idempotency: answers are stored durably; additionally an order row is found again by its
+  session-scoped key, so a retry never creates a second order or PayPal order.
+- If storage is down, order creation and capture answer 503 BEFORE PayPal is contacted.
+
+### Remaining limits
+
+- Single instance only (capture lock and sweeper are process-local).
+- Policy events, the processed-webhook-id set and AI chat history are still in memory
+  (webhook handlers are idempotent, so a replayed event after a restart is harmless).
+- A Free Render Postgres expires after 30 days and has no backups.
 
 ### Not verified against real PayPal
 

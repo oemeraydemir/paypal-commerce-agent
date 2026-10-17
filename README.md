@@ -220,8 +220,10 @@ sandbox-only.
 - MCP server (`/api/mcp`) so external AI agents can shop and start a human-approved PayPal checkout.
 - Honest rule-based fallback when every AI provider is rate-limited.
 
-The order store is in-memory and clears on server restart. This is a hackathon
-prototype, not a production payment service.
+Orders, spend reservations, sessions and idempotency keys are stored in PostgreSQL when
+`DATABASE_URL` is set (see [docs/DATABASE.md](./docs/DATABASE.md)); without it the app runs
+in memory and clears on restart. This is a hackathon prototype, not a production payment
+service.
 
 The optional shopper profile is stored locally on the device. Its dietary
 preferences and budget are sent to the backend with AI shopping requests.

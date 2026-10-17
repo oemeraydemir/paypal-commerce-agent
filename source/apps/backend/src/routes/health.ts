@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { env } from '../config/environment';
+import { isPersistent } from '../persistence/registry';
 
 const router = Router();
 
@@ -21,6 +22,8 @@ router.get('/health', (_req: Request, res: Response) => {
       enabled: env.isPayPalEnabled(),
       environment: env.paypal?.PAYPAL_ENV ?? 'sandbox',
     },
+    // 'postgres' = orders/reservations/idempotency survive restarts; 'memory' = they do not.
+    storage: { mode: isPersistent() ? 'postgres' : 'memory', durable: isPersistent() },
     ai: {
       enabled: env.isAIEnabled(),
       // Provider NAMES only (never keys or base URLs). Order = AI_PROVIDER_ORDER.

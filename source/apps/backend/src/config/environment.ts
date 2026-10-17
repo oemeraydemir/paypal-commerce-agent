@@ -25,6 +25,16 @@ const baseSchema = z.object({
   AI_CHAT_PER_IP_PER_MIN: z.coerce.number().int().positive().default(30),
   AI_CHAT_GLOBAL_PER_MIN: z.coerce.number().int().positive().default(120),
   // Number of reverse-proxy hops to trust for req.ip (Render = 1). 0 = none.
+  // Durable storage (PostgreSQL). Optional: unset = in-memory only (tests / catalog-only
+  // local runs). On Render the filesystem is ephemeral, so only a managed database counts.
+  DATABASE_URL: z
+    .string()
+    .optional()
+    .transform((value) => (value && value.trim() ? value.trim() : undefined)),
+  DATABASE_SSL: z.enum(['true', 'false']).default('false'),
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(20).default(5),
+  // When 'true' in production, refuse to start without DATABASE_URL.
+  REQUIRE_PERSISTENCE: z.enum(['true', 'false']).default('false'),
   TRUST_PROXY_HOPS: z.coerce
     .number()
     .int()
@@ -72,6 +82,7 @@ export const env = {
   paypal: paypalEnv,
   ai: aiEnv,
   isPayPalEnabled: (): boolean => paypalEnv !== null,
+  isPersistenceConfigured: (): boolean => baseEnv.DATABASE_URL !== undefined,
   isAIEnabled: (): boolean => aiEnv !== null,
 };
 

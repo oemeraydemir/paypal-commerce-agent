@@ -4,6 +4,7 @@ import { dailySpendTracker } from '../policy/daily-spend-tracker';
 import { Order, OrderStatus } from './domain';
 import { OrderService } from './service';
 import { captureLock } from './capture-lock';
+import { retryDirtyAll } from '../persistence/registry';
 
 // Single place that moves an order AND its daily-spend reservation together,
 // so webhooks, the capture route, the cancel route and the reconciler can never
@@ -240,6 +241,46 @@ export async function reconcileExpiredReservations(
   return summary;
 }
 
+export interface RestartReconcileSummary {
+  examined: number;
+  settled: number;
+  kept: number;
+  errors: number;
+}
+
+/**
+ * Startup recovery for the crash window "PayPal captured, we died before saving".
+ * Every persisted order still PAYMENT_PENDING is checked against PayPal (the source
+ * of truth). A COMPLETED capture becomes PAID + confirmed spend; a DECLINED one is
+ * failed; anything ambiguous is left for the webhook / the sweeper. Never throws.
+ */
+export async function reconcileAfterRestart(limit = 200): Promise<RestartReconcileSummary> {
+  const summary: RestartReconcileSummary = { examined: 0, settled: 0, kept: 0, errors: 0 };
+  const pending = orderService
+    .getAll()
+    .filter((o) => o.status === OrderStatus.PAYMENT_PENDING && !!o.paypalOrderId)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, limit);
+
+  for (const order of pending) {
+    summary.examined++;
+    if (captureLock.isHeld(order.id)) {
+      summary.kept++;
+      continue;
+    }
+    try {
+      const classification = await settleFromPayPal(order);
+      if (classification.state === 'COMPLETED' || classification.state === 'DECLINED') summary.settled++;
+      else summary.kept++;
+    } catch (err: any) {
+      summary.errors++;
+      summary.kept++;
+      console.warn(`Restart reconcile: PayPal lookup failed for order ${order.id}: ${err?.message ?? err}`);
+    }
+  }
+  return summary;
+}
+
 let sweeping = false;
 
 /** Starts the periodic sweep. Called from server.ts only (never from tests). */
@@ -250,6 +291,7 @@ export function startReservationSweeper(
     if (sweeping) return; // no overlapping sweeps
     sweeping = true;
     try {
+      await retryDirtyAll(); // re-save rows whose earlier durable write failed
       const summary = await reconcileExpiredReservations();
       if (summary.examined > 0) {
         console.log(`Reservation sweep: ${JSON.stringify(summary)}`);

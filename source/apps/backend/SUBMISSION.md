@@ -174,7 +174,7 @@ AG Grid dashboard shows every order, who prepared it (AI or human), and what the
 human approval, and the Ops Copilot is read-only with a refusal path for any write request. Verifying
 PayPal's webhook signature and making capture idempotent so retries never double-count were also key.
 
-*What's next.* Persisting orders beyond in-memory, merchant-approved refunds and PayPal Subscriptions for
+*What's next.* Merchant-approved refunds and PayPal Subscriptions for
 recurring orders, a merchant-embeddable agent checkout (bring your own catalog), more categories and
 languages, and a hosted demo with stable uptime.
 
@@ -184,14 +184,14 @@ languages, and a hosted demo with stable uptime.
   Quick Planner** (`"mode": "rule-based"`). It is not AI: it never marks the session AI-prepared (order
   stays `HUMAN`), writes no `AI_AGENT` policy event, never adds alcohol, and prices/policy still come from
   the server. Covered by `tests/unit/fallback-planner.test.ts` and `tests/integration/ai-fallback.test.ts`.
-- MCP adapter: `tests/integration/mcp.test.ts` (23 tests). Full backend suite: see the current count in the latest test run.
+- MCP adapter: `tests/integration/mcp.test.ts` (23 tests). Full backend suite: 393 tests passing.
 - The MCP server and the rule-based fallback are covered by automated tests and a local scripted run;
   they have **not** yet been exercised against the deployed Render instance or a third-party MCP client
   — redeploy, then run `npm run mcp:demo -- <url>` and record the result before claiming it as live-proven.
 
 ## Prototype limitations
 
-- Orders are stored in memory and disappear when the server restarts.
+- Orders are persisted in PostgreSQL when `DATABASE_URL` is set (docs/DATABASE.md). Without it they live in memory and disappear on restart. A Free Render Postgres expires after 30 days.
 - PayPal webhook delivery requires a publicly reachable HTTPS backend and a
   registered sandbox webhook; local demos can still capture and inspect orders.
 - At least one AI provider key (a free Groq or Gemini key is enough; OpenAI is

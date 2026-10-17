@@ -37,6 +37,93 @@ const router = Router();
 const orderService = OrderService.getInstance();
 const catalogService = new CatalogService();
 
+// Rolls an order back to a non-payable state and releases its reservation.
+function abandonOrder(orderId: string, reservationId?: string): void {
+  if (reservationId) dailySpendTracker.cancelReservation(reservationId);
+  orderService.updateStatus(orderId, OrderStatus.ORDER_CANCELLED);
+}
+
+/**
+ * Creates the PayPal order for an already-persisted order and durably records the
+ * PayPal order id BEFORE the approval link is handed out. If that write fails the
+ * link is never shown (the PayPal order stays unapproved and harmless), so a
+ * payment can never exist that this service cannot find again after a restart.
+ */
+async function startPayPalCheckout(
+  order: ReturnType<OrderService['create']>,
+  reservationId: string | undefined,
+  idempotencyKey: string | undefined
+): Promise<any> {
+  const totalValue = (order.totalMinor / 100).toFixed(2);
+  let paypalOrder;
+  try {
+    // FIX #1: dual-layer idempotency — reuse the same key as PayPal-Request-Id.
+    paypalOrder = await paypalClient.createOrder(
+      {
+        intent: 'CAPTURE',
+        purchaseUnits: [
+          {
+            referenceId: order.id,
+            description: 'AI Café Order',
+            amount: {
+              currencyCode: order.currency,
+              value: totalValue,
+              breakdown: { itemTotal: { currencyCode: order.currency, value: totalValue } },
+            },
+            items: order.items.map((item) => ({
+              name: item.name,
+              quantity: String(item.quantity),
+              unitAmount: {
+                currencyCode: order.currency,
+                value: (item.unitPriceMinor / 100).toFixed(2),
+              },
+              category: 'PHYSICAL_GOODS',
+            })),
+          },
+        ],
+        applicationContext: {
+          brandName: currentBusiness.name,
+          landingPage: 'NO_PREFERENCE',
+          userAction: 'PAY_NOW',
+          returnUrl: env.paypal!.PAYPAL_RETURN_URL,
+          cancelUrl: env.paypal!.PAYPAL_CANCEL_URL,
+        },
+      },
+      idempotencyKey || `create-${order.id}`
+    );
+  } catch (err) {
+    // S10 (R14): PayPal create failure is definitive for order creation —
+    // release the reservation to prevent leakage and roll the order back to a
+    // non-payable state. The 5xx is NOT cached by the idempotency layer so a
+    // retry re-executes cleanly (capacity was released).
+    abandonOrder(order.id, reservationId);
+    throw err;
+  }
+
+  orderService.setPayPalOrderId(order.id, paypalOrder.id);
+  try {
+    await orderService.saveNow(order.id);
+  } catch (err: any) {
+    console.error(`ORDER_PERSIST_FAILED order=${order.id} paypalOrder=${paypalOrder.id} error=${err?.message ?? err}`);
+    abandonOrder(order.id, reservationId);
+    throw new AppError(503, 'Storage unavailable; checkout was not started. Please retry.');
+  }
+  return paypalOrder;
+}
+
+function createResponse(order: ReturnType<OrderService['create']>, paypalOrderId: string | undefined, approvalUrl?: string) {
+  return {
+    orderId: order.id,
+    paypalOrderId,
+    status: order.status,
+    origin: order.origin,
+    totalMinor: order.totalMinor,
+    totalFormatted: formatMoney(order.totalMinor, order.currency, currentBusiness.locale),
+    currency: order.currency,
+    approvalUrl,
+  };
+}
+
 router.post('/orders/create', requireSession, idempotency, async (req, res, next) => {
   try {
     if (!env.isPayPalEnabled()) {
@@ -63,6 +150,63 @@ router.post('/orders/create', requireSession, idempotency, async (req, res, next
       (sum, item) => sum + item.lineTotalMinor,
       0
     );
+
+    // Retry of a request we already started (same session + Idempotency-Key), e.g. the
+    // client timed out, or the process restarted after the order row was written but
+    // before the response was cached. NEVER create a second order / PayPal order for it.
+    if (idempotencyKey) {
+      const existing = orderService.findReusableByIdempotencyKey(idempotencyKey);
+      if (existing) {
+        if (
+          existing.requestFingerprint &&
+          existing.requestFingerprint !== createRequestFingerprint(req.body)
+        ) {
+          throw new AppError(409, 'Idempotency-Key reused with different request body', {
+            code: 'IDEMPOTENCY_KEY_REUSE',
+          });
+        }
+        if (existing.paypalOrderId) {
+          // PayPal order already exists: hand back the same checkout (re-read its link).
+          let approvalUrl: string | undefined;
+          if (existing.status === OrderStatus.PAYMENT_PENDING) {
+            try {
+              const remote: any = await paypalClient.getOrder(existing.paypalOrderId);
+              approvalUrl = remote?.links?.find((l: any) => l.rel === 'approve')?.href;
+            } catch {
+              /* link unavailable: the client can still capture/cancel by order id */
+            }
+          }
+          return res.json(createResponse(existing, existing.paypalOrderId, approvalUrl));
+        }
+        // Order row exists but PayPal was never reached: resume from there.
+        const resumePolicy = policyStorage.getOrCreatePolicy(userId);
+        let reservationId = existing.reservationId;
+        if (!reservationId || dailySpendTracker.getReservationState(reservationId) !== 'PENDING') {
+          const fresh = dailySpendTracker.tryReserve(
+            userId,
+            existing.totalMinor,
+            resumePolicy.dailySpendLimitMinor
+          );
+          if (!fresh) {
+            orderService.updateStatus(existing.id, OrderStatus.ORDER_CANCELLED);
+            throw new AppError(403, 'Purchase blocked by policy', {
+              reason: 'Cart exceeds daily spend limit',
+            });
+          }
+          reservationId = fresh.id;
+          orderService.setReservationId(existing.id, reservationId);
+          try {
+            await orderService.saveNow(existing.id);
+          } catch {
+            abandonOrder(existing.id, reservationId);
+            throw new AppError(503, 'Storage unavailable; order was not resumed. Please retry.');
+          }
+        }
+        const resumed = await startPayPalCheckout(existing, reservationId, idempotencyKey);
+        const link = resumed.links?.find((l: any) => l.rel === 'approve');
+        return res.json(createResponse(existing, resumed.id, link?.href));
+      }
+    }
 
     // FIX #7: server decides the origin. Client never sends it.
     // If this session has a previously prepared AI cart, attribute as AI_AGENT.
@@ -175,7 +319,17 @@ router.post('/orders/create', requireSession, idempotency, async (req, res, next
       createRequestFingerprint(req.body)
     );
     // S10 (R13): server-owned reservation correlation on the typed domain field.
-    order.reservationId = reservation.id;
+    orderService.setReservationId(order.id, reservation.id);
+
+    // WRITE-AHEAD: the order (and, queued before it, its reservation) must be durable
+    // BEFORE PayPal is contacted. If storage is down nothing was sent to PayPal.
+    try {
+      await orderService.saveNow(order.id);
+    } catch (err: any) {
+      console.error(`ORDER_PERSIST_FAILED order=${order.id} error=${err?.message ?? err}`);
+      abandonOrder(order.id, reservation.id);
+      throw new AppError(503, 'Storage unavailable; order was not created. Please retry.');
+    }
 
     // S10: authoritative ALLOW event correlated to the persisted order.
     policyStorage.recordEvent({
@@ -198,74 +352,10 @@ router.post('/orders/create', requireSession, idempotency, async (req, res, next
       });
     }
 
-    // Convert minor units → decimal string for PayPal.
-    const totalValue = (order.totalMinor / 100).toFixed(2);
-
-    let paypalOrder;
-    try {
-      // FIX #1: dual-layer idempotency — reuse the same key as PayPal-Request-Id.
-      paypalOrder = await paypalClient.createOrder(
-        {
-          intent: 'CAPTURE',
-          purchaseUnits: [
-            {
-              referenceId: order.id,
-              description: 'AI Café Order',
-              amount: {
-                currencyCode: order.currency,
-                value: totalValue,
-                breakdown: {
-                  itemTotal: {
-                    currencyCode: order.currency,
-                    value: totalValue,
-                  },
-                },
-              },
-              items: validatedItems.map((item) => ({
-                name: item.name,
-                quantity: String(item.quantity),
-                unitAmount: {
-                  currencyCode: order.currency,
-                  value: (item.unitPriceMinor / 100).toFixed(2),
-                },
-                category: 'PHYSICAL_GOODS',
-              })),
-            },
-          ],
-          applicationContext: {
-            brandName: currentBusiness.name,
-            landingPage: 'NO_PREFERENCE',
-            userAction: 'PAY_NOW',
-            returnUrl: env.paypal!.PAYPAL_RETURN_URL,
-            cancelUrl: env.paypal!.PAYPAL_CANCEL_URL,
-          },
-        },
-        idempotencyKey || `create-${order.id}`
-      );
-    } catch (err) {
-      // S10 (R14): PayPal create failure is definitive for order creation —
-      // release the reservation to prevent leakage and roll the order back to a
-      // non-payable state. The 5xx is NOT cached by the idempotency layer so a
-      // retry re-executes cleanly (capacity was released).
-      dailySpendTracker.cancelReservation(reservation.id);
-      orderService.updateStatus(order.id, OrderStatus.ORDER_CANCELLED);
-      throw err;
-    }
-
-    orderService.setPayPalOrderId(order.id, paypalOrder.id);
-
+    const paypalOrder = await startPayPalCheckout(order, reservation.id, idempotencyKey);
     const approvalLink = paypalOrder.links?.find((link: any) => link.rel === 'approve');
 
-    res.json({
-      orderId: order.id,
-      paypalOrderId: paypalOrder.id,
-      status: order.status,
-      origin: order.origin,
-      totalMinor: order.totalMinor,
-      totalFormatted: formatMoney(order.totalMinor, order.currency, currentBusiness.locale),
-      currency: order.currency,
-      approvalUrl: approvalLink?.href,
-    });
+    res.json(createResponse(order, paypalOrder.id, approvalLink?.href));
   } catch (err) {
     next(err);
   }
@@ -312,6 +402,19 @@ router.post('/orders/:orderId/capture', requireSession, async (req, res, next) =
     let definitiveSuccess = false;
     let captureId = 'unknown';
     let paypalStatus: any;
+
+    // WRITE-AHEAD: persist "a capture attempt is starting" BEFORE PayPal is contacted.
+    // If the process dies after PayPal captured but before we record it, startup
+    // reconciliation (reconcileAfterRestart) asks PayPal and finishes the job. The
+    // status itself is NEVER taken from the client: only PayPal's response, a verified
+    // webhook, or a PayPal lookup can move an order to PAID.
+    orderService.markCaptureStarted(order.id);
+    try {
+      await orderService.saveNow(order.id);
+    } catch (err: any) {
+      console.error(`ORDER_PERSIST_FAILED order=${order.id} error=${err?.message ?? err}`);
+      throw new AppError(503, 'Storage unavailable; the payment was not attempted. Please retry.');
+    }
 
     try {
       capture = await paypalClient.captureOrder(
@@ -379,6 +482,15 @@ router.post('/orders/:orderId/capture', requireSession, async (req, res, next) =
       markOrderPaid(order, captureId !== 'unknown' ? captureId : undefined);
     } else if (definitiveFailure) {
       markOrderPaymentFailed(order);
+    }
+
+    // Money has moved (or been refused) at PayPal: record it durably. A failure here
+    // must NOT turn into an error response; the in-memory state is already correct and
+    // the dirty-retry + restart reconciliation will converge the database.
+    try {
+      await orderService.saveNow(order.id);
+    } catch (err: any) {
+      console.error(`ORDER_PERSIST_FAILED_AFTER_CAPTURE order=${order.id} error=${err?.message ?? err}`);
     }
 
     if (definitiveFailure) {
@@ -450,6 +562,9 @@ router.post('/orders/:orderId/cancel', requireSession, async (req, res, next) =>
     }
 
     cancelUncapturedOrder(order, 'cancel');
+    await orderService.saveNow(order.id).catch((err: any) =>
+      console.error(`ORDER_PERSIST_FAILED order=${order.id} error=${err?.message ?? err}`)
+    );
     res.json({ orderId: order.id, status: (orderService.getById(order.id) ?? order).status });
   } catch (err) {
     next(err);

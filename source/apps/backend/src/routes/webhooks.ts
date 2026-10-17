@@ -125,7 +125,11 @@ router.post('/webhooks/paypal', rawBodyMiddleware, async (req: Request, res: Res
         console.log(`Unhandled webhook event: ${eventType}`);
       }
 
-      // 5) Only mark processed AFTER successful reconciliation.
+      // 5) Acknowledge only once the new state is durable: a 2xx stops PayPal's
+      // retries, so if storage failed we answer 500 and let PayPal redeliver.
+      await orderService.saveNow(order.id);
+
+      // 6) Only mark processed AFTER successful reconciliation.
       webhookService.markProcessed(event.id);
       res.status(200).json({ message: 'Webhook processed successfully' });
     } catch (err: any) {

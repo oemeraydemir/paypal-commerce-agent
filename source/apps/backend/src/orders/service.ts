@@ -4,8 +4,11 @@ import stringify from 'fast-json-stable-stringify';
 import { formatMoney } from '../utils/money';
 import { currentBusiness } from '../config/business-config';
 import { Order, OrderStatus, OrderItem, OrderOrigin } from './domain';
+import { getRepos, writeQueue } from '../persistence/registry';
 
 const orders = new Map<string, Order>();
+// Orders whose last durable write failed even after retries; re-saved by the sweeper.
+const dirty = new Set<string>();
 
 // FIX #5: State transition table. Drives updateStatus validation.
 const TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
@@ -71,11 +74,95 @@ export class OrderService {
     };
 
     orders.set(order.id, order);
+    this.persist(order.id);
     return order;
   }
 
   getById(id: string): Order | undefined {
     return orders.get(id);
+  }
+
+  /**
+   * Latest order for this (session-scoped) idempotency key that is still live.
+   * Cancelled/failed orders are not reusable: a retry then creates a fresh order.
+   */
+  findReusableByIdempotencyKey(key: string): Order | undefined {
+    const live = new Set<OrderStatus>([
+      OrderStatus.CART_READY,
+      OrderStatus.AWAITING_CONFIRMATION,
+      OrderStatus.PAYMENT_PENDING,
+      OrderStatus.PAID,
+      OrderStatus.ORDER_CONFIRMED,
+    ]);
+    return Array.from(orders.values())
+      .filter((o) => o.idempotencyKey === key && live.has(o.status))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+  }
+
+  // ---- durability -------------------------------------------------------------
+  // The Map stays the read model (fast, synchronous). Every mutation is written
+  // through to PostgreSQL when a repository is attached; without one this is a no-op.
+
+  /** Loads all persisted orders into memory. Called once at boot, before listen(). */
+  async hydrate(): Promise<number> {
+    const repos = getRepos();
+    if (!repos) return 0;
+    const loaded = await repos.orders.loadAll();
+    for (const order of loaded) orders.set(order.id, order);
+    return loaded.length;
+  }
+
+  private persist(id: string): void {
+    if (!getRepos()) return;
+    dirty.add(id);
+    writeQueue.enqueue(`order:${id}`, () => this.saveSnapshot(id)).catch(() => undefined);
+  }
+
+  private async saveSnapshot(id: string): Promise<void> {
+    const repos = getRepos();
+    const order = orders.get(id);
+    if (!repos || !order) return;
+    await repos.orders.save(order); // snapshot is read NOW, i.e. the latest state
+    dirty.delete(id);
+  }
+
+  /**
+   * Awaitable durable save for the points where an acknowledgement must not
+   * precede storage (write-ahead of an order / capture, response after a capture).
+   * Rejects if the write fails (no retry loop here: request paths answer quickly).
+   */
+  async saveNow(id: string): Promise<void> {
+    if (!getRepos()) return;
+    dirty.add(id);
+    await writeQueue.enqueue(`order:${id}`, () => this.saveSnapshot(id), { retries: 0 });
+  }
+
+  /** Re-saves orders whose earlier write failed. Returns how many were attempted. */
+  async retryDirty(): Promise<number> {
+    const ids = [...dirty];
+    for (const id of ids) {
+      await writeQueue.enqueue(`order-retry:${id}`, () => this.saveSnapshot(id), { retries: 0 });
+    }
+    return ids.length;
+  }
+
+  setReservationId(id: string, reservationId: string): Order | undefined {
+    const order = orders.get(id);
+    if (!order) return undefined;
+    order.reservationId = reservationId;
+    order.updatedAt = new Date();
+    this.persist(id);
+    return order;
+  }
+
+  /** Write-ahead marker for a capture attempt (see Order.captureStartedAt). */
+  markCaptureStarted(id: string): Order | undefined {
+    const order = orders.get(id);
+    if (!order) return undefined;
+    order.captureStartedAt = new Date();
+    order.updatedAt = new Date();
+    this.persist(id);
+    return order;
   }
 
   // S5: correlate an internal order to an incoming PayPal webhook by PayPal Order ID.
@@ -106,6 +193,7 @@ export class OrderService {
     order.status = status;
     order.updatedAt = new Date();
     orders.set(id, order);
+    this.persist(id);
     return order;
   }
 
@@ -127,6 +215,7 @@ export class OrderService {
       if (captureId && !order.paypalCaptureId) {
         order.paypalCaptureId = captureId;
         order.updatedAt = new Date();
+        this.persist(id);
       }
       return order;
     }
@@ -140,6 +229,7 @@ export class OrderService {
       if (captureId) order.paypalCaptureId = captureId;
       order.updatedAt = new Date();
       orders.set(id, order);
+      this.persist(id);
       return order;
     }
     // Any other state is a programming error; reuse the validated path.
@@ -154,6 +244,7 @@ export class OrderService {
     order.status = OrderStatus.PAYMENT_PENDING;
     order.updatedAt = new Date();
     orders.set(orderId, order);
+    this.persist(orderId);
     return order;
   }
 
@@ -173,6 +264,7 @@ export class OrderService {
       }
       order.updatedAt = new Date();
       orders.set(orderId, order);
+      this.persist(orderId);
       return order;
     }
 
@@ -191,6 +283,7 @@ export class OrderService {
 
     order.updatedAt = new Date();
     orders.set(orderId, order);
+    this.persist(orderId);
     return order;
   }
 
@@ -229,6 +322,7 @@ export class OrderService {
    */
   reset(): void {
     orders.clear();
+    dirty.clear();
     OrderService.createdAtCursor = 0;
   }
 }

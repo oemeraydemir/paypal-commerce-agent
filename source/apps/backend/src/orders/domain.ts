@@ -69,6 +69,9 @@ export interface Order {
   // immediately after a daily-spend reservation is taken, so the /capture route
   // can confirm or cancel it. NEVER accepted from the client.
   reservationId?: string;
+  // Write-ahead marker: set and PERSISTED before the capture call goes to PayPal.
+  // If the process dies mid-capture, startup reconciliation asks PayPal for the truth.
+  captureStartedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }

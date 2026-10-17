@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto';
 import { DailySpendReservation } from './domain';
+import { getRepos, writeQueue } from '../persistence/registry';
+import { ReservationRow } from '../persistence/types';
 
 interface DailySpend {
   day: string;
@@ -32,6 +34,76 @@ const SETTLED_RETENTION_MS = 48 * 60 * 60 * 1000;
 export class DailySpendTracker {
   private readonly records = new Map<string, ReservationRecord>();
   private readonly confirmedSpend = new Map<string, DailySpend>();
+  // Reservation ids whose last durable write failed after retries.
+  private readonly dirty = new Set<string>();
+
+  // ---- durability (write-through; a no-op when no repository is attached) ----
+  private toRow(id: string): ReservationRow | undefined {
+    const record = this.records.get(id);
+    if (!record) return undefined;
+    return {
+      id,
+      userId: record.reservation.userId,
+      amountMinor: record.reservation.amountMinor,
+      state: record.state,
+      createdAt: record.reservation.createdAt,
+      settledAt: record.settledAt !== undefined ? new Date(record.settledAt) : undefined,
+    };
+  }
+
+  private async saveRow(id: string): Promise<void> {
+    const repos = getRepos();
+    const row = this.toRow(id);
+    if (!repos || !row) return;
+    await repos.reservations.save(row);
+    this.dirty.delete(id);
+  }
+
+  private persist(id: string): void {
+    if (!getRepos()) return;
+    this.dirty.add(id);
+    writeQueue.enqueue(`reservation:${id}`, () => this.saveRow(id)).catch(() => undefined);
+  }
+
+  /** Re-saves reservations whose earlier write failed. */
+  async retryDirty(): Promise<number> {
+    const ids = [...this.dirty];
+    for (const id of ids) {
+      await writeQueue.enqueue(`reservation-retry:${id}`, () => this.saveRow(id), { retries: 0 });
+    }
+    return ids.length;
+  }
+
+  /**
+   * Restores reservations after a restart. The confirmed daily spend of today is
+   * rebuilt from CONFIRMED rows settled today, so the daily limit survives restarts.
+   */
+  async hydrate(): Promise<number> {
+    const repos = getRepos();
+    if (!repos) return 0;
+    const rows = await repos.reservations.loadActive(SETTLED_RETENTION_MS);
+    const today = this.getCurrentDay();
+    for (const row of rows) {
+      this.records.set(row.id, {
+        reservation: {
+          id: row.id,
+          userId: row.userId,
+          amountMinor: row.amountMinor,
+          createdAt: row.createdAt,
+        },
+        state: row.state,
+        settledAt: row.settledAt?.getTime(),
+      });
+      if (row.state === 'CONFIRMED' && row.settledAt && row.settledAt.toISOString().slice(0, 10) === today) {
+        const previous = this.confirmedSpend.get(row.userId);
+        this.confirmedSpend.set(row.userId, {
+          day: today,
+          amountMinor: (previous?.day === today ? previous.amountMinor : 0) + row.amountMinor,
+        });
+      }
+    }
+    return rows.length;
+  }
 
   getSpentToday(userId: string): number {
     const spend = this.confirmedSpend.get(userId);
@@ -100,6 +172,7 @@ export class DailySpendTracker {
       createdAt: new Date(),
     };
     this.records.set(id, { reservation, state: 'PENDING' });
+    this.persist(id);
     return { ...reservation, createdAt: new Date(reservation.createdAt) };
   }
 
@@ -122,6 +195,7 @@ export class DailySpendTracker {
     record.state = 'CONFIRMED';
     record.settledAt = Date.now();
     this.confirmedSpend.set(record.reservation.userId, { day: today, amountMinor });
+    this.persist(reservationId);
     return wasReleased ? 'CONFIRMED_AFTER_RELEASE' : 'CONFIRMED';
   }
 
@@ -150,6 +224,7 @@ export class DailySpendTracker {
     }
     record.state = target;
     record.settledAt = Date.now();
+    this.persist(reservationId);
     return 'RELEASED';
   }
 
@@ -184,6 +259,7 @@ export class DailySpendTracker {
   reset(): void {
     this.records.clear();
     this.confirmedSpend.clear();
+    this.dirty.clear();
   }
 }
 

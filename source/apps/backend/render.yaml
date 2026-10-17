@@ -1,0 +1,73 @@
+# AI Café — PayPal Commerce Agent (backend + web demo)
+#
+# The repository keeps all source under `source/apps/backend`. Render's `rootDir`
+# MUST point there, otherwise `npm install` / `npm run build` run against an
+# empty directory and the deploy fails. (Previous value `apps/backend` was wrong.)
+#
+# This single service serves BOTH the REST API (`/api/*`) and the static web demo
+# (`/` storefront + `/dashboard` AG Grid "Agent Control Center"), so the hosted
+# URL below is a complete, runnable demo judges can open immediately.
+# Durable storage. Render web services have an EPHEMERAL filesystem, so orders, payment
+# references, spend reservations, sessions and idempotency keys live in PostgreSQL.
+# FREE-TIER CAVEAT (verified against render.com/docs/free): a Free Postgres expires 30 days
+# after creation (+14 days grace, then it is deleted) and has NO backups. Use a paid
+# instance type for anything beyond the hackathon, or point DATABASE_URL at another
+# managed PostgreSQL (the code only needs a standard connection string).
+databases:
+  - name: aicafe-db
+    plan: free
+    databaseName: aicafe
+    user: aicafe
+
+services:
+  - type: web
+    name: paypal-commerce-agent-backend
+    env: node
+    plan: free
+    rootDir: source/apps/backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: aicafe-db
+          property: connectionString
+      # Refuse to boot without a database instead of silently losing orders.
+      - key: REQUIRE_PERSISTENCE
+        value: true
+      - key: CORS_ORIGIN
+        value: https://paypal-commerce-agent.onrender.com
+      - key: PAYPAL_ENABLED
+        value: true
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      # P10: provider-agnostic AI layer. Names only; values are entered in the
+      # Render dashboard (sync:false) so no secret is ever committed.
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: CEREBRAS_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      # P13: Ops Copilot (merchant, READ-ONLY). Both must be set for the feature to
+      # turn on; enter the values in the Render dashboard (sync:false) so no secret
+      # is ever committed. Off = the dashboard shows "Ops Copilot is disabled".
+      - key: OPS_COPILOT_ENABLED
+        sync: false
+      - key: OPS_COPILOT_KEY
+        sync: false
