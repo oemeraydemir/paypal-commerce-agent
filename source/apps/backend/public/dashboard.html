@@ -373,15 +373,8 @@
         <h2 id="ordersHeading">Orders</h2>
         <div class="grid-toolbar">
           <input type="text" id="ordersQuickFilter" placeholder="Quick filter orders…" aria-label="Quick filter orders" />
-          <label for="ordersGroupBy">Group by</label>
-          <select id="ordersGroupBy" aria-label="Group orders by">
-            <option value="">None</option>
-            <option value="origin">Origin</option>
-            <option value="status">Status</option>
-            <option value="currency">Currency</option>
-          </select>
           <button type="button" id="ordersCsvBtn">Export CSV</button>
-          <span class="hint">sort · filter · group · aggregate · pin · paginate</span>
+          <span class="hint">sort · filter · pin · paginate · export CSV</span>
         </div>
         <p class="grid-status" id="ordersStatus" role="status" aria-live="polite"></p>
         <p class="grid-error" id="ordersError" role="alert" hidden></p>
@@ -392,12 +385,6 @@
         <h2 id="eventsHeading">Policy events</h2>
         <div class="grid-toolbar">
           <input type="text" id="eventsQuickFilter" placeholder="Quick filter policy events…" aria-label="Quick filter policy events" />
-          <label for="eventsGroupBy">Group by</label>
-          <select id="eventsGroupBy" aria-label="Group policy events by">
-            <option value="">None</option>
-            <option value="decision">Decision</option>
-            <option value="agent">Agent</option>
-          </select>
           <button type="button" id="eventsCsvBtn">Export CSV</button>
           <span class="hint">click a row for reason &amp; violated rules</span>
         </div>

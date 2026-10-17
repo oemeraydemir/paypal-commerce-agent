@@ -68,7 +68,7 @@ function buildDom() {
   Object.keys(ids).forEach((k) => delete ids[k]);
   [
     'ordersQuickFilter', 'eventsQuickFilter', 'ordersCsvBtn', 'eventsCsvBtn',
-    'closeSide', 'sideBackdrop', 'themeToggle', 'ordersGroupBy', 'eventsGroupBy',
+    'closeSide', 'sideBackdrop', 'themeToggle',
     'ordersGrid', 'eventsGrid', 'eventModal', 'sideBody', 'sideTitle',
     'ordersStatus', 'ordersError', 'eventsStatus', 'eventsError',
   ].forEach((id) => { ids[id] = new FakeElement('div', id); });

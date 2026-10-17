@@ -188,7 +188,6 @@ describe('Sprint dashboard accessibility markers', () => {
     expect(t).toContain("e.key === 'Escape'");
     // AG Grid's documented screen-reader DOM-order options are enabled.
     expect(t).toContain('ensureDomOrder: true');
-    expect(t).toContain('suppressGroupRowsSticky: true');
     // No new grid library was introduced — AG Grid remains the only one used.
     expect(t).toContain('agGrid.createGrid');
   });
@@ -197,8 +196,7 @@ describe('Sprint dashboard accessibility markers', () => {
     const html = (await request(app).get('/dashboard.html')).text;
     const js = (await request(app).get('/dashboard.js')).text;
 
-    // A hand-written role="grid" would nest inside AG Grid's own root
-    // (role="grid", or role="treegrid" while rows are grouped).
+    // A hand-written role="grid" would nest inside AG Grid's own root.
     expect(html).not.toMatch(/role="(tree)?grid"/);
     expect(html).toMatch(/<div id="ordersGrid"><\/div>/);
     expect(html).toMatch(/<div id="eventsGrid"><\/div>/);
@@ -209,5 +207,17 @@ describe('Sprint dashboard accessibility markers', () => {
     expect(js).toContain("labelGridRoot('ordersGrid', 'ordersHeading')");
     expect(js).toContain("labelGridRoot('eventsGrid', 'eventsHeading')");
     expect(js).toContain("setAttribute('aria-labelledby', headingId)");
+  });
+
+  test('uses only AG Grid Community features (Enterprise options are silently ignored and log error #200)', async () => {
+    const js = (await request(app).get('/dashboard.js')).text;
+    const html = (await request(app).get('/dashboard.html')).text;
+    for (const opt of ['rowGroup', 'enableRowGroup', 'aggFunc', 'enableValue', 'statusBar', 'suppressGroupRowsSticky', 'agAggregationComponent']) {
+      expect(js).not.toContain(opt + ':');
+    }
+    // No visible control may advertise a feature the grid does not have.
+    expect(html).not.toMatch(/Group by|group · aggregate/i);
+    expect(html).not.toContain('ordersGroupBy');
+    expect(html).not.toContain('eventsGroupBy');
   });
 });

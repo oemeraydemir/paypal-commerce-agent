@@ -1,0 +1,69 @@
+{
+  "counts": {
+    "grid": 2,
+    "treegrid": 0,
+    "row": 8,
+    "columnheader": 13,
+    "gridcell": 14
+  },
+  "interesting": [
+    {
+      "nodeId": "44",
+      "role": "heading",
+      "name": "Agent Control Center",
+      "ignored": false,
+      "level": 1
+    },
+    {
+      "nodeId": "67",
+      "role": "region",
+      "name": "Ops Copilot",
+      "ignored": false
+    },
+    {
+      "nodeId": "68",
+      "role": "region",
+      "name": "Orders data grid",
+      "ignored": false
+    },
+    {
+      "nodeId": "99",
+      "role": "region",
+      "name": "Policy events data grid",
+      "ignored": false
+    },
+    {
+      "nodeId": "969",
+      "role": "heading",
+      "name": "Ops Copilot",
+      "ignored": false,
+      "level": 2
+    },
+    {
+      "nodeId": "69",
+      "role": "heading",
+      "name": "Orders",
+      "ignored": false,
+      "level": 2
+    },
+    {
+      "nodeId": "100",
+      "role": "heading",
+      "name": "Policy events",
+      "ignored": false,
+      "level": 2
+    },
+    {
+      "nodeId": "190",
+      "role": "grid",
+      "name": "Orders",
+      "ignored": false
+    },
+    {
+      "nodeId": "573",
+      "role": "grid",
+      "name": "Policy events",
+      "ignored": false
+    }
+  ]
+}

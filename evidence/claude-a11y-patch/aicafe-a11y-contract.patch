@@ -1,6 +1,32 @@
+--- AiCafe/source/apps/backend/src/routes/ai.ts	2026-10-16 20:19:13.000000000 +0000
++++ AiCafe/source/apps/backend/src/routes/ai.ts	2026-10-17 10:19:23.155836481 +0000
+@@ -77,10 +77,6 @@
+ 
+ router.post('/ai/chat', requireSession, rateLimit, async (req, res, next) => {
+   try {
+-    if (!env.isAIEnabled()) {
+-      throw new AppError(503, 'OpenAI not configured');
+-    }
+-
+     const { sessionId, userId } = req.session!;
+     const { message } = req.body;
+     if (!message || typeof message !== 'string') {
+@@ -94,6 +90,12 @@
+     const history = conversationHistory.get(sessionId) || [];
+     let result;
+     try {
++      // No provider key at all is the same situation, for the user, as every provider being
++      // exhausted: degrade to the labelled rule-based planner instead of a dead end. This keeps a
++      // fresh clone (no keys) usable and honest.
++      if (!env.isAIEnabled()) {
++        throw new AppError(503, 'AI is not configured', { code: 'AI_UNAVAILABLE' });
++      }
+       result = await aiService.chat(
+         sessionId,
+         message,
 diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.html AiCafe/source/apps/backend/public/dashboard.html
 --- AiCafe/source/apps/backend/public/dashboard.html	2026-10-17 06:19:01.000000000 +0000
-+++ AiCafe/source/apps/backend/public/dashboard.html	2026-10-17 08:21:16.144580096 +0000
++++ AiCafe/source/apps/backend/public/dashboard.html	2026-10-17 10:18:19.593957307 +0000
 @@ -61,7 +61,7 @@
        body.dark .badge-allow,
        body.dark .badge-paid { color: #34d399; background: rgba(52, 211, 153, 0.16); }
@@ -32,7 +58,7 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.html A
        .badge-human { background: rgba(107, 114, 128, 0.14); color: var(--muted); }
  
        /* Accessible status / error announcements for the grids (polite + alert
-@@ -369,7 +370,7 @@
+@@ -369,40 +370,27 @@
        <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
  
        <section class="grid-section" role="region" aria-label="Orders data grid">
@@ -40,8 +66,16 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.html A
 +        <h2 id="ordersHeading">Orders</h2>
          <div class="grid-toolbar">
            <input type="text" id="ordersQuickFilter" placeholder="Quick filter orders…" aria-label="Quick filter orders" />
-           <label for="ordersGroupBy">Group by</label>
-@@ -384,11 +385,11 @@
+-          <label for="ordersGroupBy">Group by</label>
+-          <select id="ordersGroupBy" aria-label="Group orders by">
+-            <option value="">None</option>
+-            <option value="origin">Origin</option>
+-            <option value="status">Status</option>
+-            <option value="currency">Currency</option>
+-          </select>
+           <button type="button" id="ordersCsvBtn">Export CSV</button>
+-          <span class="hint">sort · filter · group · aggregate · pin · paginate</span>
++          <span class="hint">sort · filter · pin · paginate · export CSV</span>
          </div>
          <p class="grid-status" id="ordersStatus" role="status" aria-live="polite"></p>
          <p class="grid-error" id="ordersError" role="alert" hidden></p>
@@ -54,8 +88,14 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.html A
 +        <h2 id="eventsHeading">Policy events</h2>
          <div class="grid-toolbar">
            <input type="text" id="eventsQuickFilter" placeholder="Quick filter policy events…" aria-label="Quick filter policy events" />
-           <label for="eventsGroupBy">Group by</label>
-@@ -402,7 +403,7 @@
+-          <label for="eventsGroupBy">Group by</label>
+-          <select id="eventsGroupBy" aria-label="Group policy events by">
+-            <option value="">None</option>
+-            <option value="decision">Decision</option>
+-            <option value="agent">Agent</option>
+-          </select>
+           <button type="button" id="eventsCsvBtn">Export CSV</button>
+           <span class="hint">click a row for reason &amp; violated rules</span>
          </div>
          <p class="grid-status" id="eventsStatus" role="status" aria-live="polite"></p>
          <p class="grid-error" id="eventsError" role="alert" hidden></p>
@@ -66,13 +106,89 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.html A
  
 diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.js AiCafe/source/apps/backend/public/dashboard.js
 --- AiCafe/source/apps/backend/public/dashboard.js	2026-10-17 06:31:25.000000000 +0000
-+++ AiCafe/source/apps/backend/public/dashboard.js	2026-10-17 08:17:57.987789922 +0000
-@@ -461,6 +461,19 @@
++++ AiCafe/source/apps/backend/public/dashboard.js	2026-10-17 10:19:30.134056140 +0000
+@@ -362,26 +362,26 @@
+   }
+ 
+   // ----- Grid definitions -----
+-  // Columns flagged `enableRowGroup` can be used as a grouping dimension (the
+-  // "Group by" selectors), `enableValue`/`aggFunc:'sum'` let AG Grid aggregate
+-  // counts and money within groups and in the status bar.
++  // AG Grid COMMUNITY only: no rowGroup / aggFunc / enableValue / statusBar here, those are
++  // Enterprise features (RowGroupingModule, StatusBarModule) and Community logs error #200
++  // for each and ignores them. Sort, filter, pin, paginate and CSV export are Community.
+   var ordersColumnDefs = [
+     { headerName: 'Order ID', field: 'id', pinned: 'left', minWidth: 200, cellRenderer: shortIdRenderer },
+     { headerName: 'Created', field: 'createdAt', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
+-    { headerName: 'Origin', field: 'origin', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120, enableRowGroup: true },
+-    { headerName: 'Status', field: 'status', cellRenderer: statusChip, getCellAria: statusAria, filter: 'agTextColumnFilter', minWidth: 130, enableRowGroup: true },
+-    { headerName: 'Items', field: 'itemCount', filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 100, aggFunc: 'sum', enableValue: true },
+-    { headerName: 'Total', field: 'totalMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130, aggFunc: 'sum', enableValue: true },
+-    { headerName: 'Currency', field: 'currency', filter: 'agTextColumnFilter', minWidth: 110, enableRowGroup: true }
++    { headerName: 'Origin', field: 'origin', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120 },
++    { headerName: 'Status', field: 'status', cellRenderer: statusChip, getCellAria: statusAria, filter: 'agTextColumnFilter', minWidth: 130 },
++    { headerName: 'Items', field: 'itemCount', filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 100 },
++    { headerName: 'Total', field: 'totalMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
++    { headerName: 'Currency', field: 'currency', filter: 'agTextColumnFilter', minWidth: 110 }
+   ];
+ 
+   var eventsColumnDefs = [
+     { headerName: 'Time', field: 'timestamp', pinned: 'left', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
+-    { headerName: 'Agent', field: 'agent', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120, enableRowGroup: true },
++    { headerName: 'Agent', field: 'agent', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120 },
+     { headerName: 'Cart ID', field: 'cartId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
+     { headerName: 'Order ID', field: 'orderId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
+-    { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, getCellAria: decisionAria, filter: 'agTextColumnFilter', minWidth: 180, enableRowGroup: true },
+-    { headerName: 'Amount', field: 'amountMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130, aggFunc: 'sum', enableValue: true },
++    { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, getCellAria: decisionAria, filter: 'agTextColumnFilter', minWidth: 180 },
++    { headerName: 'Amount', field: 'amountMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
+     { headerName: 'Reason', field: 'reason', filter: 'agTextColumnFilter', minWidth: 220, tooltipField: 'reason' },
+     {
+       headerName: 'Violations',
+@@ -399,23 +399,6 @@
+     }
+   ];
+ 
+-  // Returns a fresh columnDefs array for the chosen group-by dimension. Cloning
+-  // (rather than mutating) keeps the base definitions reusable across toggles.
+-  function buildGroupedCols(base, groupField) {
+-    return base.map(function (col) {
+-      var c = {};
+-      for (var k in col) { if (Object.prototype.hasOwnProperty.call(col, k)) c[k] = col[k]; }
+-      if (groupField && c.field === groupField) {
+-        c.rowGroup = true;
+-        c.hide = true;
+-      } else {
+-        c.rowGroup = false;
+-        c.hide = false;
+-      }
+-      return c;
+-    });
+-  }
+-
+   var defaultColDef = {
+     flex: 1,
+     minWidth: 120,
+@@ -425,13 +408,6 @@
+     enableCellChangeFlash: true
+   };
+ 
+-  // AG Grid status bar: live count + sum/avg of the focused numeric column.
+-  var statusBar = {
+-    statusPanels: [
+-      { statusPanel: 'agAggregationComponent', statusPanelParams: { aggFuncs: ['count', 'sum', 'avg'] } }
+-    ]
+-  };
+-
+   // Accessible overlays for empty / loading states (Community string templates).
+   var NO_ROWS_TEMPLATE = '<span class="ag-overlay-no-rows">No data to display yet.</span>';
+   var LOADING_TEMPLATE = '<span class="ag-overlay-loading">Loading data…</span>';
+@@ -461,6 +437,19 @@
      };
    }
  
-+  // AG Grid puts role="grid" (or "treegrid" once rows are grouped) on its OWN
-+  // inner root element and does not copy anything from our container. So the
++  // AG Grid puts its own role ("grid"; "treegrid" only with Enterprise grouping/tree data)
++  // on its OWN inner root element and does not copy anything from our container. So the
 +  // container carries no ARIA role, and the accessible name is attached to
 +  // AG Grid's real root, tied to the visible section heading.
 +  function labelGridRoot(containerId, headingId) {
@@ -87,7 +203,21 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.js AiC
    var ordersApi = agGrid.createGrid(el('ordersGrid'), {
      columnDefs: ordersColumnDefs,
      defaultColDef: defaultColDef,
-@@ -482,6 +495,7 @@
+@@ -469,19 +458,17 @@
+     paginationPageSize: 15,
+     paginationPageSizeSelector: [15, 50, 100],
+     tooltipShowDelay: 400,
+-    statusBar: statusBar,
+     theme: lightTheme,
+     rowData: [],
+-    // AG Grid's documented screen-reader options: keep row/column DOM order
+-    // stable and stop grouped rows from "sticking" (which breaks row indices).
++    // AG Grid's documented screen-reader option: keep row/column DOM order stable.
+     ensureDomOrder: true,
+-    suppressGroupRowsSticky: true,
+     overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
+     overlayLoadingTemplate: LOADING_TEMPLATE,
+     onRowClicked: function (params) { openSidePanel(params.data, 'orders'); },
      onCellKeyDown: makeCellOpenHandler('orders')
    });
    state.orders.api = ordersApi;
@@ -95,7 +225,21 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.js AiC
  
    var eventsApi = agGrid.createGrid(el('eventsGrid'), {
      columnDefs: eventsColumnDefs,
-@@ -504,6 +518,7 @@
+@@ -491,19 +478,17 @@
+     paginationPageSize: 15,
+     paginationPageSizeSelector: [15, 50, 100],
+     tooltipShowDelay: 400,
+-    statusBar: statusBar,
+     theme: lightTheme,
+     rowData: [],
+-    // AG Grid's documented screen-reader options: keep row/column DOM order
+-    // stable and stop grouped rows from "sticking" (which breaks row indices).
++    // AG Grid's documented screen-reader option: keep row/column DOM order stable.
+     ensureDomOrder: true,
+-    suppressGroupRowsSticky: true,
+     overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
+     overlayLoadingTemplate: LOADING_TEMPLATE,
+     onRowClicked: function (params) { openSidePanel(params.data, 'events'); },
      onCellKeyDown: makeCellOpenHandler('events')
    });
    state.events.api = eventsApi;
@@ -103,10 +247,26 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/public/dashboard.js AiC
  
    // Attach line items onto order rows for the side panel (not shown in grid).
    function attachOrderItems(orders, jsonOrders) {
+@@ -603,15 +588,6 @@
+     el('themeToggle').textContent = dark ? 'Light mode' : 'Dark mode';
+   });
+ 
+-  // Group-by selectors: rebuild columnDefs so the chosen dimension becomes the
+-  // row group (Community row grouping) and money/count columns aggregate.
+-  el('ordersGroupBy').addEventListener('change', function (e) {
+-    ordersApi.setGridOption('columnDefs', buildGroupedCols(ordersColumnDefs, e.target.value));
+-  });
+-  el('eventsGroupBy').addEventListener('change', function (e) {
+-    eventsApi.setGridOption('columnDefs', buildGroupedCols(eventsColumnDefs, e.target.value));
+-  });
+-
+   refreshData().catch(function (err) {
+     console.warn('initial dashboard load failed:', err && err.message);
+   });
 diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts
 --- AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts	1970-01-01 00:00:00.000000000 +0000
-+++ AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts	2026-10-17 08:19:22.505529922 +0000
-@@ -0,0 +1,192 @@
++++ AiCafe/source/apps/backend/tests/integration/ai-contract.test.ts	2026-10-17 10:18:31.212818081 +0000
+@@ -0,0 +1,217 @@
 +// Wire-contract tests for POST /api/ai/chat.
 +//
 +// The Flutter client (lib/services/api_service.dart, lib/models/cart.dart) parses this
@@ -119,6 +279,7 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/integration/ai-co
 +import { AppError } from '../../src/middleware/error-handler';
 +import { newSession, resetSessionState, TestSession } from '../helpers/session';
 +import { peekAIPreparedSession } from '../../src/ai/session-tracker';
++import { env } from '../../src/config/environment';
 +
 +jest.mock('../../src/ai/client', () => ({ aiClient: { chat: jest.fn() } }));
 +const mockChat = aiClient.chat as jest.Mock;
@@ -299,10 +460,38 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/integration/ai-co
 +    expect(res.body).not.toHaveProperty('mode');
 +  });
 +});
++
++describe('POST /api/ai/chat with no AI provider configured (fresh clone, no keys)', () => {
++  afterEach(() => jest.restoreAllMocks());
++
++  test('degrades to the labelled rule-based planner instead of a 503 dead end', async () => {
++    jest.spyOn(env, 'isAIEnabled').mockReturnValue(false);
++    const res = await request(app)
++      .post('/api/ai/chat').set(sess.headers)
++      .send({ message: 'coffee and a croissant' });
++    expect(res.status).toBe(200);
++    expectEnvelope(res.body);
++    expect(res.body.mode).toBe('rule-based');
++    expect(res.body.response).toMatch(/no AI/i);
++    expectCartShape(res.body.preparedCart);
++    expect(mockChat).not.toHaveBeenCalled(); // no provider call is attempted
++    expect(peekAIPreparedSession(sess.sessionId)).toBe(false); // never attributed to an AI agent
++  });
++
++  test('validation still comes first: bad input is a 400, not a fallback', async () => {
++    jest.spyOn(env, 'isAIEnabled').mockReturnValue(false);
++    const res = await request(app).post('/api/ai/chat').set(sess.headers).send({});
++    expect(res.status).toBe(400);
++  });
++});
 diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/integration/dashboard.test.ts AiCafe/source/apps/backend/tests/integration/dashboard.test.ts
 --- AiCafe/source/apps/backend/tests/integration/dashboard.test.ts	2026-10-17 06:31:29.000000000 +0000
-+++ AiCafe/source/apps/backend/tests/integration/dashboard.test.ts	2026-10-17 08:18:15.298743495 +0000
-@@ -192,4 +192,22 @@
++++ AiCafe/source/apps/backend/tests/integration/dashboard.test.ts	2026-10-17 10:18:31.212029494 +0000
+@@ -188,8 +188,36 @@
+     expect(t).toContain("e.key === 'Escape'");
+     // AG Grid's documented screen-reader DOM-order options are enabled.
+     expect(t).toContain('ensureDomOrder: true');
+-    expect(t).toContain('suppressGroupRowsSticky: true');
      // No new grid library was introduced — AG Grid remains the only one used.
      expect(t).toContain('agGrid.createGrid');
    });
@@ -311,8 +500,7 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/integration/dashb
 +    const html = (await request(app).get('/dashboard.html')).text;
 +    const js = (await request(app).get('/dashboard.js')).text;
 +
-+    // A hand-written role="grid" would nest inside AG Grid's own root
-+    // (role="grid", or role="treegrid" while rows are grouped).
++    // A hand-written role="grid" would nest inside AG Grid's own root.
 +    expect(html).not.toMatch(/role="(tree)?grid"/);
 +    expect(html).toMatch(/<div id="ordersGrid"><\/div>/);
 +    expect(html).toMatch(/<div id="eventsGrid"><\/div>/);
@@ -324,10 +512,22 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/integration/dashb
 +    expect(js).toContain("labelGridRoot('eventsGrid', 'eventsHeading')");
 +    expect(js).toContain("setAttribute('aria-labelledby', headingId)");
 +  });
++
++  test('uses only AG Grid Community features (Enterprise options are silently ignored and log error #200)', async () => {
++    const js = (await request(app).get('/dashboard.js')).text;
++    const html = (await request(app).get('/dashboard.html')).text;
++    for (const opt of ['rowGroup', 'enableRowGroup', 'aggFunc', 'enableValue', 'statusBar', 'suppressGroupRowsSticky', 'agAggregationComponent']) {
++      expect(js).not.toContain(opt + ':');
++    }
++    // No visible control may advertise a feature the grid does not have.
++    expect(html).not.toMatch(/Group by|group · aggregate/i);
++    expect(html).not.toContain('ordersGroupBy');
++    expect(html).not.toContain('eventsGroupBy');
++  });
  });
 diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts
 --- AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts	2026-10-17 06:28:09.000000000 +0000
-+++ AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts	2026-10-17 08:18:15.299120913 +0000
++++ AiCafe/source/apps/backend/tests/unit/dashboard-a11y.test.ts	2026-10-17 10:18:31.212415910 +0000
 @@ -50,6 +50,7 @@
    removeEventListener(t: string, fn: Function) { this.listeners[t] = (this.listeners[t] || []).filter((f) => f !== fn); }
    dispatch(t: string, ev: any) { (this.listeners[t] || []).slice().forEach((fn) => fn(ev)); }
@@ -336,7 +536,12 @@ diff -ruN --strip-trailing-cr AiCafe/source/apps/backend/tests/unit/dashboard-a1
    focus() { doc.activeElement = this; }
  }
  
-@@ -71,6 +72,9 @@
+@@ -67,10 +68,13 @@
+   Object.keys(ids).forEach((k) => delete ids[k]);
+   [
+     'ordersQuickFilter', 'eventsQuickFilter', 'ordersCsvBtn', 'eventsCsvBtn',
+-    'closeSide', 'sideBackdrop', 'themeToggle', 'ordersGroupBy', 'eventsGroupBy',
++    'closeSide', 'sideBackdrop', 'themeToggle',
      'ordersGrid', 'eventsGrid', 'eventModal', 'sideBody', 'sideTitle',
      'ordersStatus', 'ordersError', 'eventsStatus', 'eventsError',
    ].forEach((id) => { ids[id] = new FakeElement('div', id); });

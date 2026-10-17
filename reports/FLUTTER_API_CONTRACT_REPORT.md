@@ -95,12 +95,13 @@ No change was made there.
 |---|---|
 | `lib/models/chat_message.dart` | New `ChatMode { ai, ruleBased }`, tolerant `chatModeFromJson()`, `ChatMessage.mode`, `ChatMessage.isRuleBased`. |
 | `lib/services/api_service.dart` | `ChatResponse.mode` + `isRuleBased`; tolerant `ChatResponse.fromJson`; new `_decodeChatBody()`; `getCatalog` skips non-map / id-less entries. |
-| `lib/models/cart.dart` | Tolerant `CartLine.fromJson` and `PreparedCart.fromJson` (nullable casts, `whereType`, `rawItems is List`). |
+| `lib/models/cart.dart` | Tolerant `CartLine.fromJson` and `PreparedCart.fromJson` (nullable casts, `whereType`, `rawItems is List`). **Later extended:** `PolicyDecision` enum, `PolicyViolation`, and `cartId` / `policyDecision` / `policyViolations` / `requiresExplicitApproval` / `retrySuggested` / `reason` are now parsed too (§8). |
 | `lib/models/product.dart` | Tolerant `Product.fromJson` + `_stringList()` helper. |
 | `lib/providers/chat_provider.dart` | Stores `_lastPreparedCartMode` / `_checkoutReady`; passes `mode` to the message; empty-response fallback; `on TimeoutException`; resets new state in `clearConversation` and `clearPreparedCart`. |
 | `lib/screens/chat_screen.dart` | `_MessageBubble` rule-based chip; `_PreparedCartCard.mode` + mode-aware title; call site passes `chat.lastPreparedCartMode`. |
 | `test/api_service_test.dart` | New group `AI chat response compatibility (mode + safe parsing)` — 7 tests. |
 | `test/chat_provider_test.dart` | **New file** — 7 tests for provider state transitions. |
+| `test/prepared_cart_policy_test.dart` | **New file** — 7 tests for the policy metadata parsing added in §8. |
 
 Not touched: `lib/services/session_service.dart`, `lib/services/secure_session_storage.dart`,
 `lib/providers/checkout_provider.dart`, any `apps/backend/src/**` route, any MCP
@@ -132,10 +133,11 @@ cd source/apps/flutter_app && \
   env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy \
       NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost \
   flutter test
-→ 00:04 +52: All tests passed!
+→ 00:05 +59: All tests passed!
 ```
 
-**52 tests passed** (baseline before this task: 38; +14 new).
+**59 tests passed** (baseline before this task: 38; +14 contract tests, +7 policy
+tests added in §8).
 
 **3. Relevant backend contract tests**
 
@@ -202,13 +204,10 @@ Stated explicitly, per the instruction not to present unreachable services as te
 
 ## 7. Remaining issues / known limitations (not fixed, by design)
 
-1. **Policy metadata is still ignored by the Flutter model.** `preparedCart`
-   contains `cartId`, `policyDecision`, `policyViolations`,
-   `requiresExplicitApproval`, `retrySuggested`, `reason`
-   (`fallback-planner.ts:209-221`). `PreparedCart` does not model them, so the
-   client cannot show *why* a cart needs approval or was blocked. Adding the
-   fields without a design for displaying them would have been a speculative
-   change, so it was left alone — but it is the most valuable next step.
+1. **Policy metadata display is still absent.** `PreparedCart` now *parses*
+   `cartId`, `policyDecision`, `policyViolations`, `requiresExplicitApproval`,
+   `retrySuggested` and `reason` (§8), but nothing in the UI renders them yet —
+   that is a design change and was deliberately left for a decision (§8.3).
 2. **`totalFormatted` falls back to an empty string** when the backend omits it.
    The card would then show no total rather than a computed one. Deliberate:
    the client must not invent a currency total.
@@ -221,3 +220,107 @@ Stated explicitly, per the instruction not to present unreachable services as te
 5. **The proxy workaround is environmental, not code.** Any CI job running
    `flutter test` on this machine must unset `HTTP_PROXY`/`HTTPS_PROXY` or it will
    see 0 tests run and a WebSocket error.
+
+---
+
+## 8. Follow-up: browser verification and policy metadata
+
+### 8.1 What was verified in a real Chrome (not simulated)
+
+A real Google Chrome 155 was driven over CDP against a real backend. Scripts and
+raw output live in `evidence/` — see `evidence/README.md` for the exact commands.
+
+**Dashboard accessibility tree** (`evidence/dashboard-grid-ax/`):
+
+| Expected | Observed |
+|---|---|
+| "a single grid" | **Two** `role="grid"` roots (`Orders`, `Policy events`). Each section has exactly one grid root — no duplicated or nested grid. |
+| "Group by → `treegrid`" | **False.** The root stays `role="grid"`; `groupRows: 0`. |
+
+Two independent causes, both proven:
+
+1. `rowGroup` / `enableRowGroup` / `aggFunc` / `enableValue` / `statusBar` are
+   **Enterprise** features. AG Grid Community v33 logs error #200 for each and
+   ignores them, so selecting a "Group by" value changes the column definitions
+   but produces no groups.
+2. AG Grid only flips the root role when grouping is genuinely active — from the
+   v33.0.0 bundle: `setGridRootRole(a ? "treegrid" : "grid")` where `a` requires
+   `treeData: true` or at least one *registered* row-group column.
+
+Consequence: the toolbar hint advertises `sort · filter · group · aggregate ·
+pin · paginate`, but **group and aggregate do nothing** and the status bar is
+silently dropped. Screenshots `01`–`03` and `ax-tree-*.json` capture this.
+`03-groupby-focused.png` also confirms the earlier `:focus-visible` ring renders.
+
+**Flutter rule-based chip** (`evidence/flutter-rulebased/`): verified visually.
+`03-rulebased-reply.png` shows the chip "Rule-based answer · no AI", the reply
+text, and the cart card titled "Rule-based cart (no AI) · your edits" with
+`1× Fresh Brewed Coffee · €3.00`. The same run recorded the real response:
+`{status: 200, mode: "rule-based", checkoutReady: true, policyDecision:
+"AUTO_ALLOW"}`.
+
+Not verified: `flutter run` on a device (the Flutter tool shells out to `reg.exe`,
+blocked by this sandbox), and Flutter's semantics tree (the "Enable accessibility"
+placeholder would not activate in headless Chrome), so the chip text is proven
+visually and by unit assertion, not by reading `flt-semantics` nodes.
+
+### 8.2 New backend finding (not changed)
+
+With **no** AI provider configured, `/api/ai/chat` returns
+`503 {"error":"OpenAI not configured"}` and the rule-based fallback never runs:
+`src/routes/ai.ts:81` throws before the fallback `try/catch`. The labelled
+rule-based planner is therefore unreachable in the most likely demo setup (no API
+keys) — it only engages when a provider exists but is exhausted. This was left
+as-is: it is backend behaviour outside the stated scope, and it does not affect
+the client, which handles both the 503 and the fallback correctly.
+
+### 8.3 `PreparedCart` policy metadata — now parsed
+
+The real shape (`tool-executor.ts:214-231`, `fallback-planner.ts:209-221`):
+
+```jsonc
+{ "items": [...], "totalMinor": 300, "totalFormatted": "€3.00", "currency": "EUR",
+  "cartId": "cart_e10bf2b9f593c3b0", "message": "...",
+  "policyDecision": "AUTO_ALLOW" | "REQUIRE_CONFIRMATION" | "BLOCK",
+  "policyViolations": [{ "type": "CONFIRMATION_THRESHOLD_EXCEEDED", "message": "..." }],
+  "requiresExplicitApproval": false, "retrySuggested": false,
+  "reason": "Policy check passed" }
+```
+
+Added to `lib/models/cart.dart`:
+
+- `PolicyDecision { autoAllow, requireConfirmation, block, unknown }` +
+  `policyDecisionFromJson()`. An absent or unrecognised value maps to `unknown`,
+  **never** to `autoAllow` — the client must not infer approval.
+- `PolicyViolation { type, message }` — `message` is the server's own wording and
+  is meant to be shown verbatim.
+- `PreparedCart.cartId / policyDecision / policyViolations /
+  requiresExplicitApproval / retrySuggested / reason`, plus `isBlocked` and
+  `hasPolicyViolations`.
+- `requiresExplicitApproval` is read from the server rather than derived from the
+  decision, so a policy change needs no client release.
+
+All new constructor parameters have defaults, so every existing call site
+(including `test/chat_provider_test.dart`) still compiles unchanged.
+
+**Verification:** `flutter analyze` → *No issues found!*;
+`flutter test` → **59/59 passed** (was 52; +7 in
+`test/prepared_cart_policy_test.dart`). The tests use the real payload shapes:
+AUTO_ALLOW, REQUIRE_CONFIRMATION with a violation, BLOCK with `retrySuggested`,
+missing fields, an unknown decision, a non-list `policyViolations`, and malformed
+violation entries.
+
+### 8.4 Open design decision (not implemented)
+
+The fields are parsed but not displayed. Rendering them changes the UI, so it
+needs a decision:
+
+| Option | Change | Trade-off |
+|---|---|---|
+| **A. Do nothing visual** | — | Fields available for future use; the user still cannot see *why* approval is required. |
+| **B. One line in the existing cart card** | When `requiresExplicitApproval`, replace the static "The server confirms final prices before PayPal checkout." subtitle with `reason`. No new component, no layout change. | Cheapest honest fix; still no per-rule detail. |
+| **C. Dedicated policy block** | A small bordered section listing `reason` + each violation's `message`, styled by decision (allow/confirm/block). | Most informative; the largest visual change and the one most likely to need design review. |
+
+Recommendation: **B** now (it is the smallest change that stops the card from
+looking unconditional when the server says a human must approve), then **C** if
+the demo should show the policy engine working.

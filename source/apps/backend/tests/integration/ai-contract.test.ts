@@ -10,6 +10,7 @@ import { aiClient } from '../../src/ai/client';
 import { AppError } from '../../src/middleware/error-handler';
 import { newSession, resetSessionState, TestSession } from '../helpers/session';
 import { peekAIPreparedSession } from '../../src/ai/session-tracker';
+import { env } from '../../src/config/environment';
 
 jest.mock('../../src/ai/client', () => ({ aiClient: { chat: jest.fn() } }));
 const mockChat = aiClient.chat as jest.Mock;
@@ -188,5 +189,29 @@ describe('POST /api/ai/chat error contract (JSON, non-2xx, `error` string)', () 
     expect(res.type).toBe('application/json');
     expect(typeof res.body.error).toBe('string');
     expect(res.body).not.toHaveProperty('mode');
+  });
+});
+
+describe('POST /api/ai/chat with no AI provider configured (fresh clone, no keys)', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  test('degrades to the labelled rule-based planner instead of a 503 dead end', async () => {
+    jest.spyOn(env, 'isAIEnabled').mockReturnValue(false);
+    const res = await request(app)
+      .post('/api/ai/chat').set(sess.headers)
+      .send({ message: 'coffee and a croissant' });
+    expect(res.status).toBe(200);
+    expectEnvelope(res.body);
+    expect(res.body.mode).toBe('rule-based');
+    expect(res.body.response).toMatch(/no AI/i);
+    expectCartShape(res.body.preparedCart);
+    expect(mockChat).not.toHaveBeenCalled(); // no provider call is attempted
+    expect(peekAIPreparedSession(sess.sessionId)).toBe(false); // never attributed to an AI agent
+  });
+
+  test('validation still comes first: bad input is a 400, not a fallback', async () => {
+    jest.spyOn(env, 'isAIEnabled').mockReturnValue(false);
+    const res = await request(app).post('/api/ai/chat').set(sess.headers).send({});
+    expect(res.status).toBe(400);
   });
 });

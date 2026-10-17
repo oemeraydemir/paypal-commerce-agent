@@ -1,0 +1,115 @@
+{
+  "url": "http://127.0.0.1:3000/dashboard.html",
+  "chrome": "155.0.8059.80",
+  "before": {
+    "counts": {
+      "grid": 2,
+      "treegrid": 0,
+      "row": 8,
+      "columnheader": 15,
+      "gridcell": 16
+    },
+    "dom": {
+      "documentGridRoles": 2,
+      "documentTreegridRoles": 0,
+      "sections": [
+        {
+          "heading": "Orders",
+          "label": "Orders data grid",
+          "gridRootsInSection": 1,
+          "rootRole": "grid",
+          "rootLabelledBy": "ordersHeading",
+          "rows": 0,
+          "groupRows": 0,
+          "expandableRows": 1,
+          "ariaExpandedValues": [
+            "false"
+          ],
+          "status": "No orders to display yet.",
+          "groupBy": {
+            "id": "ordersGroupBy",
+            "value": ""
+          }
+        },
+        {
+          "heading": "Policy events",
+          "label": "Policy events data grid",
+          "gridRootsInSection": 1,
+          "rootRole": "grid",
+          "rootLabelledBy": "eventsHeading",
+          "rows": 4,
+          "groupRows": 0,
+          "expandableRows": 1,
+          "ariaExpandedValues": [
+            "false"
+          ],
+          "status": "Showing 2 policy events.",
+          "groupBy": {
+            "id": "eventsGroupBy",
+            "value": ""
+          }
+        }
+      ]
+    }
+  },
+  "after": {
+    "counts": {
+      "grid": 2,
+      "treegrid": 0,
+      "row": 8,
+      "columnheader": 13,
+      "gridcell": 14
+    },
+    "dom": {
+      "documentGridRoles": 2,
+      "documentTreegridRoles": 0,
+      "sections": [
+        {
+          "heading": "Orders",
+          "label": "Orders data grid",
+          "gridRootsInSection": 1,
+          "rootRole": "grid",
+          "rootLabelledBy": "ordersHeading",
+          "rows": 0,
+          "groupRows": 0,
+          "expandableRows": 1,
+          "ariaExpandedValues": [
+            "false"
+          ],
+          "status": "Updated: 0 orders.",
+          "groupBy": {
+            "id": "ordersGroupBy",
+            "value": "origin"
+          }
+        },
+        {
+          "heading": "Policy events",
+          "label": "Policy events data grid",
+          "gridRootsInSection": 1,
+          "rootRole": "grid",
+          "rootLabelledBy": "eventsHeading",
+          "rows": 4,
+          "groupRows": 0,
+          "expandableRows": 1,
+          "ariaExpandedValues": [
+            "false"
+          ],
+          "status": "Updated: 2 policy events.",
+          "groupBy": {
+            "id": "eventsGroupBy",
+            "value": "decision"
+          }
+        }
+      ]
+    }
+  },
+  "consoleErrors": [
+    "AG Grid: error #200 Unable to use statusBar as StatusBarModule is not registered. Check if you have registered the module:\nimport { ModuleRegistry } from 'ag-grid-community'; \nimport { StatusBarModule } from 'ag-grid-enterprise'; \n\nModuleRegistry.registerModules([ StatusBarModule ]); \n\nFor more info see: https://www.ag-grid.com/javascript-data-grid/modules/ \nSee https://www.ag-grid.com/javascript-data-grid/errors/200?_version_=33.0.0&gridId=1&gridScoped=false&rowModelType=clientSide&moduleName=StatusBar&reasonOrId=statusBar",
+    "AG Grid: error #200 Unable to use statusBar as StatusBarModule is not registered. Check if you have registered the module:\nimport { ModuleRegistry } from 'ag-grid-community'; \nimport { StatusBarModule } from 'ag-grid-enterprise'; \n\nModuleRegistry.registerModules([ StatusBarModule ]); \n\nFor more info see: https://www.ag-grid.com/javascript-data-grid/modules/ \nSee https://www.ag-grid.com/javascript-data-grid/errors/200?_version_=33.0.0&gridId=2&gridScoped=false&rowModelType=clientSide&moduleName=StatusBar&reasonOrId=statusBar",
+    "Failed to load resource: the server responded with a status of 404 (Not Found)",
+    "AG Grid: error #200 Unable to use enableRowGroup as RowGroupingModule is not registered. Check if you have registered the module:\nimport { ModuleRegistry } from 'ag-grid-community'; \nimport { RowGroupingModule } from 'ag-grid-enterprise'; \n\nModuleRegistry.registerModules([ RowGroupingModule ]); \n\nFor more info see: https://www.ag-grid.com/javascript-data-grid/modules/ \nSee https://www.ag-grid.com/javascript-data-grid/errors/200?_version_=33.0.0&gridId=2&gridScoped=false&rowModelType=clientSide&moduleName=SharedRowGrouping&reasonOrId=enableRowGroup",
+    "AG Grid: error #200 Unable to use aggFunc as one of RowGroupingModule, PivotModule, TreeDataModule is not registered. Check if you have registered the module:\nimport { ModuleRegistry } from 'ag-grid-community'; \nimport { RowGroupingModule } from 'ag-grid-enterprise'; \nimport { PivotModule } from 'ag-grid-enterprise'; \nimport { TreeDataModule } from 'ag-grid-enterprise'; \n\nModuleRegistry.registerModules([ RowGroupingModule, PivotModule, TreeDataModule ]); \n\nFor more info see: https://www.ag-grid.com/javascript-data-grid/modules/ \nSee https://www.ag-grid.com/javascript-data-grid/errors/200?_version_=33.0.0&gridId=2&gridScoped=false&rowModelType=clientSide&moduleName=SharedAggregation&reasonOrId=aggFunc",
+    "AG Grid: error #200 Unable to use enableValue as one of RowGroupingModule, PivotModule, TreeDataModule is not registered. Check if you have registered the module:\nimport { ModuleRegistry } from 'ag-grid-community'; \nimport { RowGroupingModule } from 'ag-grid-enterprise'; \nimport { PivotModule } from 'ag-grid-enterprise'; \nimport { TreeDataModule } from 'ag-grid-enterprise'; \n\nModuleRegistry.registerModules([ RowGroupingModule, PivotModule, TreeDataModule ]); \n\nFor more info see: https://www.ag-grid.com/javascript-data-grid/modules/ \nSee https://www.ag-grid.com/javascript-data-grid/errors/200?_version_=33.0.0&gridId=2&gridScoped=false&rowModelType=clientSide&moduleName=SharedAggregation&reasonOrId=enableValue",
+    "AG Grid: error #200 Unable to use rowGroup as RowGroupingModule is not registered. Check if you have registered the module:\nimport { ModuleRegistry } from 'ag-grid-community'; \nimport { RowGroupingModule } from 'ag-grid-enterprise'; \n\nModuleRegistry.registerModules([ RowGroupingModule ]); \n\nFor more info see: https://www.ag-grid.com/javascript-data-grid/modules/ \nSee https://www.ag-grid.com/javascript-data-grid/errors/200?_version_=33.0.0&gridId=2&gridScoped=false&rowModelType=clientSide&moduleName=SharedRowGrouping&reasonOrId=rowGroup"
+  ]
+}

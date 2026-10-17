@@ -1,0 +1,63 @@
+[
+  {
+    "role": "grid",
+    "name": "Policy events"
+  },
+  {
+    "role": "rowgroup",
+    "name": ""
+  },
+  {
+    "role": "generic",
+    "name": ""
+  },
+  {
+    "role": "rowgroup",
+    "name": ""
+  },
+  {
+    "role": "generic",
+    "name": ""
+  },
+  {
+    "role": "rowgroup",
+    "name": ""
+  },
+  {
+    "role": "rowgroup",
+    "name": ""
+  },
+  {
+    "role": "generic",
+    "name": ""
+  },
+  {
+    "role": "rowgroup",
+    "name": ""
+  },
+  {
+    "role": "none"
+  },
+  {
+    "role": "generic",
+    "name": ""
+  },
+  {
+    "role": "region",
+    "name": "Policy events data grid"
+  },
+  {
+    "role": "main",
+    "name": ""
+  },
+  {
+    "role": "none"
+  },
+  {
+    "role": "none"
+  },
+  {
+    "role": "RootWebArea",
+    "name": "Agent Control Center"
+  }
+]

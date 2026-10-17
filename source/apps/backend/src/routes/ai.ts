@@ -77,10 +77,6 @@ function rateLimit(req: Request, res: Response, next: NextFunction) {
 
 router.post('/ai/chat', requireSession, rateLimit, async (req, res, next) => {
   try {
-    if (!env.isAIEnabled()) {
-      throw new AppError(503, 'OpenAI not configured');
-    }
-
     const { sessionId, userId } = req.session!;
     const { message } = req.body;
     if (!message || typeof message !== 'string') {
@@ -94,6 +90,12 @@ router.post('/ai/chat', requireSession, rateLimit, async (req, res, next) => {
     const history = conversationHistory.get(sessionId) || [];
     let result;
     try {
+      // No provider key at all is the same situation, for the user, as every provider being
+      // exhausted: degrade to the labelled rule-based planner instead of a dead end. This keeps a
+      // fresh clone (no keys) usable and honest.
+      if (!env.isAIEnabled()) {
+        throw new AppError(503, 'AI is not configured', { code: 'AI_UNAVAILABLE' });
+      }
       result = await aiService.chat(
         sessionId,
         message,

@@ -1,0 +1,42 @@
+{
+  "documentGridRoles": 2,
+  "documentTreegridRoles": 0,
+  "sections": [
+    {
+      "heading": "Orders",
+      "label": "Orders data grid",
+      "gridRootsInSection": 1,
+      "rootRole": "grid",
+      "rootLabelledBy": "ordersHeading",
+      "rows": 0,
+      "groupRows": 0,
+      "expandableRows": 1,
+      "ariaExpandedValues": [
+        "false"
+      ],
+      "status": "No orders to display yet.",
+      "groupBy": {
+        "id": "ordersGroupBy",
+        "value": ""
+      }
+    },
+    {
+      "heading": "Policy events",
+      "label": "Policy events data grid",
+      "gridRootsInSection": 1,
+      "rootRole": "grid",
+      "rootLabelledBy": "eventsHeading",
+      "rows": 4,
+      "groupRows": 0,
+      "expandableRows": 1,
+      "ariaExpandedValues": [
+        "false"
+      ],
+      "status": "Showing 2 policy events.",
+      "groupBy": {
+        "id": "eventsGroupBy",
+        "value": ""
+      }
+    }
+  ]
+}

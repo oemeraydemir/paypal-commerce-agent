@@ -362,26 +362,26 @@
   }
 
   // ----- Grid definitions -----
-  // Columns flagged `enableRowGroup` can be used as a grouping dimension (the
-  // "Group by" selectors), `enableValue`/`aggFunc:'sum'` let AG Grid aggregate
-  // counts and money within groups and in the status bar.
+  // AG Grid COMMUNITY only: no rowGroup / aggFunc / enableValue / statusBar here, those are
+  // Enterprise features (RowGroupingModule, StatusBarModule) and Community logs error #200
+  // for each and ignores them. Sort, filter, pin, paginate and CSV export are Community.
   var ordersColumnDefs = [
     { headerName: 'Order ID', field: 'id', pinned: 'left', minWidth: 200, cellRenderer: shortIdRenderer },
     { headerName: 'Created', field: 'createdAt', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
-    { headerName: 'Origin', field: 'origin', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120, enableRowGroup: true },
-    { headerName: 'Status', field: 'status', cellRenderer: statusChip, getCellAria: statusAria, filter: 'agTextColumnFilter', minWidth: 130, enableRowGroup: true },
-    { headerName: 'Items', field: 'itemCount', filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 100, aggFunc: 'sum', enableValue: true },
-    { headerName: 'Total', field: 'totalMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130, aggFunc: 'sum', enableValue: true },
-    { headerName: 'Currency', field: 'currency', filter: 'agTextColumnFilter', minWidth: 110, enableRowGroup: true }
+    { headerName: 'Origin', field: 'origin', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120 },
+    { headerName: 'Status', field: 'status', cellRenderer: statusChip, getCellAria: statusAria, filter: 'agTextColumnFilter', minWidth: 130 },
+    { headerName: 'Items', field: 'itemCount', filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 100 },
+    { headerName: 'Total', field: 'totalMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
+    { headerName: 'Currency', field: 'currency', filter: 'agTextColumnFilter', minWidth: 110 }
   ];
 
   var eventsColumnDefs = [
     { headerName: 'Time', field: 'timestamp', pinned: 'left', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
-    { headerName: 'Agent', field: 'agent', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120, enableRowGroup: true },
+    { headerName: 'Agent', field: 'agent', cellRenderer: originBadge, getCellAria: originAria, filter: 'agTextColumnFilter', minWidth: 120 },
     { headerName: 'Cart ID', field: 'cartId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
     { headerName: 'Order ID', field: 'orderId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
-    { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, getCellAria: decisionAria, filter: 'agTextColumnFilter', minWidth: 180, enableRowGroup: true },
-    { headerName: 'Amount', field: 'amountMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130, aggFunc: 'sum', enableValue: true },
+    { headerName: 'Decision', field: 'decision', cellRenderer: decisionChip, getCellAria: decisionAria, filter: 'agTextColumnFilter', minWidth: 180 },
+    { headerName: 'Amount', field: 'amountMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
     { headerName: 'Reason', field: 'reason', filter: 'agTextColumnFilter', minWidth: 220, tooltipField: 'reason' },
     {
       headerName: 'Violations',
@@ -399,23 +399,6 @@
     }
   ];
 
-  // Returns a fresh columnDefs array for the chosen group-by dimension. Cloning
-  // (rather than mutating) keeps the base definitions reusable across toggles.
-  function buildGroupedCols(base, groupField) {
-    return base.map(function (col) {
-      var c = {};
-      for (var k in col) { if (Object.prototype.hasOwnProperty.call(col, k)) c[k] = col[k]; }
-      if (groupField && c.field === groupField) {
-        c.rowGroup = true;
-        c.hide = true;
-      } else {
-        c.rowGroup = false;
-        c.hide = false;
-      }
-      return c;
-    });
-  }
-
   var defaultColDef = {
     flex: 1,
     minWidth: 120,
@@ -423,13 +406,6 @@
     resizable: true,
     filter: true,
     enableCellChangeFlash: true
-  };
-
-  // AG Grid status bar: live count + sum/avg of the focused numeric column.
-  var statusBar = {
-    statusPanels: [
-      { statusPanel: 'agAggregationComponent', statusPanelParams: { aggFuncs: ['count', 'sum', 'avg'] } }
-    ]
   };
 
   // Accessible overlays for empty / loading states (Community string templates).
@@ -461,8 +437,8 @@
     };
   }
 
-  // AG Grid puts role="grid" (or "treegrid" once rows are grouped) on its OWN
-  // inner root element and does not copy anything from our container. So the
+  // AG Grid puts its own role ("grid"; "treegrid" only with Enterprise grouping/tree data)
+  // on its OWN inner root element and does not copy anything from our container. So the
   // container carries no ARIA role, and the accessible name is attached to
   // AG Grid's real root, tied to the visible section heading.
   function labelGridRoot(containerId, headingId) {
@@ -482,13 +458,10 @@
     paginationPageSize: 15,
     paginationPageSizeSelector: [15, 50, 100],
     tooltipShowDelay: 400,
-    statusBar: statusBar,
     theme: lightTheme,
     rowData: [],
-    // AG Grid's documented screen-reader options: keep row/column DOM order
-    // stable and stop grouped rows from "sticking" (which breaks row indices).
+    // AG Grid's documented screen-reader option: keep row/column DOM order stable.
     ensureDomOrder: true,
-    suppressGroupRowsSticky: true,
     overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
     overlayLoadingTemplate: LOADING_TEMPLATE,
     onRowClicked: function (params) { openSidePanel(params.data, 'orders'); },
@@ -505,13 +478,10 @@
     paginationPageSize: 15,
     paginationPageSizeSelector: [15, 50, 100],
     tooltipShowDelay: 400,
-    statusBar: statusBar,
     theme: lightTheme,
     rowData: [],
-    // AG Grid's documented screen-reader options: keep row/column DOM order
-    // stable and stop grouped rows from "sticking" (which breaks row indices).
+    // AG Grid's documented screen-reader option: keep row/column DOM order stable.
     ensureDomOrder: true,
-    suppressGroupRowsSticky: true,
     overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
     overlayLoadingTemplate: LOADING_TEMPLATE,
     onRowClicked: function (params) { openSidePanel(params.data, 'events'); },
@@ -616,15 +586,6 @@
     eventsApi.setGridOption('theme', theme);
     document.body.classList.toggle('dark', dark);
     el('themeToggle').textContent = dark ? 'Light mode' : 'Dark mode';
-  });
-
-  // Group-by selectors: rebuild columnDefs so the chosen dimension becomes the
-  // row group (Community row grouping) and money/count columns aggregate.
-  el('ordersGroupBy').addEventListener('change', function (e) {
-    ordersApi.setGridOption('columnDefs', buildGroupedCols(ordersColumnDefs, e.target.value));
-  });
-  el('eventsGroupBy').addEventListener('change', function (e) {
-    eventsApi.setGridOption('columnDefs', buildGroupedCols(eventsColumnDefs, e.target.value));
   });
 
   refreshData().catch(function (err) {
