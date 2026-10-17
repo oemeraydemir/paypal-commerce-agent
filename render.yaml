@@ -12,7 +12,7 @@ services:
     name: paypal-commerce-agent-backend
     env: node
     plan: free
-    rootDir: source/apps/backend
+    #rootDir: source/apps/backend
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
