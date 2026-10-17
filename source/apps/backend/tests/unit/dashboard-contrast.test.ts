@@ -58,10 +58,19 @@ describe.each([['light', false], ['dark', true]] as const)('badge text contrast 
 
   test('every badge variant is covered by the check', () => {
     const names = rules.map((r) => r.name).sort();
-    const expected = dark
-      ? ['badge-ai', 'badge-allow', 'badge-block', 'badge-cancelled', 'badge-confirm', 'badge-human', 'badge-neutral', 'badge-paid']
-      : ['badge-ai', 'badge-allow', 'badge-block', 'badge-cancelled', 'badge-confirm', 'badge-neutral', 'badge-paid'];
-    expect(names).toEqual(expected);
+    // Both themes must expose the SAME set, so a variant can never be dropped
+    // from one theme silently (badge-human used var(--muted) and was invisible
+    // to this test until it got an explicit colour).
+    expect(names).toEqual([
+      'badge-ai',
+      'badge-allow',
+      'badge-block',
+      'badge-cancelled',
+      'badge-confirm',
+      'badge-human',
+      'badge-neutral',
+      'badge-paid',
+    ]);
   });
 
   test.each(PANELS[theme])('all badge text is >= 4.5:1 (small text) on panel %s', (panel) => {
@@ -75,4 +84,44 @@ describe.each([['light', false], ['dark', true]] as const)('badge text contrast 
       });
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+// Text tokens. The badge check above only covers badges; body text, muted text and
+// the error colour sit on the page background and on both panel colours.
+// ---------------------------------------------------------------------------
+function tokens(selector: RegExp): Record<string, string> {
+  const m = selector.exec(html);
+  if (!m) throw new Error(`selector not found: ${selector}`);
+  const out: Record<string, string> = {};
+  for (const t of m[1].matchAll(/--([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})/g)) out[t[1]] = t[2];
+  return out;
+}
+
+describe.each([
+  ['light', () => tokens(/:root\s*\{([^}]*)\}/)],
+  ['dark', () => ({ ...tokens(/:root\s*\{([^}]*)\}/), ...tokens(/body\.dark\s*\{([^}]*)\}/) })],
+] as const)('text token contrast (%s theme)', (_theme, load) => {
+  const t = load() as Record<string, string>;
+  const surfaces = ['bg', 'panel', 'panel-2'];
+
+  test.each(['text', 'muted'])('--%s is >= 4.5:1 on every surface it can sit on', (name) => {
+    for (const surface of surfaces) {
+      const got = ratio(hex(t[name]), hex(t[surface]));
+      expect({ pair: `${name} on ${surface}`, ok: got >= 4.5, got: Number(got.toFixed(3)) }).toEqual({
+        pair: `${name} on ${surface}`,
+        ok: true,
+        got: Number(got.toFixed(3)),
+      });
+    }
+  });
+});
+
+test('error text colour is >= 4.5:1 on the panel in both themes', () => {
+  const light = tokens(/:root\s*\{([^}]*)\}/);
+  const dark = tokens(/body\.dark\s*\{([^}]*)\}/);
+  const darkError = /body\.dark \.grid-error\s*\{\s*color:\s*(#[0-9a-fA-F]{6})/.exec(html);
+  expect(darkError).not.toBeNull();
+  expect(ratio(hex(light.danger), hex(light.panel))).toBeGreaterThanOrEqual(4.5);
+  expect(ratio(hex(darkError![1]), hex(dark.panel))).toBeGreaterThanOrEqual(4.5);
 });

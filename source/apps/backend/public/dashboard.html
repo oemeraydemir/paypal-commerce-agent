@@ -11,7 +11,8 @@
         --panel-2: #f8fafc;
         --border: #dfe7f1;
         --text: #1f2937;
-        --muted: #6b7280;
+        /* #6b7280 reached only 4.499:1 on the page background (--bg) used by .last-updated. */
+        --muted: #667085;
         --primary: #2d6cdf;
         /* Darkened from #1f9d62 so small badge text meets WCAG AA (≥4.5:1) on white. */
         --success: #15803d;
@@ -243,7 +244,9 @@
       .badge-cancelled { background: rgba(107, 114, 128, 0.16); color: #4b5563; }
       .badge-neutral { background: rgba(45, 108, 223, 0.12); color: #1d4ed8; }
       .badge-ai { background: rgba(45, 108, 223, 0.16); color: #1d4ed8; }
-      .badge-human { background: rgba(107, 114, 128, 0.14); color: var(--muted); }
+      /* Explicit colour, not var(--muted): the muted token only reaches 3.90:1 once
+         the translucent tint is blended in (measured by dashboard-contrast.test.ts). */
+      .badge-human { background: rgba(107, 114, 128, 0.14); color: #374151; }
 
       /* Accessible status / error announcements for the grids (polite + alert
          live regions). Kept out of the visual flow until they carry a message. */

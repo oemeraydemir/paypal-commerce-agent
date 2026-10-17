@@ -3,7 +3,8 @@ import { createHash, timingSafeEqual } from 'crypto';
 import { AppError } from '../middleware/error-handler';
 import { SlidingWindowLimiter } from '../middleware/rate-limit';
 import { getOpsConfig } from '../ops/config';
-import { getOpsRuntime, runOpsCopilot } from '../ops/ops-agent';
+import { getOpsRuntime, redactSecrets, runOpsCopilot } from '../ops/ops-agent';
+import { formatError } from '../utils/error';
 import { INTERNAL_TOOL_NAMES, READ_ONLY_PAYPAL_TOOLS } from '../ops/ops-tools';
 
 // Merchant-facing, READ-ONLY "Ops Copilot": PayPal Agent Toolkit (read permissions only) plus the
@@ -73,7 +74,8 @@ router.post('/ops/ask', async (req, res, next) => {
     try {
       result = await runOpsCopilot(question.trim(), await getOpsRuntime());
     } catch (err) {
-      console.error(`[ops] upstream failure: ${err instanceof Error ? err.message : String(err)}`);
+      // Upstream SDK errors can echo the API key ("Incorrect API key provided: sk-...").
+      console.error(`[ops] upstream failure: ${redactSecrets(formatError(err))}`);
       throw new AppError(502, 'Ops Copilot could not complete the request; try again.');
     }
 

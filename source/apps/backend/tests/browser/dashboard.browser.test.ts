@@ -249,6 +249,18 @@ describe('dashboard grid in a real Chrome', () => {
       expect.arrayContaining(['Decision: Require confirmation', 'Decision: Blocked'])
     );
 
+    // Sorting rebuilds the cell DOM. If any AG Grid code owned the aria-label it
+    // would be wiped here — re-asserting proves the renderer is the only writer.
+    await page.click('#ordersGrid .ag-header-cell[col-id="status"] .ag-header-cell-label');
+    await page.waitForTimeout(800);
+    const afterSort = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('#ordersGrid [col-id="status"]'))
+        .map((el) => el.getAttribute('aria-label'))
+        .filter(Boolean)
+        .sort()
+    );
+    expect(afterSort).toEqual(['Status: PAID', 'Status: PENDING']);
+
     await page.close();
   });
 
@@ -290,10 +302,15 @@ describe('dashboard grid in a real Chrome', () => {
   skip('logs no invalid-colDef or deprecated-overlay warning under the unminified AG Grid build', async () => {
     const devGridPath = await ensureDevGridBundle();
     if (!devGridPath) {
-      // Not a failure of the dashboard: the dev build simply could not be
-      // fetched in this environment. Reported so it is never silently "green".
-      console.warn('[browser test] unminified AG Grid build unavailable; assertion skipped');
-      return;
+      // FAIL, do not skip. This assertion is the only thing that can prove the
+      // colDef validator accepted our definitions, and the production bundle
+      // cannot log the warning at all. Reporting "green" here without having
+      // run the check is exactly the failure mode this suite exists to prevent.
+      throw new Error(
+        `Cannot verify: the unminified AG Grid 33 build could not be fetched from ${DEV_GRID_URL} ` +
+          `(cache: ${DEV_GRID_CACHE}). This test cannot pass without it. ` +
+          `Pre-populate the cache or provide network access.`
+      );
     }
 
     const { page, consoleMessages } = await openDashboard({

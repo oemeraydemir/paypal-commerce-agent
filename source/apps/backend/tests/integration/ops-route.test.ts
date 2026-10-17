@@ -126,6 +126,23 @@ describe('POST /api/ops/ask', () => {
     expect(JSON.stringify(res.body)).not.toMatch(/sk-secret|exploded/);
   });
 
+  test('the server LOG of an upstream failure does not contain the secret either', async () => {
+    enable();
+    const spy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      fakeChat.mockRejectedValueOnce(
+        new Error('401 Incorrect API key provided: sk-proj-abcDEF1234567890xyz (Bearer abc.def)')
+      );
+      const res = await ask({ question: 'what is going on?' });
+      expect(res.status).toBe(502);
+      const logged = spy.mock.calls.map((c) => c.join(' ')).join('\n');
+      expect(logged).toContain('[ops] upstream failure'); // it is still logged...
+      expect(logged).not.toMatch(/sk-proj-abcDEF|abc\.def/); // ...but without the secret
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test('is rate limited per IP, including wrong-key attempts', async () => {
     enable({ OPS_COPILOT_PER_IP_PER_MIN: '3' });
     for (let i = 0; i < 3; i++) expect((await ask({ question: 'hello there' }, 'nope-nope-nope-nope')).status).toBe(401);
