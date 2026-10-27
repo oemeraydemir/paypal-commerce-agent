@@ -1,0 +1,111 @@
+{
+  "business": {
+    "businessId": "city-bike-repair",
+    "name": "City Bike Repair",
+    "currency": "EUR",
+    "locale": "en-DE",
+    "timezone": "Europe/Berlin",
+    "maxOrderValueMinor": 30000,
+    "minOrderValueMinor": 500,
+    "confirmationThresholdMinor": 5000,
+    "dailySpendLimitMinor": 60000,
+    "aiPurchaseRequiresConfirmation": true,
+    "allowAutonomousPurchase": false
+  },
+  "products": [
+    {
+      "id": "basic-tune-up",
+      "name": "Basic Tune-up",
+      "description": "Brake and gear adjustment, tyre pressure, chain lube.",
+      "priceMinor": 4500,
+      "category": "service",
+      "tags": [
+        "maintenance",
+        "quick"
+      ],
+      "occasion": [
+        "commute"
+      ]
+    },
+    {
+      "id": "full-service",
+      "name": "Full Service",
+      "description": "Complete inspection, drivetrain clean, wheel true.",
+      "priceMinor": 11900,
+      "category": "service",
+      "tags": [
+        "maintenance",
+        "thorough"
+      ],
+      "occasion": [
+        "season-start"
+      ]
+    },
+    {
+      "id": "puncture-repair",
+      "name": "Puncture Repair",
+      "description": "Tube patch or replacement, labour included.",
+      "priceMinor": 1500,
+      "category": "service",
+      "tags": [
+        "quick"
+      ],
+      "occasion": [
+        "commute"
+      ]
+    },
+    {
+      "id": "inner-tube",
+      "name": "Inner Tube 28 inch",
+      "description": "Standard city-bike inner tube.",
+      "priceMinor": 900,
+      "category": "parts",
+      "tags": [
+        "spare"
+      ],
+      "occasion": [
+        "commute"
+      ]
+    },
+    {
+      "id": "led-light-set",
+      "name": "LED Light Set",
+      "description": "Front and rear USB-rechargeable lights.",
+      "priceMinor": 2900,
+      "category": "parts",
+      "tags": [
+        "safety"
+      ],
+      "occasion": [
+        "commute",
+        "winter"
+      ]
+    },
+    {
+      "id": "u-lock",
+      "name": "Folding U-Lock",
+      "description": "Hardened steel lock with frame bracket.",
+      "priceMinor": 5900,
+      "category": "parts",
+      "tags": [
+        "security"
+      ],
+      "occasion": [
+        "commute"
+      ]
+    },
+    {
+      "id": "gift-voucher-50",
+      "name": "Gift Voucher 50",
+      "description": "Redeemable against any service or part.",
+      "priceMinor": 5000,
+      "category": "vouchers",
+      "tags": [
+        "gift"
+      ],
+      "occasion": [
+        "gift"
+      ]
+    }
+  ]
+}

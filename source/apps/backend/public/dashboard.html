@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Control Center</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --panel-2: #f8fafc;
+        --border: #dfe7f1;
+        --text: #1f2937;
+        /* #6b7280 reached only 4.499:1 on the page background (--bg) used by .last-updated. */
+        --muted: #667085;
+        --primary: #2d6cdf;
+        /* Darkened from #1f9d62 so small badge text meets WCAG AA (≥4.5:1) on white. */
+        --success: #15803d;
+        /* Darkened from #d97706 so small badge text meets WCAG AA (≥4.5:1) on white. */
+        --warning: #b45309;
+        --danger: #dc2626;
+        /* High-contrast focus ring colour (overridden in dark mode below). */
+        --focus: #1d4ed8;
+      }
+
+      * { box-sizing: border-box; }
+
+      /* Visible focus indicator for all interactive controls (keyboard users).
+         AG Grid manages its own cell-focus border, so this is scoped to native
+         controls and the detail dialog, not the grid cells. */
+      button:focus-visible,
+      a:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      textarea:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: 2px;
+        border-radius: 4px;
+      }
+
+      body {
+        margin: 0;
+        font-family: Arial, Helvetica, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      body.dark {
+        --bg: #121a23;
+        --panel: #1b2530;
+        --panel-2: #16202b;
+        --border: #2c3a47;
+        --text: #dbe4ee;
+        --muted: #8da0b3;
+        /* Lighter focus ring for the dark surface. */
+        --focus: #93c5fd;
+      }
+
+      /* Dark-mode badge colours: the light-theme greens/ambers/reds fail WCAG AA
+         on the dark panel, so badge text + tints are lightened for contrast
+         while keeping the same semantic hue families. */
+      body.dark .badge-allow,
+      body.dark .badge-paid { color: #34d399; background: rgba(52, 211, 153, 0.16); }
+      body.dark .badge-confirm { color: #fbbf24; background: rgba(251, 191, 36, 0.16); }
+      body.dark .badge-block { color: #fca5a5; background: rgba(248, 113, 113, 0.16); }
+      body.dark .badge-neutral,
+      body.dark .badge-ai { color: #7cb0ff; background: rgba(124, 176, 255, 0.16); }
+      body.dark .badge-human,
+      body.dark .badge-cancelled { color: #b6c2cf; background: rgba(182, 194, 207, 0.16); }
+
+      .demo-banner {
+        background: #111827;
+        color: #f9fafb;
+        text-align: center;
+        padding: 12px 16px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .page {
+        max-width: 1400px;
+        margin: 24px auto;
+        padding: 0 16px 48px;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 18px;
+        flex-wrap: wrap;
+      }
+
+      h1 { margin: 0; font-size: 1.8rem; }
+
+      .header-right {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+      }
+
+      .last-updated {
+        font-size: 0.85rem;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .last-updated .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--success);
+        display: inline-block;
+      }
+
+      .theme-btn {
+        background: var(--panel);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); /* wraps instead of overflowing at 768px */
+        gap: 16px;
+        margin-bottom: 20px;
+      }
+
+      .stat-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px;
+        min-height: 110px;
+      }
+
+      .stat-label {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      .stat-value {
+        font-size: 1.9rem;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .stat-sub {
+        margin-top: 8px;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
+
+      .ops { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+      .ops:empty { display: none; }
+      .refund-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+      .refund-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+      .refund-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .refund-actions { display: flex; gap: 8px; margin-top: 8px; }
+      .refund-state { font-size: 0.75rem; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+      .refund-status { margin: 8px 0 0; font-size: 0.9rem; color: var(--muted); }
+      .refund-err { color: var(--danger, #b91c1c); }
+
+      .grid-section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 14px;
+        margin-bottom: 18px;
+      }
+
+      .grid-section h2 {
+        margin: 0 0 4px;
+        font-size: 1.1rem;
+      }
+
+      .grid-toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 8px 0 12px;
+      }
+
+      .grid-toolbar input {
+        flex: 1;
+        min-width: 160px;
+        max-width: 360px;
+        padding: 8px 11px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font: inherit;
+        background: var(--panel-2);
+        color: var(--text);
+      }
+
+      .grid-toolbar button {
+        background: var(--primary);
+        color: #fff;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 14px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .grid-toolbar .hint { color: var(--muted); font-size: 0.85rem; }
+
+      .grid-toolbar label { color: var(--muted); font-size: 0.85rem; }
+      .grid-toolbar select {
+        padding: 8px 11px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font: inherit;
+        background: var(--panel-2);
+        color: var(--text);
+        cursor: pointer;
+      }
+
+      #ordersGrid, #eventsGrid {
+        height: 460px;
+        width: 100%;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        padding: 3px 10px;
+        font-size: 0.74rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+      }
+      /* Badge text colours are measured against the real blended tint (badge background is translucent), not the bare panel: see tests/unit/dashboard-contrast.test.ts. */
+      .badge-allow { background: rgba(31, 157, 98, 0.14); color: #166534; }
+      .badge-confirm { background: rgba(217, 119, 6, 0.14); color: #92400e; }
+      .badge-block { background: rgba(220, 38, 38, 0.14); color: #b91c1c; }
+      .badge-paid { background: rgba(31, 157, 98, 0.14); color: #166534; }
+      .badge-cancelled { background: rgba(107, 114, 128, 0.16); color: #4b5563; }
+      .badge-neutral { background: rgba(45, 108, 223, 0.12); color: #1d4ed8; }
+      .badge-ai { background: rgba(45, 108, 223, 0.16); color: #1d4ed8; }
+      /* Explicit colour, not var(--muted): the muted token only reaches 3.90:1 once
+         the translucent tint is blended in (measured by dashboard-contrast.test.ts). */
+      .badge-human { background: rgba(107, 114, 128, 0.14); color: #374151; }
+
+      /* Accessible status / error announcements for the grids (polite + alert
+         live regions). Kept out of the visual flow until they carry a message. */
+      .grid-status {
+        font-size: 0.85rem;
+        color: var(--muted);
+        margin: 0 0 8px;
+        min-height: 1.1em;
+      }
+      .grid-error {
+        font-size: 0.85rem;
+        color: var(--danger);
+        margin: 0 0 8px;
+      }
+      body.dark .grid-error { color: #f87171; }
+
+      .side-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.4);
+        z-index: 900;
+      }
+      .side-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        height: 100%;
+        width: min(420px, 92vw);
+        background: var(--panel);
+        border-left: 1px solid var(--border);
+        box-shadow: -20px 0 60px rgba(15, 23, 42, 0.25);
+        transform: translateX(100%);
+        transition: transform 0.22s ease;
+        z-index: 1000;
+        display: flex;
+        flex-direction: column;
+      }
+      .side-panel.visible { transform: translateX(0); }
+      .side-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid var(--border);
+        padding: 16px 18px;
+      }
+      .side-header h3 { margin: 0; }
+      .side-close {
+        border: none;
+        background: transparent;
+        font-size: 1.4rem;
+        cursor: pointer;
+        color: var(--text);
+      }
+      .side-body { padding: 18px; overflow: auto; }
+      .detail-item {
+        background: var(--panel-2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
+      }
+      .detail-item .label {
+        display: block;
+        color: var(--muted);
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+      }
+      .detail-item .value { font-weight: 700; word-break: break-word; }
+      .detail-group-title {
+        margin: 16px 0 8px;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+      }
+
+      @media (max-width: 720px) {
+        .stats { grid-template-columns: repeat(2, 1fr); }
+        #ordersGrid, #eventsGrid { height: 380px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="demo-banner">
+      Demo-only — public read-only Agent Control Center. No authentication by design (hackathon).
+    </div>
+
+    <main class="page">
+      <div class="header">
+        <h1>Agent Control Center</h1>
+        <div class="header-right">
+          <div class="last-updated" id="lastUpdated" aria-live="polite">
+            <span class="dot"></span>
+            <span id="lastUpdatedText">Not yet refreshed</span>
+          </div>
+          <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle light/dark theme">Dark mode</button>
+        </div>
+      </div>
+
+      <div class="stats" id="statsCards" role="group" aria-label="Key metrics">
+        <div class="stat-card">
+          <div class="stat-label">Orders</div>
+          <p id="totalOrdersValue" class="stat-value">0</p>
+          <div class="stat-sub" id="totalOrdersSub">total orders</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">AI-assisted share</div>
+          <p id="aiShareValue" class="stat-value">0%</p>
+          <div class="stat-sub" id="aiShareSub">of all orders</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Blocked</div>
+          <p id="blockedValue" class="stat-value">0</p>
+          <div class="stat-sub" id="blockedSub">policy violations</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Revenue</div>
+          <p id="revenueValue" class="stat-value">€0.00</p>
+          <div class="stat-sub" id="revenueSub">captured from paid orders</div>
+        </div>
+      </div>
+
+      <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
+      <section id="refundQueue" class="ops" aria-label="Refund queue"></section>
+
+      <section class="grid-section" role="region" aria-label="Orders data grid">
+        <h2 id="ordersHeading">Orders</h2>
+        <div class="grid-toolbar">
+          <input type="text" id="ordersQuickFilter" placeholder="Quick filter orders…" aria-label="Quick filter orders" />
+          <button type="button" id="ordersCsvBtn">Export CSV</button>
+          <span class="hint">sort · filter · pin · paginate · export CSV</span>
+        </div>
+        <p class="grid-status" id="ordersStatus" role="status" aria-live="polite"></p>
+        <p class="grid-error" id="ordersError" role="alert" hidden></p>
+        <div id="ordersGrid"></div>
+      </section>
+
+      <section class="grid-section" role="region" aria-label="Policy events data grid">
+        <h2 id="eventsHeading">Policy events</h2>
+        <div class="grid-toolbar">
+          <input type="text" id="eventsQuickFilter" placeholder="Quick filter policy events…" aria-label="Quick filter policy events" />
+          <button type="button" id="eventsCsvBtn">Export CSV</button>
+          <span class="hint">click a row for reason &amp; violated rules</span>
+        </div>
+        <p class="grid-status" id="eventsStatus" role="status" aria-live="polite"></p>
+        <p class="grid-error" id="eventsError" role="alert" hidden></p>
+        <div id="eventsGrid"></div>
+      </section>
+    </main>
+
+    <div id="sideBackdrop" class="side-backdrop" hidden></div>
+    <aside id="eventModal" class="side-panel" role="dialog" aria-modal="true" aria-labelledby="sideTitle" aria-hidden="true" tabindex="-1">
+      <div class="side-header">
+        <h3 id="sideTitle">Detail</h3>
+        <button type="button" class="side-close" id="closeSide" aria-label="Close">&times;</button>
+      </div>
+      <div id="sideBody" class="side-body"></div>
+    </aside>
+
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.0.0/dist/ag-grid-community.min.js"></script>
+    <script src="/dashboard.js"></script>
+    <script src="/ops-copilot.js" defer></script>
+    <script src="/refund-queue.js" defer></script>
+  </body>
+</html>

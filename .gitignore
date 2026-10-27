@@ -1,0 +1,50 @@
+# ── Dependencies / build output ──
+node_modules/
+dist/
+build/
+coverage/
+
+# ── Secrets / environment (keep the *.example files) ──
+.env
+.env.*
+!.env.example
+!.env.render.example
+# ephemeral Flutter native integration files
+*.env
+
+# ── Logs ──
+*.log
+npm-debug.log*
+
+# ── Binaries / release artifacts ──
+*.apk
+release/
+
+# ── Editor / OS cruft ──
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# ── Flutter / Dart build & local config ──
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+android/local.properties
+/.gradle/
+
+# ── Project data (agent memory, not source) ──
+.workbuddy-ai/
+
+# ── Credential doc (placeholder buyer creds — never commit the filled copy) ──
+docs/devpost-testing-instructions.md
+
+# lean submission package (tools/make-submission-zip.js)
+AiCafe-submission.zip
+_submission-stage/
+
+# raw audit run output (screenshots, HTTP dumps; ~20 MB). Curated evidence lives in docs/EVIDENCE.md
+audit-results/
+
+# Owner-only helpers (never committed, never packaged)
+_owner/

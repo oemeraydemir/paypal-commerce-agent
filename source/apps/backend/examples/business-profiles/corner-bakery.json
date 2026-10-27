@@ -1,0 +1,23 @@
+{
+  "business": {
+    "businessId": "corner-bakery",
+    "name": "Corner Bakery",
+    "currency": "EUR",
+    "locale": "en-DE",
+    "timezone": "Europe/Berlin",
+    "maxOrderValueMinor": 6000,
+    "minOrderValueMinor": 100,
+    "aiPurchaseRequiresConfirmation": true,
+    "allowAutonomousPurchase": false
+  },
+  "products": [
+    { "id": "sourdough", "name": "Sourdough Loaf", "description": "Slow-fermented wheat sourdough, 750 g.", "priceMinor": 480, "category": "bread", "tags": ["fresh", "baked-today"], "dietary": ["vegan"], "occasion": ["family"] },
+    { "id": "rye-loaf", "name": "Rye Loaf", "description": "Dense rye bread with sunflower seeds.", "priceMinor": 520, "category": "bread", "tags": ["fresh", "seeds"], "dietary": ["vegan"], "occasion": ["family"] },
+    { "id": "croissant", "name": "Butter Croissant", "description": "Laminated all-butter croissant.", "priceMinor": 290, "category": "pastry", "tags": ["fresh", "buttery"], "dietary": ["vegetarian"], "occasion": ["breakfast"] },
+    { "id": "pain-au-chocolat", "name": "Pain au Chocolat", "description": "Croissant dough with dark chocolate.", "priceMinor": 340, "category": "pastry", "tags": ["fresh", "chocolate"], "dietary": ["vegetarian"], "occasion": ["breakfast"] },
+    { "id": "gf-brownie", "name": "Gluten-free Brownie", "description": "Fudgy brownie made with almond flour.", "priceMinor": 360, "category": "pastry", "tags": ["chocolate"], "dietary": ["vegetarian", "gluten-free"], "occasion": ["gift"] },
+    { "id": "filter-coffee", "name": "Filter Coffee", "description": "Freshly brewed filter coffee.", "priceMinor": 260, "category": "drinks", "tags": ["hot", "caffeine"], "dietary": ["vegan", "gluten-free"], "occasion": ["breakfast"] },
+    { "id": "oat-latte", "name": "Oat Latte", "description": "Espresso with steamed oat milk.", "priceMinor": 420, "category": "drinks", "tags": ["hot", "caffeine"], "dietary": ["vegan"], "occasion": ["breakfast"] },
+    { "id": "gift-box", "name": "Bakery Gift Box", "description": "Assorted pastries in a gift box.", "priceMinor": 2200, "category": "gifts", "tags": ["gift"], "dietary": ["vegetarian"], "occasion": ["gift"] }
+  ]
+}

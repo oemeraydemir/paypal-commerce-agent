@@ -1,0 +1,23 @@
+# This file configures the analyzer and linter for this Flutter project.
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # Opt-in extra lints that keep the thin client tidy.
+    avoid_print: true
+    prefer_single_quotes: true
+    always_use_package_imports: true
+
+analyzer:
+  errors:
+    # The commerce-agent API is the source of truth; ignore unused-element
+    # warnings only where they would block a clean `dart analyze`.
+    unused_element: warning
+  exclude:
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
