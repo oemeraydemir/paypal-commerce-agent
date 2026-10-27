@@ -73,7 +73,27 @@ class ChatProvider extends ChangeNotifier {
       late final CartExplanation? cartExplanation;
       late final String? allergyWarning;
       if (resp.preparedCart != null) {
-        cartExplanation = buildCartExplanation(resp.preparedCart!);
+        int? merchantPolicyLimitMinor;
+        var merchantCurrency = 'EUR';
+        if (preferences.maxBudgetMinor != null) {
+          try {
+            // Empty-cart policy preview is side-effect-free and returns the
+            // current server-enforced per-purchase limit for the note below.
+            final limits = await api.previewPolicy(const <OrderItem>[]);
+            merchantPolicyLimitMinor = limits.maxPerPurchaseMinor;
+            merchantCurrency = limits.currency;
+          } catch (_) {
+            // Keep the prepared cart usable; the localized note says that the
+            // merchant limit could not be loaded instead of inventing a value.
+          }
+        }
+        cartExplanation = buildCartExplanation(
+          resp.preparedCart!,
+          preferences: preferences,
+          merchantPolicyLimitMinor: merchantPolicyLimitMinor,
+          merchantCurrency: merchantCurrency,
+          lang: lang,
+        );
         allergyWarning = buildAllergyWarning(preferences, lang);
       } else {
         cartExplanation = null;

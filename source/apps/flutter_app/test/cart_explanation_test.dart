@@ -57,6 +57,60 @@ void main() {
       expect(explanation.policyNotes, contains('Cart exceeds confirmation threshold'));
     });
 
+    test('shows personal budget and authoritative merchant policy limit', () {
+      final explanation = buildCartExplanation(
+        _cart(),
+        preferences: const ShopperPreferences(maxBudgetMinor: 2000),
+        merchantPolicyLimitMinor: 3500,
+        merchantCurrency: 'EUR',
+        lang: 'en',
+      );
+      final note = explanation.policyNotes.single;
+      expect(note, contains('Your personal budget'));
+      expect(note, contains('€20.00'));
+      expect(note, contains('Merchant policy limit per purchase'));
+      expect(note, contains('€35.00'));
+      expect(note, contains('Both apply'));
+    });
+
+    test('localizes the budget note in Turkish', () {
+      final explanation = buildCartExplanation(
+        _cart(),
+        preferences: const ShopperPreferences(maxBudgetMinor: 2000),
+        merchantPolicyLimitMinor: 3500,
+        merchantCurrency: 'EUR',
+        lang: 'tr',
+      );
+      final note = explanation.policyNotes.single;
+      expect(note, contains('Kişisel bütçen'));
+      expect(note, contains('İşletme politikası'));
+      expect(note, contains('İkisi de geçerlidir'));
+      expect(note, contains('20'));
+      expect(note, contains('35'));
+    });
+
+    test('does not invent a merchant limit when policy preview is unavailable', () {
+      final explanation = buildCartExplanation(
+        _cart(),
+        preferences: const ShopperPreferences(maxBudgetMinor: 2000),
+        lang: 'en',
+      );
+      final note = explanation.policyNotes.single;
+      expect(note, contains('€20.00'));
+      expect(note, contains('could not be loaded'));
+      expect(note, isNot(contains('Both apply')));
+    });
+
+    test('parses the server per-purchase limit from policy preview limits', () {
+      final preview = PolicyPreview.fromJson({
+        'empty': true,
+        'decision': null,
+        'limits': {'maxPerPurchaseMinor': 4200, 'currency': 'EUR'},
+      });
+      expect(preview.maxPerPurchaseMinor, 4200);
+      expect(preview.currency, 'EUR');
+    });
+
     test('is empty only when there is nothing to say', () {
       expect(buildCartExplanation(_cart()).isEmpty, isFalse);
     });

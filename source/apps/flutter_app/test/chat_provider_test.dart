@@ -23,6 +23,19 @@ class _FakeApi extends ApiService {
       );
 
   Future<ChatResponse> Function(String message)? onChat;
+  PolicyPreview policyPreview = const PolicyPreview(
+    empty: true,
+    decision: PolicyDecision.unknown,
+  );
+  bool failPolicyPreview = false;
+  int policyPreviewCalls = 0;
+
+  @override
+  Future<PolicyPreview> previewPolicy(List<OrderItem> items) async {
+    policyPreviewCalls++;
+    if (failPolicyPreview) throw StateError('policy preview unavailable');
+    return policyPreview;
+  }
 
   @override
   Future<ChatResponse> sendChat({
@@ -87,6 +100,46 @@ void main() {
     chat.dispose();
     api.dispose();
   });
+  test('includes personal budget and merchant policy limit with a prepared cart', () async {
+    api.onChat = (_) async => _response(cart: _cart('oat-latte'));
+    api.policyPreview = const PolicyPreview(
+      empty: true,
+      decision: PolicyDecision.unknown,
+      maxPerPurchaseMinor: 3500,
+      currency: 'EUR',
+    );
+
+    await chat.sendMessage(
+      'two oat lattes under €20',
+      preferences: const ShopperPreferences(maxBudgetMinor: 2000),
+      lang: 'en',
+    );
+
+    expect(api.policyPreviewCalls, 1);
+    final note = chat.messages.last.cartExplanation!.policyNotes.join(' ');
+    expect(note, contains('Your personal budget'));
+    expect(note, contains('Merchant policy limit per purchase'));
+    expect(note, contains('Both apply'));
+    expect(note, contains('€20.00'));
+    expect(note, contains('€35.00'));
+  });
+
+  test('discloses unavailable policy limit without failing a prepared chat', () async {
+    api.onChat = (_) async => _response(cart: _cart('oat-latte'));
+    api.failPolicyPreview = true;
+
+    await chat.sendMessage(
+      'two oat lattes under €20',
+      preferences: const ShopperPreferences(maxBudgetMinor: 2000),
+      lang: 'en',
+    );
+
+    expect(chat.messages.last.cartExplanation, isNotNull);
+    final note = chat.messages.last.cartExplanation!.policyNotes.join(' ');
+    expect(note, contains('could not be loaded'));
+    expect(note, isNot(contains('Both apply')));
+  });
+
 
   test('exposes rule-based mode for the reply and the prepared cart', () async {
     api.onChat = (_) async => _response(

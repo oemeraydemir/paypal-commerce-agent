@@ -182,11 +182,30 @@ class PolicyPreview {
   final PolicyDecision decision;
   final String? reason;
 
-  const PolicyPreview({required this.empty, required this.decision, this.reason});
+  /// Server-enforced per-purchase policy limit from `limits.maxPerPurchaseMinor`.
+  /// This is advisory display data; checkout re-evaluates policy on the server.
+  final int? maxPerPurchaseMinor;
+  final String currency;
 
-  factory PolicyPreview.fromJson(Map<String, dynamic> json) => PolicyPreview(
-    empty: json['empty'] == true,
-    decision: policyDecisionFromJson(json['decision']),
-    reason: json['reason'] as String?,
-  );
+  const PolicyPreview({
+    required this.empty,
+    required this.decision,
+    this.reason,
+    this.maxPerPurchaseMinor,
+    this.currency = 'EUR',
+  });
+
+  factory PolicyPreview.fromJson(Map<String, dynamic> json) {
+    final rawLimits = json['limits'];
+    final limits = rawLimits is Map ? rawLimits : const <String, dynamic>{};
+    final rawLimit = limits['maxPerPurchaseMinor'];
+    final rawCurrency = limits['currency'];
+    return PolicyPreview(
+      empty: json['empty'] == true,
+      decision: policyDecisionFromJson(json['decision']),
+      reason: json['reason'] as String?,
+      maxPerPurchaseMinor: rawLimit is num ? rawLimit.toInt() : null,
+      currency: rawCurrency is String ? rawCurrency : 'EUR',
+    );
+  }
 }

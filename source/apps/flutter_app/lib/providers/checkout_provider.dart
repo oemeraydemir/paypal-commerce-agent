@@ -3,9 +3,11 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:flutter_app/l10n/app_strings.dart';
 import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/order.dart';
 import 'package:flutter_app/providers/chat_provider.dart';
+import 'package:flutter_app/providers/locale_provider.dart';
 import 'package:flutter_app/services/api_service.dart';
 
 /// Drives the PayPal checkout flow and a manual product cart.
@@ -27,7 +29,31 @@ enum CartPolicyStatus { idle, checking, allowed, needsApproval, blocked, error }
 class CheckoutProvider extends ChangeNotifier {
   final ApiService api;
   final ChatProvider chat;
+  final LocaleProvider? localeProvider;
   final Future<bool> Function(Uri url) _launchApproval;
+
+  String get _languageCode => localeProvider?.languageCode ?? 'en';
+
+  String _localized(String key, [List<String> args = const []]) {
+    var value = AppStrings.get(_languageCode, key);
+    for (final arg in args) {
+      value = value.replaceFirst('%s', arg);
+    }
+    return value;
+  }
+
+  String? _errorKey;
+  List<String> _errorArgs = const [];
+  String? _rawError;
+  String? get error =>
+      _errorKey == null ? _rawError : _localized(_errorKey!, _errorArgs);
+
+  String? _statusMessageKey;
+  List<String> _statusMessageArgs = const [];
+  String? _rawStatusMessage;
+  String? get statusMessage => _statusMessageKey == null
+      ? _rawStatusMessage
+      : _localized(_statusMessageKey!, _statusMessageArgs);
   PreparedCart? _observedPreparedCart;
   bool _disposed = false;
 
@@ -38,8 +64,16 @@ class CheckoutProvider extends ChangeNotifier {
   Future<void>? _policyFuture;
   CartPolicyStatus _policyStatus = CartPolicyStatus.idle;
   String? _policyReason;
+  String? _policyReasonKey;
   CartPolicyStatus get policyStatus => _policyStatus;
-  String? get policyReason => _policyReason;
+  String? get policyReason => _policyReasonKey == null
+      ? _policyReason
+      : _localized(_policyReasonKey!);
+
+  void _clearPolicyReason() {
+    _policyReason = null;
+    _policyReasonKey = null;
+  }
   bool get policyAllowsCheckout =>
       canCheckout &&
       (_policyStatus == CartPolicyStatus.allowed ||
@@ -51,11 +85,11 @@ class CheckoutProvider extends ChangeNotifier {
     if (items.isEmpty) {
       _policyFuture = null;
       _policyStatus = CartPolicyStatus.idle;
-      _policyReason = null;
+      _clearPolicyReason();
       return;
     }
     _policyStatus = CartPolicyStatus.checking;
-    _policyReason = null;
+    _clearPolicyReason();
     _policyFuture = api
         .previewPolicy(items)
         .then((preview) {
@@ -71,12 +105,14 @@ class CheckoutProvider extends ChangeNotifier {
               _policyStatus = CartPolicyStatus.error;
           }
           _policyReason = preview.reason;
+      _policyReasonKey = null;
           notifyListeners();
         })
         .catchError((Object _) {
           if (_disposed || version != _policyVersion) return;
           _policyStatus = CartPolicyStatus.error;
-          _policyReason = 'Could not check your spending policy. Try again.';
+          _clearPolicyReason();
+          _policyReasonKey = 'checkout.errorPolicyUnavailableRetry';
           notifyListeners();
         });
   }
@@ -84,6 +120,7 @@ class CheckoutProvider extends ChangeNotifier {
   CheckoutProvider(
     this.api,
     this.chat, {
+    this.localeProvider,
     Future<bool> Function(Uri url)? launchApproval,
   }) : _launchApproval =
            launchApproval ??
@@ -116,11 +153,6 @@ class CheckoutProvider extends ChangeNotifier {
   bool _busy = false;
   bool get busy => _busy;
 
-  String? _error;
-  String? get error => _error;
-
-  String? _statusMessage;
-  String? get statusMessage => _statusMessage;
 
   OrderCreateResult? _created;
   OrderCreateResult? get created => _created;
@@ -146,8 +178,39 @@ class CheckoutProvider extends ChangeNotifier {
     return 'co-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-$entropy';
   }
 
+  void _setError(String key, [List<Object?> args = const []]) {
+    _errorKey = key;
+    _errorArgs = args.map((value) => value.toString()).toList(growable: false);
+    _rawError = null;
+  }
+
+  void _clearError() {
+    _errorKey = null;
+    _errorArgs = const [];
+    _rawError = null;
+  }
+
+  void _setRawError(String message) {
+    _errorKey = null;
+    _errorArgs = const [];
+    _rawError = message;
+  }
+
+  void _setStatusMessage(String key, [List<Object?> args = const []]) {
+    _statusMessageKey = key;
+    _statusMessageArgs =
+        args.map((value) => value.toString()).toList(growable: false);
+    _rawStatusMessage = null;
+  }
+
+  void _clearStatusMessage() {
+    _statusMessageKey = null;
+    _statusMessageArgs = const [];
+    _rawStatusMessage = null;
+  }
+
   void setError(String message) {
-    _error = message;
+    _setRawError(message);
     notifyListeners();
   }
 
@@ -213,12 +276,12 @@ class CheckoutProvider extends ChangeNotifier {
   Future<void> clear() async {
     if (_busy) return;
     if (hasPendingOrder) {
-      _error = 'Finish or cancel the PayPal order before clearing your cart.';
+      _setError('checkout.errorFinishOrCancelBeforeClear');
       notifyListeners();
       return;
     }
     _busy = true;
-    _error = null;
+    _clearError();
     notifyListeners();
     try {
       if (chat.lastPreparedCart != null) {
@@ -226,7 +289,7 @@ class CheckoutProvider extends ChangeNotifier {
       }
     } catch (error) {
       _busy = false;
-      _error = error.toString();
+      _setError('checkout.errorUnexpected', [error.toString()]);
       notifyListeners();
       return;
     }
@@ -236,12 +299,12 @@ class CheckoutProvider extends ChangeNotifier {
     _policyVersion++;
     _policyFuture = null;
     _policyStatus = CartPolicyStatus.idle;
-    _policyReason = null;
+    _clearPolicyReason();
     _created = null;
     _captured = null;
     _paypalApproved = false;
-    _statusMessage = null;
-    _error = null;
+    _clearStatusMessage();
+    _clearError();
     _busy = false;
     notifyListeners();
   }
@@ -270,12 +333,12 @@ class CheckoutProvider extends ChangeNotifier {
     final token = uri.queryParameters['token'];
     if (_created == null) {
       // Nothing pending locally; ignore a return link with no matching order.
-      _statusMessage = 'No pending order to handle.';
+      _setStatusMessage('checkout.statusNoPendingHandle');
       notifyListeners();
       return true;
     }
     if (token != _created!.paypalOrderId) {
-      _error = 'This PayPal return link does not match the pending order.';
+      _setError('checkout.errorReturnMismatch');
       notifyListeners();
       // Not handled: the UI surfaces a "does not match your pending order"
       // message and no backend call is made (F2).
@@ -288,8 +351,8 @@ class CheckoutProvider extends ChangeNotifier {
     if (uri.path != '/success') return false;
 
     _paypalApproved = true;
-    _statusMessage = 'PayPal approved your order. Confirm to capture payment.';
-    _error = null;
+    _setStatusMessage('checkout.statusApprovedCapture');
+    _clearError();
     notifyListeners();
     return true;
   }
@@ -301,22 +364,21 @@ class CheckoutProvider extends ChangeNotifier {
   Future<void> _cancelViaBackend() async {
     final orderId = _created!.orderId;
     _busy = true;
-    _error = null;
+    _clearError();
     notifyListeners();
     try {
       await api.cancelOrder(orderId);
       // Backend confirmed: safe to drop the pending order. Cart is preserved.
       _created = null;
       _paypalApproved = false;
-      _statusMessage =
-          'Payment was cancelled in PayPal. Your cart is unchanged.';
+      _setStatusMessage('checkout.statusPaypalCancelled');
     } on ApiException catch (e) {
       // Keep the recoverable pending order so the user can retry; surface error.
-      _error = 'Cancel failed (${e.statusCode}): ${e.message}';
-      _statusMessage = null;
+      _setError('checkout.errorCancelApi', [e.statusCode, e.message]);
+      _clearStatusMessage();
     } catch (e) {
-      _error = e.toString();
-      _statusMessage = null;
+      _setError('checkout.errorUnexpected', [e.toString()]);
+      _clearStatusMessage();
     } finally {
       _busy = false;
       notifyListeners();
@@ -326,8 +388,8 @@ class CheckoutProvider extends ChangeNotifier {
   /// Explains that the matching PayPal return link is required before capture.
   /// A user assertion from the browser cannot authorize payment.
   void confirmApprovalInBrowser() {
-    _statusMessage = 'Approval is not confirmed in AI Café yet. Return using PayPal’s link so this order can be validated.';
-    _error = null;
+    _setStatusMessage('checkout.statusApprovalUnconfirmed');
+    _clearError();
     notifyListeners();
   }
 
@@ -335,13 +397,13 @@ class CheckoutProvider extends ChangeNotifier {
   Future<void> startCheckout() async {
     if (_busy) return;
     if (hasPendingOrder) {
-      _error = 'Finish or cancel the existing PayPal order before starting another checkout.';
+      _setError('checkout.errorExistingOrder');
       notifyListeners();
       return;
     }
     final items = _resolveItems();
     if (items.isEmpty) {
-      _error = 'Your cart is empty.';
+      _setError('checkout.errorCartEmpty');
       notifyListeners();
       return;
     }
@@ -351,23 +413,33 @@ class CheckoutProvider extends ChangeNotifier {
     // awaited (bounded by the API timeout); the backend remains the final check.
     if (_policyStatus == CartPolicyStatus.checking && _policyFuture != null) {
       _busy = true;
-      _statusMessage = 'Checking your spending policy…';
+      _setStatusMessage('checkout.statusCheckingPolicy');
       notifyListeners();
       try {
         await _policyFuture;
       } finally {
         _busy = false;
-        _statusMessage = null;
+        _clearStatusMessage();
       }
     }
     if (!policyAllowsCheckout) {
-      _error = switch (_policyStatus) {
-        CartPolicyStatus.blocked =>
-          'Blocked by your policy: ${_policyReason ?? 'limit exceeded'}',
-        CartPolicyStatus.error =>
-          _policyReason ?? 'Policy check unavailable. Try again.',
-        _ => 'Your spending policy has not approved this cart yet.',
-      };
+      if (_policyStatus == CartPolicyStatus.blocked) {
+        if (policyReason == null) {
+          _setError('checkout.errorPolicyBlockedGeneric');
+        } else {
+          _setError('checkout.errorPolicyBlocked', [policyReason]);
+        }
+      } else if (_policyStatus == CartPolicyStatus.error) {
+        if (_policyReasonKey != null) {
+          _setError(_policyReasonKey!);
+        } else if (_policyReason != null) {
+          _setRawError(_policyReason!);
+        } else {
+          _setError('checkout.errorPolicyUnavailableRetry');
+        }
+      } else {
+        _setError('checkout.errorPolicyNotApproved');
+      }
       notifyListeners();
       return;
     }
@@ -375,11 +447,11 @@ class CheckoutProvider extends ChangeNotifier {
     final currentItems = _resolveItems();
 
     _busy = true;
-    _error = null;
+    _clearError();
     _captured = null;
     _created = null;
     _paypalApproved = false;
-    _statusMessage = 'Creating PayPal order…';
+    _setStatusMessage('checkout.statusCreatingOrder');
     notifyListeners();
 
     try {
@@ -399,20 +471,22 @@ class CheckoutProvider extends ChangeNotifier {
         throw StateError('PayPal did not return a secure approval link.');
       }
       _created = result;
-      _statusMessage = 'Order created. Opening PayPal for approval…';
+      _setStatusMessage('checkout.statusOrderCreated');
       notifyListeners();
 
       final launched = await _launchApproval(approvalUri);
-      _statusMessage = launched
-          ? 'Approve the payment in PayPal. You will return here to confirm capture.'
-          : 'Could not open PayPal. Use the retry or manual return options.';
-      if (!launched) _error = 'Could not open the PayPal approval page.';
+      _setStatusMessage(
+        launched
+            ? 'checkout.statusApproveAndReturn'
+            : 'checkout.statusOpenPaypalRetry',
+      );
+      if (!launched) _setError('checkout.errorOpenApprovalPage');
     } on ApiException catch (e) {
-      _error = 'Checkout failed (${e.statusCode}): ${e.message}';
-      _statusMessage = null;
+      _setError('checkout.errorCheckoutApi', [e.statusCode, e.message]);
+      _clearStatusMessage();
     } catch (e) {
-      _error = e.toString();
-      _statusMessage = null;
+      _setError('checkout.errorUnexpected', [e.toString()]);
+      _clearStatusMessage();
     } finally {
       _busy = false;
       notifyListeners();
@@ -423,25 +497,46 @@ class CheckoutProvider extends ChangeNotifier {
     final approvalUrl = _created?.approvalUrl;
     final approvalUri = approvalUrl == null ? null : Uri.tryParse(approvalUrl);
     if (approvalUri == null || approvalUri.scheme != 'https') {
-      setError('No secure PayPal approval link is available for this order.');
+      _setError('checkout.errorNoSecureApprovalLink');
       return;
     }
 
     _busy = true;
-    _error = null;
+    _clearError();
     notifyListeners();
     try {
       final launched = await _launchApproval(approvalUri);
       if (!launched) {
-        _error = 'Could not open the PayPal approval page.';
+        _setError('checkout.errorOpenApprovalPage');
       } else {
-        _statusMessage = 'Approve the order in PayPal, then return to AI Café.';
+        _setStatusMessage('checkout.statusReopenApproval');
       }
     } catch (error) {
-      _error = 'Could not open PayPal: $error';
+      _setError('checkout.errorOpenPayPal', [error]);
     } finally {
       _busy = false;
       notifyListeners();
+    }
+  }
+
+  /// Clears every cart source after a confirmed payment.
+  ///
+  /// This is safe to call repeatedly: local clears are idempotent, and the
+  /// prepared-cart request is only sent while the chat still has that cart.
+  Future<void> _clearCartAfterPaid({required bool alreadyCompleted}) async {
+    _manualCart.clear();
+    _quantityOverrides.clear();
+
+    if (chat.lastPreparedCart == null) return;
+    try {
+      await chat.clearPreparedCart();
+    } catch (error) {
+      _setError(
+        alreadyCompleted
+            ? 'checkout.errorCartClearAfterAlreadyPaid'
+            : 'checkout.errorCartClearAfterCapture',
+        [error],
+      );
     }
   }
 
@@ -449,45 +544,39 @@ class CheckoutProvider extends ChangeNotifier {
   Future<void> completeCheckout() async {
     if (_busy) return;
     if (_created == null) {
-      _error = 'No pending order to capture.';
+      _setError('checkout.errorNoPendingCapture');
       notifyListeners();
       return;
     }
     if (!_paypalApproved) {
-      _error = 'Approve the order in PayPal before capturing payment.';
+      _setError('checkout.errorApprovalRequired');
       notifyListeners();
       return;
     }
 
     _busy = true;
-    _error = null;
-    _statusMessage = 'Capturing payment…';
+    _clearError();
+    _setStatusMessage('checkout.statusCapturing');
     notifyListeners();
 
     try {
       final result = await api.captureOrder(_created!.orderId);
       if (result.status == 'PAID') {
         _captured = result;
-        _statusMessage =
-            'Payment captured! Status: ${result.status}'
-            '${result.paypalCaptureId != 'unknown' ? ' (capture ${result.paypalCaptureId})' : ''}';
-        _manualCart.clear();
-        _quantityOverrides.clear();
-        if (chat.lastPreparedCart != null) {
-          try {
-            await chat.clearPreparedCart();
-          } catch (error) {
-            _error =
-                'Payment captured, but the AI cart could not be cleared: $error';
-          }
-        }
+        _setStatusMessage('checkout.statusCaptured', [
+          result.status,
+          result.paypalCaptureId != 'unknown'
+              ? ' (capture ${result.paypalCaptureId})'
+              : '',
+        ]);
+        await _clearCartAfterPaid(alreadyCompleted: false);
       } else if (result.status == 'PAYMENT_PENDING') {
-        _statusMessage = 'PayPal has not confirmed the payment yet. Check its status again before starting another order.';
+        _setStatusMessage('checkout.statusPaymentPending');
       } else {
         _created = null;
         _paypalApproved = false;
-        _statusMessage = null;
-        _error = 'PayPal did not complete the payment. Your cart is unchanged; review checkout to try again.';
+        _clearStatusMessage();
+        _setError('checkout.errorPaymentIncomplete');
       }
     } on ApiException catch (e) {
       // F3/Recovery 07.1: recover from stale/ambiguous pending orders WITHOUT
@@ -512,20 +601,22 @@ class CheckoutProvider extends ChangeNotifier {
         );
         _created = null;
         _paypalApproved = false;
-        _statusMessage = 'Payment was already completed for this order.';
+        _setStatusMessage('checkout.statusAlreadyCompleted');
+        await _clearCartAfterPaid(
+          alreadyCompleted: true,
+        );
       } else if (e.statusCode == 502 || e.statusCode == 409) {
         // Ambiguous transport / capture-in-progress / unverified 409: preserve
         // the recoverable pending order and let the user retry.
-        _error =
-            'Capture could not be confirmed (${e.statusCode}): ${e.message}';
-        _statusMessage = null;
+        _setError('checkout.errorCaptureUnconfirmed', [e.statusCode, e.message]);
+        _clearStatusMessage();
       } else {
-        _error = 'Capture failed (${e.statusCode}): ${e.message}';
-        _statusMessage = null;
+        _setError('checkout.errorCaptureApi', [e.statusCode, e.message]);
+        _clearStatusMessage();
       }
     } catch (e) {
-      _error = e.toString();
-      _statusMessage = null;
+      _setError('checkout.errorUnexpected', [e.toString()]);
+      _clearStatusMessage();
     } finally {
       _busy = false;
       notifyListeners();
@@ -540,18 +631,18 @@ class CheckoutProvider extends ChangeNotifier {
     if (_busy) return;
     final target = orderId ?? _created?.orderId;
     if (target == null) {
-      _error = 'No pending order to cancel.';
+      _setError('checkout.errorNoPendingCancel');
       notifyListeners();
       return;
     }
     _busy = true;
-    _error = null;
+    _clearError();
     notifyListeners();
     try {
       final result = await api.cancelOrder(target);
       _created = null;
       _paypalApproved = false;
-      _statusMessage = 'Order cancelled (status: ${result.status}).';
+      _setStatusMessage('checkout.statusOrderCancelled', [result.status]);
     } on ApiException catch (e) {
       // F3/Recovery 07.1: do not treat every error as an ordinary cancellation.
       // Preserve recoverable state and classify specific outcomes. A 409
@@ -572,23 +663,23 @@ class CheckoutProvider extends ChangeNotifier {
         );
         _created = null;
         _paypalApproved = false;
-        _statusMessage = 'This order was already paid.';
+        _setStatusMessage('checkout.statusOrderAlreadyPaid');
       } else if (e.statusCode == 404) {
         // Order no longer exists on the server: safe to drop the local pending
         // reference (nothing to cancel).
         _created = null;
         _paypalApproved = false;
-        _statusMessage = 'The order no longer exists; nothing to cancel.';
+        _setStatusMessage('checkout.statusOrderMissing');
       } else {
         // 502 (could not verify PayPal state), an unverified 409, or any other
         // ambiguous outcome: keep the recoverable pending order so the user can
         // retry and the webhook/reconciler can settle it.
-        _error = 'Cancel failed (${e.statusCode}): ${e.message}';
-        _statusMessage = null;
+        _setError('checkout.errorCancelApi', [e.statusCode, e.message]);
+        _clearStatusMessage();
       }
     } catch (e) {
-      _error = e.toString();
-      _statusMessage = null;
+      _setError('checkout.errorUnexpected', [e.toString()]);
+      _clearStatusMessage();
     } finally {
       _busy = false;
       notifyListeners();

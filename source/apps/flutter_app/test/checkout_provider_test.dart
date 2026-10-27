@@ -256,6 +256,11 @@ void main() {
         expect(checkout.captured?.status, 'PAID');
         expect(checkout.canCheckout, isFalse);
         expect(
+          checkout.cart,
+          isEmpty,
+          reason: 'the cart is cleared after a successful capture',
+        );
+        expect(
           capturedRequests.where(
             (request) => request.url.path.contains('/capture'),
           ),
@@ -439,6 +444,11 @@ void main() {
       expect(checkout.captured?.status, 'PAID');
       expect(checkout.created, isNull);
       expect(checkout.error, isNull);
+      expect(
+        checkout.cart,
+        isEmpty,
+        reason: 'the cart is cleared after trusted settled recovery',
+      );
     });
 
     test('F4: the idempotency key is stable across the 401 retry', () async {

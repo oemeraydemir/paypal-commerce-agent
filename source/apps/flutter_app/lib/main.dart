@@ -51,9 +51,14 @@ class MyApp extends StatelessWidget {
           create: (ctx) => CheckoutProvider(
             ctx.read<ApiService>(),
             ctx.read<ChatProvider>(),
+            localeProvider: ctx.read<LocaleProvider>(),
           ),
           update: (ctx, chat, previous) =>
-              previous ?? CheckoutProvider(ctx.read<ApiService>(), chat),
+              previous ?? CheckoutProvider(
+                ctx.read<ApiService>(),
+                chat,
+                localeProvider: ctx.read<LocaleProvider>(),
+              ),
         ),
       ],
       child: Consumer<LocaleProvider>(

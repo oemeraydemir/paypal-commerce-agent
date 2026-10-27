@@ -19,13 +19,41 @@ class CartExplanation {
 }
 
 /// Builds the explanation from a real prepared-cart response.
-CartExplanation buildCartExplanation(PreparedCart cart) {
+CartExplanation buildCartExplanation(
+  PreparedCart cart, {
+  ShopperPreferences preferences = ShopperPreferences.empty,
+  int? merchantPolicyLimitMinor,
+  String merchantCurrency = 'EUR',
+  String lang = 'en',
+}) {
   final itemLines = cart.items.map((l) => '${l.quantity}× ${l.name}').toList();
 
   final policyNotes = <String>[];
   if (cart.reason.isNotEmpty) policyNotes.add(cart.reason);
   for (final violation in cart.policyViolations) {
     if (violation.message.isNotEmpty) policyNotes.add(violation.message);
+  }
+
+  final personalBudgetMinor = preferences.maxBudgetMinor;
+  if (personalBudgetMinor != null) {
+    final personalBudget = AppStrings.formatMoney(lang, personalBudgetMinor, 'EUR');
+    if (merchantPolicyLimitMinor != null && merchantPolicyLimitMinor >= 0) {
+      final merchantLimit = AppStrings.formatMoney(
+        lang,
+        merchantPolicyLimitMinor,
+        merchantCurrency,
+      );
+      policyNotes.add(
+        AppStrings.get(lang, 'cart.budgetMerchantLimit')
+            .replaceAll('{budget}', personalBudget)
+            .replaceAll('{limit}', merchantLimit),
+      );
+    } else {
+      policyNotes.add(
+        AppStrings.get(lang, 'cart.budgetMerchantLimitUnavailable')
+            .replaceAll('{budget}', personalBudget),
+      );
+    }
   }
 
   return CartExplanation(itemLines: itemLines, policyNotes: policyNotes);
