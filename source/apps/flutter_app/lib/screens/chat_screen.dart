@@ -513,7 +513,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               !_voice.isListening
                           ? (reply) {
                               if (chat.messages.isEmpty ||
-                                  !identical(chat.messages.last, msg)) return;
+                                  !identical(chat.messages.last, msg)) {
+                                return;
+                              }
                               _send(reply);
                             }
                           : null,

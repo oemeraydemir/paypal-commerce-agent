@@ -100,10 +100,10 @@ Add to `docs/PLATFORM_STATUS.md` (date, who ran it, PASS / FAIL / BLOCKED per st
 
 | Step | Result | Date | Run by |
 |---|---|---|---|
-| 1 Health and guards | | | |
-| 2 Buyer approval and capture | | | |
-| 3 Webhook delivery, replay, unsigned 401 | | | |
-| 4 Refund approval, double approve, partial amount | | | |
+| 1 Health and guards | Boot log OK: production, PayPal enabled, PostgreSQL migrations up to date | 2026-10-27 | owner (Render logs) |
+| 2 Buyer approval and capture | PASS: order `ac830417…2e91bb2a`, EUR 18.00, PAID, capture `5AU4••••990S`, mandate signature valid | 2026-10-27 | owner (deployed app) |
+| 3 Webhook delivery, replay, unsigned 401 | not yet run | | |
+| 4 Refund approval, double approve, partial amount | not yet run | | |
 | 5 Restart persistence (optional) | | | |
 
 A step you could not run stays **BLOCKED**. It is never reported as a pass.

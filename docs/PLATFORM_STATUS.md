@@ -13,20 +13,21 @@ Nothing here is claimed beyond its evidence.
 | Check | Result | Evidence (command, date, where) | Limits |
 |---|---|---|---|
 | TypeScript build check | PASS | `npx tsc --noEmit`, 2026-10-25, audit session | |
-| Unit + integration tests | PASS, 79 suites / 883 tests | `npx jest --runInBand`, 2026-10-26 audit session after the payment-settlement changes (it was 78 / 858 on 10-25, and the owner machine reported 78 / 858 for the earlier code) | PayPal and AI are **mocked**, PostgreSQL is emulated (pg-mem) |
+| Unit + integration tests | PASS, 928 tests / 83 suites on commit 364824d (+6 new tests: 934 / 85) | `npm test`, 2026-10-27, run on the owner machine and reproduced independently in the audit sandbox | PayPal and AI are **mocked**, PostgreSQL is emulated (pg-mem) |
 | API contract, no PayPal/AI keys | PASS, 58 requests / 73 assertions / 0 failed, public and private dashboard mode | `newman` against a local keyless server, 2026-10-25, audit session | Proves contract and rejections, not PayPal behaviour |
 | Real-Chrome AG Grid test | PASS 5/5 **only when** `playwright-core` and `CHROME_PATH` are set | owner machine, 2026-10-26 | Plain `npm run test:browser` reports **5 skipped, which is not a pass** |
 | Real PostgreSQL smoke tests | Not re-run | `npm run test:smoke` (needs `DATABASE_URL`) | |
 | PayPal Sandbox order creation (live) | PASS | owner machine, 2026-10-26, against the deployed app and a local current-source backend: session 201, catalog 25 products, a client-sent `priceMinor:1` was recomputed by the server (2 items = EUR 20.00), real `paypalOrderId` with approval host `www.sandbox.paypal.com`, replay with the same `Idempotency-Key` returned the same order | **No capture was made, no money moved** |
-| Deployed Render instance | Reachable, **stale** | `/api/health` on 2026-10-26: production, PostgreSQL durable, mandate key configured, AI enabled. Order creation returned **200** on the deployed app and **201** on current source (as `openapi.json` says) | **Redeploy the current source before judging** |
-| Buyer approval → capture → webhook replay → refund | **BLOCKED** | needs a Sandbox buyer login and a person | never executed; do not claim. Procedure: `docs/PAYMENT_E2E.md` |
+| Deployed Render instance | **Live, current** | Render deploy of commit `364824d` on 2026-10-27 (clean build cache): boot log shows production, PayPal enabled, PostgreSQL storage with migrations up to date | Free tier: first request after idle can take about 50 s |
+| Buyer approval → capture | **PASS (live Sandbox)** | 2026-10-27, deployed app: AI cart (2x Fluffy Pancakes, EUR 18.00) → server policy `REQUIRE_CONFIRMATION` → Sandbox approval → Confirm payment → status PAID, capture id `5AU4••••990S`, signed Cart Mandate verified ("Agent may authorize payment: no"), dashboard row turned PAID | Screenshots held by the owner |
+| Webhook delivery, replay, partial refund | **Not yet evidenced** | not part of the 2026-10-27 run | Procedure: `docs/PAYMENT_E2E.md`, steps 3 and 4 |
 
 ## Flutter shopper app (Android / iOS)
 
 | Check | Result | Evidence | Limits |
 |---|---|---|---|
-| `flutter test` | **PASS, 118 / 118** | owner machine, 2026-10-26, raw log supplied by the owner ("All tests passed!") | The earlier **79** (2026-10-21 and 10-23, `docs/EVIDENCE.md` E14) was an older snapshot; 118 is the current count |
-| `flutter analyze` | PASS, No issues found | owner machine, 2026-10-26, release-gate report | |
+| `flutter test` | **PASS, 150 / 150** | owner machine, 2026-10-27, raw log ("All tests passed!") | Earlier snapshots (79, 118) are superseded |
+| `flutter analyze` | 1 info-level lint on 2026-10-27, fixed in source afterwards (`chat_screen.dart`, braces around an `if`) | owner machine | Re-run to confirm "No issues found" |
 | `flutter build web --debug` | PASS | same report | |
 | `flutter build apk --debug` | PASS (155 MB debug APK) | same report | Debug build, not a release build |
 | Android emulator run (against a current-source backend) | PASS for the scenarios below | same report | |
@@ -39,7 +40,7 @@ Nothing here is claimed beyond its evidence.
 
 ## Before submitting
 
-1. **Redeploy** the current source to Render, then check `/api/health` and that order creation answers 201.
-2. Run the buyer-approval flow once (`docs/PAYMENT_E2E.md`) and record the date and the Sandbox order id there.
+1. Push the final commit; Render redeploys automatically. Check `/api/health`.
+2. Run webhook replay and a partial refund once (`docs/PAYMENT_E2E.md`, steps 3 and 4) and record the result there.
 3. Local demo: port 3000 can be taken by another project's server (one was found on the owner machine). Check that
    `http://localhost:3000/api/health` returns JSON, or run the backend on another port and set `BASE`.

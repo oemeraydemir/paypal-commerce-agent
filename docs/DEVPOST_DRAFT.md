@@ -2,7 +2,7 @@
 
 > Copy-friendly draft for the Devpost form. Every claim matches a feature that exists in this repository;
 > where something was not verified live it says so (see `docs/PLATFORM_STATUS.md`). No invented metrics.
-> Replace the three marked placeholders before publishing: **[YOUTUBE LINK]**, **[REPO URL]**, **[TEAM NAME]**.
+> Replace the three marked placeholders before publishing: **[YOUTUBE LINK]**, **https://github.com/oemeraydemir/paypal-commerce-agent**, **[TEAM NAME]**.
 
 ## One-liner
 
@@ -74,14 +74,14 @@ Not used on purpose: Bryntum, Channel3, Elastic (no meaningful fit for a 25-item
 
 ## What is verified (be exact on the form)
 
-- Backend: TypeScript build check clean; 79 test suites / 883 tests pass (PayPal and AI mocked; measured 2026-10-26); Postman collection 58 requests / 73 assertions, 0 failed in both dashboard modes (measured 2026-10-25, before the settlement change; re-run it).
-- Real PayPal Sandbox flow (buyer approval, capture, refund): reported by earlier runs; the repeatable procedure is `docs/PAYMENT_E2E.md`. Do not call it verified on the form until its result table is filled in.
-- Flutter app: 118 tests pass and `flutter analyze` is clean (run on the owner's machine, 2026-10-26); web and debug APK builds succeed; an Android emulator run matched the web run for language, cart, policy and checkout messaging. Real microphone speech recognition is **not** verified. Details and limits: `docs/PLATFORM_STATUS.md`.
-- Live PayPal Sandbox: order creation (server-side price authority, idempotent replay, Sandbox approval URL) was run against the deployed app and a local backend on 2026-10-26; no capture was made. Do not call the buyer-approval, capture and refund steps verified until `docs/PAYMENT_E2E.md` is filled in.
+- Backend: TypeScript build clean; **928 Jest tests / 83 suites pass** on commit 364824d (PayPal and AI mocked; measured 2026-10-27, plus six regression tests added afterwards); Postman collection 58 requests / 73 assertions, 0 failed in both dashboard modes (measured 2026-10-25, before the settlement change; re-run it).
+- **Real PayPal Sandbox payment, run end to end on the deployed app (2026-10-27):** AI-prepared cart, server policy decision, buyer approval at PayPal, capture, status PAID, signed Cart Mandate verified, dashboard updated. Webhook replay and partial refund are documented in `docs/PAYMENT_E2E.md` and are listed as not yet evidenced until that table says otherwise.
+- Flutter app: **150 tests pass** (owner machine, 2026-10-27); one style-level lint was fixed after that run; web and debug APK builds succeed; an Android emulator run matched the web run for language, cart, policy and checkout messaging. Real microphone speech recognition is **not** verified. Details and limits: `docs/PLATFORM_STATUS.md`.
+- Automated total: **1084 tests** (934 backend Jest + 150 Flutter).
 
 ## Requirement checklist (hackathon rules)
 
-- [ ] Public repository with all source, assets and run instructions: **[REPO URL]**. License (MIT) visible in the About box.
+- [ ] Public repository with all source, assets and run instructions: **https://github.com/oemeraydemir/paypal-commerce-agent**. License (MIT) visible in the About box.
 - [ ] Working demo: hosted URL (free tier, first load can take about a minute) and local run instructions in the README.
 - [ ] Demo video under 3 minutes, public on YouTube: **[YOUTUBE LINK]**. Shows the project running on the device it was built for; no third-party trademarks or copyrighted music.
 - [ ] Text description, tools list (above) and the built-with list.

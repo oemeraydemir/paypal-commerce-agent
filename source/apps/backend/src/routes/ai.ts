@@ -192,6 +192,7 @@ router.post('/ai/chat', requireSession, rateLimit, async (req, res, next) => {
           response: fallback.response,
           preparedCart: fallback.preparedCart,
           checkoutReady: fallback.checkoutReady,
+          suggestion: fallback.suggestion ?? null,
           toolRounds: 0,
           messageCount: history.length + 2,
           mode: fallback.mode,

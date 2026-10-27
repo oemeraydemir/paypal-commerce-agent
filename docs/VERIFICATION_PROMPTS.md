@@ -174,7 +174,7 @@ REPORT: per provider PASS/FAIL, model name returned, latency, the exact refusal 
 Verify the Flutter app. Do not change source code, do not commit.
   cd source/apps/flutter_app
   flutter --version; flutter pub get; flutter analyze; flutter test
-Expected from the project owner's earlier run: analyze clean, 79 tests passed. Report the real numbers now.
+Expected from the project owner's earlier run: analyze clean, 150 tests passed. Report the real numbers now.
 
 Then an end-to-end run on an Android emulator against a LOCAL backend (start it like Prompt D, PORT=3000):
   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000

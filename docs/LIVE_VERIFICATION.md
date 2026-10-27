@@ -4,9 +4,9 @@ Prerequisites: a PayPal Sandbox business app and a personal (buyer) Sandbox acco
 Never paste credentials into chat or reports; use environment variables and the PayPal login page.
 
 ## 1. Local, before anything else
-1. `cd source/apps/backend && npm test` (expect 79 suites / 883 tests — measured 2026-10-26; the count moves as tests are added, so treat the number as a smoke signal, not a contract)
+1. `cd source/apps/backend && npm test` (expect 85 suites / 934 tests — 83 / 928 measured 2026-10-27 plus six regression tests; the count moves as tests are added, so treat the number as a smoke signal, not a contract)
 2. `DATABASE_URL=postgres://... npm run test:smoke` against any PostgreSQL 14+ (`pg-*` suites; `paypal-smoke` needs Sandbox credentials)
-3. `cd source/apps/flutter_app && flutter pub get && flutter analyze && flutter test` (owner machine, 2026-10-26: analyze clean, **118 tests passed**; the 79 recorded on 10-23 was an older count — not re-run in the 2026-10-25 audit; if `flutter test` fails with "Unable to connect to flutter_tester process", an `HTTP_PROXY` in your shell is being used for the local test host — run it with the proxy unset or `NO_PROXY=localhost,127.0.0.1`)
+3. `cd source/apps/flutter_app && flutter pub get && flutter analyze && flutter test` (owner machine, 2026-10-27: analyze: one info lint fixed afterwards, **150 tests passed**; the 79 recorded on 10-23 was an older count — not re-run in the 2026-10-25 audit; if `flutter test` fails with "Unable to connect to flutter_tester process", an `HTTP_PROXY` in your shell is being used for the local test host — run it with the proxy unset or `NO_PROXY=localhost,127.0.0.1`)
 
 ## 2. Deploy (Render)
 3a. Before pushing: revoke and re-issue every API key that ever appeared in an agent checkpoint commit (`refs/agents/...`, commits `024f433` / `3ebeacc` contain key-shaped values in `.env.example`). Back up, then delete those local refs. Push only `main` (`git push origin main`, never `--all` or `--mirror`)

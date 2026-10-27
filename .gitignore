@@ -48,3 +48,11 @@ audit-results/
 
 # Owner-only helpers (never committed, never packaged)
 _owner/
+
+# -- Local clutter that must never be committed --
+wt1.err
+*.err
+test-results.json
+npm-audit-full.json
+*.iml
+_owner/

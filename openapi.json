@@ -263,6 +263,11 @@
           "checkoutReady": {
             "type": "boolean"
           },
+          "suggestion": {
+            "type": "object",
+            "nullable": true,
+            "description": "Rule-based mode only. Present when the cheapest match is over the shopper budget: a manual add-anyway offer. It is not a prepared cart and authorises nothing."
+          },
           "toolRounds": {
             "type": "integer"
           },

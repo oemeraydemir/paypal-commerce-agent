@@ -30,6 +30,17 @@
 | 2:20–2:45 | `GET /api/orders/:id/mandate` → Ed25519-signed **Cart Mandate**; mention the MCP server lets external agents shop, never pay. | "Every order has a tamper-evident mandate of who could propose and who held payment authority. External agents go through MCP with no pay tool." |
 | 2:45–3:00 | Wrap: accessibility note (Semantics labels, keyboard/screen-reader tested grid). | "Designed to be run and judged in minutes, accessibly." |
 
+## If the AI answers "at capacity" during the take (free-tier providers)
+
+The rule-based planner is a designed fallback, so use it instead of cutting the take:
+
+1. Say: *"As you can see, the AI is busy right now, but the system did not break. The labelled rule-based fallback took over, and the cart is still priced and policy-checked by the server."*
+2. If the answer is over the budget, point at the **Add to cart anyway** button: the shopper can still add the item manually, or type a new request. Nothing is paid or authorised by that button.
+3. Then say: *"Now let's try a scenario where the AI is available."* and type **Coffee and a snack, max €10** (usually answers faster).
+4. If the AI answers, continue the video with it. If not, continue with the fallback cart; the payment steps are identical.
+
+Tip: send one throw-away request before recording to see which mode you will get.
+
 ## Do NOT show (would be misleading)
 
 - AG Grid **Enterprise** features (row grouping, status bar) — not used.

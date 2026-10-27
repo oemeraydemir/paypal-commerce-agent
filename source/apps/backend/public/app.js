@@ -410,6 +410,24 @@
     renderProfileStatus();
     refreshQuickReplies();
   }
+  // Over-budget rule-based answer: offer a manual "add anyway" (server re-prices and policy-checks the cart).
+  function addSuggestion(s) {
+    if (!s || !s.items || !s.items.length) return;
+    var wrap = el('div', 'msg s suggest');
+    wrap.appendChild(el('p', 'mut', i18nT('suggest.hint')));
+    var group = el('div', 'chips');
+    var label = s.items.map(function (i) { return i.quantity + '× ' + i.name; }).join(', ');
+    var btn = el('button', 'suggest-add', i18nT('suggest.add') + ' ' + label + ' (' + s.totalFormatted + ')');
+    btn.type = 'button';
+    btn.onclick = function () {
+      if (busy) return;
+      cart = {}; s.items.forEach(function (i) { cart[i.productId] = i.quantity; });
+      save(CKEY, cart); renderCart();
+      btn.disabled = true; btn.textContent = i18nT('suggest.added');
+    };
+    group.appendChild(btn); wrap.appendChild(group);
+    var log = $('log'); log.appendChild(wrap); log.scrollTop = log.scrollHeight;
+  }
   function ask(text) {
     if (busy || !text.trim()) return;
     quickReplyGeneration++;
@@ -418,6 +436,7 @@
     api('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message: text, preferences: prefs(), intent: 'catalog_discovery' }) }).then(function (r) {
       thinking.remove(); say('a', r.response || i18nT('agent.noAnswer'));
       if (r.mode === 'rule-based') { say('s', i18nT('agent.ruleBased')); }
+      if (r.mode === 'rule-based' && !r.preparedCart && r.suggestion) { addSuggestion(r.suggestion); }
       if (r.preparedCart && r.preparedCart.items) {
         cart = {}; r.preparedCart.items.forEach(function (i) { cart[i.productId] = i.quantity; });
         save(CKEY, cart); showPolicy(r.preparedCart); lastPrepared = r.preparedCart; renderWhy(lastPrepared);
@@ -460,6 +479,7 @@
         var decision = (policy && policy.decision) ? policy.decision : 'AUTO_ALLOW';
         go.classList.remove('loading'); go.removeAttribute('aria-busy');
         drop(PKEY); cart = {}; save(CKEY, cart); renderCart();
+        b.hidden = true; b.textContent = '';
         renderReceipt({ orderId: pend.orderId, items: items, totalText: pend.total, maskedId: maskId(r.paypalCaptureId), decision: decision, status: r.status || 'COMPLETED' });
       }).catch(function (e) { go.disabled = false; go.classList.remove('loading'); go.removeAttribute('aria-busy'); go.textContent = i18nT('receipt.confirm'); banner('bad', 'Capture failed: ' + e.message); });
     };

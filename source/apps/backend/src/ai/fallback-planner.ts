@@ -238,11 +238,26 @@ export function planFallbackCart(
   };
 }
 
+/**
+ * Offered when the cheapest match is OVER the shopper's soft budget. It is data for a manual
+ * "add anyway" action only: no cart is prepared and nothing is authorised. The client adds the
+ * listed product ids to its own cart, which the server prices and policy-checks again.
+ */
+export interface FallbackSuggestion {
+  reason: 'OVER_BUDGET';
+  items: Array<{ productId: string; name: string; quantity: number }>;
+  totalMinor: number;
+  totalFormatted: string;
+  budgetMinor: number | null;
+  policyDecision: string;
+}
+
 export interface FallbackReply {
   response: string;
   preparedCart: any | null;
   checkoutReady: boolean;
   mode: 'rule-based';
+  suggestion?: FallbackSuggestion | null;
 }
 
 /** Builds the chat reply + a policy-checked cart. Side-effect free (no policy event). */
@@ -260,8 +275,8 @@ export function runFallbackAssistant(
       ? 'No AI provider is configured on this server, so this answer comes from a simple rule-based planner (no AI). '
       : 'Our AI models are at capacity right now, so this answer comes from a simple rule-based planner (no AI). ';
 
-  if (!plan.understood || plan.items.length === 0 || !plan.fits) {
-    return { response: `${notice}${plan.summary}`, preparedCart: null, checkoutReady: false, mode: 'rule-based' };
+  if (!plan.understood || plan.items.length === 0) {
+    return { response: `${notice}${plan.summary}`, preparedCart: null, checkoutReady: false, mode: 'rule-based', suggestion: null };
   }
 
   const money = (m: number) => formatMoney(m, currentBusiness.currency, currentBusiness.locale);
@@ -285,10 +300,22 @@ export function runFallbackAssistant(
     buildPolicyContext(ctx.userId, currentBusiness.businessId, dailySpendTracker)
   );
   const outcome = buildPolicyOutcome(evaluation);
+  if (!plan.fits) {
+    // Over the soft budget: say so, and (unless the hard policy blocks it) offer a manual add.
+    const suggestion: FallbackSuggestion | null = outcome.decision === 'BLOCK' ? null : {
+      reason: 'OVER_BUDGET',
+      items: validated.map((i) => ({ productId: i.productId, name: i.name, quantity: i.quantity })),
+      totalMinor,
+      totalFormatted: money(totalMinor),
+      budgetMinor: plan.budgetMinor ?? null,
+      policyDecision: outcome.decision,
+    };
+    return { response: `${notice}${plan.summary}`, preparedCart: null, checkoutReady: false, mode: 'rule-based', suggestion };
+  }
   if (outcome.decision === 'BLOCK') {
     return {
       response: `${notice}I found ${plan.summary} but your spending policy blocks it: ${outcome.reason}.`,
-      preparedCart: null, checkoutReady: false, mode: 'rule-based',
+      preparedCart: null, checkoutReady: false, mode: 'rule-based', suggestion: null,
     };
   }
   const preparedCart = {
@@ -309,5 +336,6 @@ export function runFallbackAssistant(
     preparedCart,
     checkoutReady: true,
     mode: 'rule-based',
+    suggestion: null,
   };
 }

@@ -1,9 +1,9 @@
 # Evidence matrix (2026-10-20, fourth pass: local verification, counts re-measured)
 
 > **Backend counts re-measured on 2026-10-25 (audit pass, commands run in that session):** `tsc --noEmit` clean;
-> `jest --runInBand` **79 suites / 883 tests pass on 2026-10-26** after the payment-settlement changes (unit 34 / 406, integration 44 / 454, verification 1 / 23; 78 / 858 on 2026-10-25);
+> `npm test` **83 suites / 928 tests pass on 2026-10-27** (commit 364824d; six regression tests were added afterwards, so the next run should show 85 / 934);
 > `newman` against a local keyless server, public and private dashboard mode: **58 requests, 73 assertions, 0 failed**.
-> NOT re-run in that session: Flutter (no SDK there; the owner's 2026-10-26 re-run, 118 tests, is row E14b and
+> NOT re-run in that session: Flutter (no SDK there; the owner's 2026-10-27 run, 150 tests, is row E14b and
 > `docs/PLATFORM_STATUS.md`), the real-Chrome AG Grid test, `test:smoke` against a real PostgreSQL. The older rows below keep
 > their original dates. The
 > PayPal Sandbox and real-AI-provider rows remain **BLOCKED** — this environment has no credentials. The
@@ -17,7 +17,7 @@ PayPal Sandbox or real AI providers unless a row says so.
 
 | Kind | What it proves | Result in this pass |
 |---|---|---|
-| Unit / integration, PayPal and AI **mocked**, pg-mem | application logic | 79 suites, 883 tests, all pass (`jest --runInBand`, measured 2026-10-26; the 20 Oct snapshot was 60 / 636) |
+| Unit / integration, PayPal and AI **mocked**, pg-mem | application logic | 83 suites, 928 tests, all pass (`npm test`, measured 2026-10-27; was 79 / 883 on 2026-10-26; the 20 Oct snapshot was 60 / 636) |
 | **Real PostgreSQL 16** (local), PayPal mocked | durability, constraints, concurrency | 13 tests pass (`jest -c jest.smoke.config.js`: `pg-migrate`, `pg-durability`, `pg-capture-claim-route`) |
 | Local application over HTTP (`newman`), no PayPal or AI keys | API contract and rejections | public dashboard mode and private mode (`DASHBOARD_PUBLIC=false`) each: 58 requests, 73 assertions, 0 failed (measured 2026-10-25; the 20 Oct snapshot was 50 requests / 57 assertions) |
 | Real PayPal Sandbox | PayPal behaviour | BLOCKED |
@@ -46,8 +46,8 @@ PayPal Sandbox or real AI providers unless a row says so.
 | E15 | Postman collection | PASS (local, no PayPal/AI), both dashboard modes | `newman`: 50 / 57 / 0 failed in each mode. Fixed a script SyntaxError (quote inside a test name) that made one test script not run. Private mode: `--env-var dashboardPrivate=true --env-var dashboardKey=<ops key>`; dashboard-data requests send `X-Ops-Key: {{dashboardKey}}` (empty in public mode) | Sandbox-only steps |
 | E16 | Dependency advisories | FAIL (documented, mitigated) | `npm audit --omit=dev`: 8 (1 high, `langsmith` 0.3.87 via `@langchain/core` 0.3.80 via `@paypal/agent-toolkit`; GHSA-v34v-rq6j-cj6p, GHSA-fw9q-39r9-c252), no fix without a breaking major upgrade. The project never imports `langsmith`; `src/config/disable-tracing.ts` now deletes LangSmith/LangChain tracing and endpoint variables at boot (`disable-tracing.test.ts`). Not proven unreachable: library internals were not audited | update toolkit later |
 | E17 | PayPal smoke (`paypal-smoke.test.ts`) | FAIL / BLOCKED | no Sandbox credentials, request error | run with credentials |
-| E18 | Approved Sandbox capture, repeated capture, partial and full refund, real refund response, webhook delivery | BLOCKED | needs credentials and a public URL | LIVE_VERIFICATION |
+| E18 | Approved Sandbox capture on the deployed app | PASS (owner, 2026-10-27) | order `ac830417…2e91bb2a`, EUR 18.00, PAID, capture `5AU4••••990S`, signed mandate valid | repeated capture, partial refund and webhook replay still open (`docs/PAYMENT_E2E.md`) |
 | E19 | Real AI provider answers | BLOCKED | no keys | LIVE_VERIFICATION |
-| E20 | Render commit, durable storage, smoke test | BLOCKED | no access | LIVE_VERIFICATION |
+| E20 | Render commit, durable storage | PASS (owner, 2026-10-27) | commit 364824d live, PostgreSQL migrations up to date in the boot log | smoke test against real PostgreSQL still not run |
 
-Release decision: **READY WITH EXPLICIT BLOCKERS** (E14, E17-E20 open). Not production-ready; PayPal Sandbox prototype.
+Release decision: **READY WITH EXPLICIT LIMITS** (webhook replay, partial refund and real-microphone voice still open). Not production-ready; PayPal Sandbox prototype.
