@@ -245,9 +245,13 @@ export function planFallbackCart(
  */
 export interface FallbackSuggestion {
   reason: 'OVER_BUDGET';
-  items: Array<{ productId: string; name: string; quantity: number }>;
+  items: Array<{
+    productId: string; name: string; quantity: number;
+    unitPriceMinor: number; unitPriceFormatted: string; lineTotalMinor: number; lineTotalFormatted: string;
+  }>;
   totalMinor: number;
   totalFormatted: string;
+  currency: string;
   budgetMinor: number | null;
   policyDecision: string;
 }
@@ -304,9 +308,10 @@ export function runFallbackAssistant(
     // Over the soft budget: say so, and (unless the hard policy blocks it) offer a manual add.
     const suggestion: FallbackSuggestion | null = outcome.decision === 'BLOCK' ? null : {
       reason: 'OVER_BUDGET',
-      items: validated.map((i) => ({ productId: i.productId, name: i.name, quantity: i.quantity })),
+      items: validated.map((i) => ({ ...i })),
       totalMinor,
       totalFormatted: money(totalMinor),
+      currency: currentBusiness.currency,
       budgetMinor: plan.budgetMinor ?? null,
       policyDecision: outcome.decision,
     };

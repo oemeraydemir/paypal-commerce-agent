@@ -476,6 +476,9 @@ class ChatResponse {
   final String? provider;
   final bool fallback;
 
+  /// Over-budget manual add-anyway offer (rule-based replies only).
+  final ChatSuggestion? suggestion;
+
   ChatResponse({
     required this.sessionId,
     required this.response,
@@ -486,6 +489,7 @@ class ChatResponse {
     this.mode,
     this.provider,
     this.fallback = false,
+    this.suggestion,
   });
 
   bool get isRuleBased => mode == ChatMode.ruleBased;
@@ -504,6 +508,7 @@ class ChatResponse {
       mode: chatModeFromJson(json['mode']),
       provider: json['provider'] is String ? json['provider'] as String : null,
       fallback: json['fallback'] == true,
+      suggestion: ChatSuggestion.tryParse(json['suggestion']),
     );
   }
 }

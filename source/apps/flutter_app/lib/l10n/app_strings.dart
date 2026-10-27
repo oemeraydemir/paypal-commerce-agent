@@ -63,6 +63,13 @@ class AppStrings {
       'welcome.chip2': 'A coffee and a treat',
       'welcome.prompt2': 'Find me a coffee and a sweet treat.',
       'msg.ruleBased': 'Rule-based answer · no AI',
+      'suggest.hint':
+          'This is over your budget, but you can still add it yourself, or type a new request.',
+      'suggest.add': 'Add to cart anyway',
+      'suggest.added':
+          'Added to your cart. Review it, then pay with PayPal when you are ready.',
+      'suggest.blocked': 'Your spending policy does not allow this cart.',
+      'suggest.failed': 'Could not check this cart with the server. Please try again.',
       'why.title': 'Why these items?',
       'cart.ruleBased': 'Rule-based cart (no AI) · your edits',
       'cart.aiPrepared': 'AI-prepared cart · your edits',
@@ -224,6 +231,13 @@ class AppStrings {
       'welcome.chip2': 'Bir kahve ve bir ikram',
       'welcome.prompt2': 'Bana bir kahve ve tatlı bir ikram bul.',
       'msg.ruleBased': 'Kural tabanlı yanıt · yapay zeka yok',
+      'suggest.hint':
+          'Bütçenizi aşıyor, ama yine de kendiniz sepete ekleyebilir veya yeni bir istek yazabilirsiniz.',
+      'suggest.add': 'Yine de sepete ekle',
+      'suggest.added':
+          'Sepetinize eklendi. İnceleyin, hazır olunca PayPal ile ödeyin.',
+      'suggest.blocked': 'Harcama politikanız bu sepete izin vermiyor.',
+      'suggest.failed': 'Sepet sunucuda kontrol edilemedi. Lütfen tekrar deneyin.',
       'why.title': 'Bu ürünler neden?',
       'cart.ruleBased': 'Kural tabanlı sepet (yapay zeka yok) · senin düzenlemelerin',
       'cart.aiPrepared': 'Yapay zeka hazırladı · senin düzenlemelerin',

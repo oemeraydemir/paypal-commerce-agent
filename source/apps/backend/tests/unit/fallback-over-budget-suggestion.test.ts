@@ -16,6 +16,9 @@ describe('rule-based planner: over-budget suggestion for a manual "add anyway"',
     expect(r.suggestion!.budgetMinor).toBe(700);
     expect(r.suggestion!.totalMinor).toBeGreaterThan(700);
     expect(r.suggestion!.items.length).toBeGreaterThan(0);
+    expect(r.suggestion!.currency).toBe('EUR');
+    expect(r.suggestion!.items[0]).toEqual(expect.objectContaining({ unitPriceMinor: expect.any(Number), unitPriceFormatted: expect.any(String), lineTotalMinor: expect.any(Number), lineTotalFormatted: expect.any(String) }));
+    expect(r.suggestion!.items.reduce((s, i) => s + i.lineTotalMinor, 0)).toBe(r.suggestion!.totalMinor);
     expect(r.suggestion!.items[0]).toEqual(expect.objectContaining({ productId: expect.any(String), name: expect.any(String), quantity: expect.any(Number) }));
   });
 

@@ -924,6 +924,56 @@ class _WelcomePanel extends StatelessWidget {
       );
 }
 
+/// Manual "add to cart anyway" offer under an over-budget rule-based reply.
+/// Tapping it only puts the lines into the cart; the server policy check and
+/// the separate PayPal approval still apply.
+class _SuggestionAction extends StatelessWidget {
+  final ChatMessage msg;
+
+  const _SuggestionAction({required this.msg});
+
+  @override
+  Widget build(BuildContext context) {
+    final chat = context.watch<ChatProvider>();
+    final lang = context.watch<LocaleProvider>().languageCode;
+    final scheme = Theme.of(context).colorScheme;
+    final suggestion = msg.suggestion!;
+    final added = chat.isSuggestionAdded(msg);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t(context, 'suggest.hint'),
+            style: TextStyle(fontSize: 12, color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: 6),
+          if (added)
+            Text(
+              t(context, 'suggest.added'),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: scheme.primary,
+              ),
+            )
+          else
+            OutlinedButton(
+              onPressed: chat.loading || chat.addingSuggestion
+                  ? null
+                  : () => chat.addSuggestedCart(msg, lang),
+              child: Text(
+                '${t(context, 'suggest.add')}: ${suggestion.label} (${suggestion.totalFormatted})',
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MessageBubble extends StatelessWidget {
   final ChatMessage msg;
   final DateFormat timeFormat;
@@ -1001,6 +1051,7 @@ class _MessageBubble extends StatelessWidget {
               response: msg.text,
               onSelected: onQuickReply,
             ),
+          if (msg.suggestion != null) _SuggestionAction(msg: msg),
           // Server-truthful "Why these items?" note, built only from real
           // prepared-cart data (names/quantities + policy messages verbatim).
           if (msg.cartExplanation != null && !msg.cartExplanation!.isEmpty) ...[

@@ -23,6 +23,13 @@ class ChatProvider extends ChangeNotifier {
   bool _loading = false;
   bool get loading => _loading;
 
+  /// Messages whose over-budget suggestion the shopper already added.
+  final Set<ChatMessage> _addedSuggestions = <ChatMessage>{};
+  bool isSuggestionAdded(ChatMessage msg) => _addedSuggestions.contains(msg);
+
+  bool _addingSuggestion = false;
+  bool get addingSuggestion => _addingSuggestion;
+
   String? _error;
   String? get error => _error;
 
@@ -109,6 +116,9 @@ class ChatProvider extends ChangeNotifier {
           usedBackupProvider: resp.fallback,
           cartExplanation: cartExplanation,
           allergyWarning: allergyWarning,
+          suggestion: resp.preparedCart == null && resp.isRuleBased
+              ? resp.suggestion
+              : null,
         ),
       );
       // Only a newly prepared cart replaces the current one, so a follow-up
@@ -153,6 +163,58 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  /// Adds an over-budget rule-based suggestion to the cart **on the shopper's
+  /// explicit tap**. The server's policy preview decides whether the cart may
+  /// proceed: a `BLOCK` or an unreadable verdict never produces a cart, and the
+  /// payment still needs the separate PayPal approval step.
+  Future<bool> addSuggestedCart(ChatMessage msg, [String lang = 'en']) async {
+    final suggestion = msg.suggestion;
+    if (suggestion == null ||
+        _loading ||
+        _addingSuggestion ||
+        _addedSuggestions.contains(msg)) {
+      return false;
+    }
+    _addingSuggestion = true;
+    _error = null;
+    notifyListeners();
+    try {
+      final preview = await api.previewPolicy(
+        suggestion.items
+            .map((l) => OrderItem(id: l.productId, quantity: l.quantity))
+            .toList(),
+      );
+      if (preview.decision != PolicyDecision.autoAllow &&
+          preview.decision != PolicyDecision.requireConfirmation) {
+        _error = preview.decision == PolicyDecision.block
+            ? (preview.reason ?? AppStrings.get(lang, 'suggest.blocked'))
+            : AppStrings.get(lang, 'suggest.failed');
+        return false;
+      }
+      _lastPreparedCart = PreparedCart(
+        items: suggestion.items,
+        totalMinor: suggestion.totalMinor,
+        totalFormatted: suggestion.totalFormatted,
+        currency: suggestion.currency,
+        message: '',
+        policyDecision: preview.decision,
+        requiresExplicitApproval:
+            preview.decision == PolicyDecision.requireConfirmation,
+        reason: preview.reason ?? '',
+      );
+      _lastPreparedCartMode = ChatMode.ruleBased;
+      _checkoutReady = true;
+      _addedSuggestions.add(msg);
+      return true;
+    } catch (_) {
+      _error = AppStrings.get(lang, 'suggest.failed');
+      return false;
+    } finally {
+      _addingSuggestion = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> clearConversation([String lang = 'en']) async {
     try {
       await api.deleteChat();
@@ -164,6 +226,7 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
     _messages.clear();
+    _addedSuggestions.clear();
     _lastPreparedCart = null;
     _lastPreparedCartMode = null;
     _checkoutReady = false;
