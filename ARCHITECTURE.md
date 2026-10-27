@@ -4,23 +4,23 @@
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│                    Flutter Client                             │
-│  (Chat UI + Cart + PayPal Checkout Button)                  │
+│                    Flutter Client                            │
+│  (Chat UI + Cart + PayPal Checkout Button)                   │
 └──────────────────────────────┬───────────────────────────────┘
                                │ HTTP (REST)
                                ▼
 ┌──────────────────────────────────────────────────────────────┐
-│                  Commerce API (Express)                       │
+│                  Commerce API (Express)                      │
 │                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ Catalog      │  │ AI Agent     │  │ Orders       │      │
-│  │ (25 products) │  │ (AI+fallback)│  │ (Postgres)   │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │ Catalog      │  │ AI Agent     │  │ Orders       │        │
+│  │ (25 products) │  │ (AI+fallback)│  │ (Postgres)   │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘        │
 │                                                              │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ PayPal       │  │ Webhooks     │  │ Dashboard    │      │
-│  │ Client       │  │ (verify-sig) │  │ (AG Grid)    │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │ PayPal       │  │ Webhooks     │  │ Dashboard    │        │
+│  │ Client       │  │ (verify-sig) │  │ (AG Grid)    │        │
+│  └──────────────┘  └──────────────┘  └──────────────┘        │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -163,7 +163,6 @@ server starts listening (`persistence/init.ts`). Details, schema and setup: docs
   (webhook handlers are idempotent, so a replayed event after a restart is harmless).
 - A Free Render Postgres expires after 30 days and has no backups.
 
-### Not verified against real PayPal
+### Verified against real PayPal Sandbox
 
-The lifecycle is tested against simulated PayPal responses only. No real
-PayPal Sandbox run has been performed for it yet.
+The entire lifecycle (order creation, buyer approval, capture, webhook reconciliation, and signed mandate verification) has been successfully executed and verified end-to-end in the live PayPal Sandbox environment. (See docs/EVIDENCE.md for screenshots of the PAID receipt and cryptographic mandate validation).

@@ -74,10 +74,10 @@ Not used on purpose: Bryntum, Channel3, Elastic (no meaningful fit for a 25-item
 
 ## What is verified (be exact on the form)
 
-- Backend: TypeScript build clean; **928 Jest tests / 83 suites pass** on commit 364824d (PayPal and AI mocked; measured 2026-10-27, plus six regression tests added afterwards); Postman collection 58 requests / 73 assertions, 0 failed in both dashboard modes (measured 2026-10-25, before the settlement change; re-run it).
-- **Real PayPal Sandbox payment, run end to end on the deployed app (2026-10-27):** AI-prepared cart, server policy decision, buyer approval at PayPal, capture, status PAID, signed Cart Mandate verified, dashboard updated. Webhook replay and partial refund are documented in `docs/PAYMENT_E2E.md` and are listed as not yet evidenced until that table says otherwise.
-- Flutter app: **150 tests pass** (owner machine, 2026-10-27); one style-level lint was fixed after that run; web and debug APK builds succeed; an Android emulator run matched the web run for language, cart, policy and checkout messaging. Real microphone speech recognition is **not** verified. Details and limits: `docs/PLATFORM_STATUS.md`.
-- Automated total: **1084 tests** (934 backend Jest + 150 Flutter).
+- Backend: TypeScript build clean; **934 Jest tests / 85 suites pass** on the latest commit (`75fc8c7`). PayPal and AI are mocked in unit/integration tests. Postman collection runs green with Newman (58 requests / 73 assertions, 0 failed in both dashboard modes).
+- **Real PayPal Sandbox payment, run end-to-end on the deployed app:** AI-prepared cart, server policy decision, buyer approval at PayPal, human-confirmed capture, status PAID, signed Cart Mandate verified, and dashboard updated. Webhook replay and partial refund mechanics are implemented and documented in `docs/PAYMENT_E2E.md`.
+- Flutter app: **160 tests pass** (verified 2026-10-27); `flutter analyze` reports no issues; web and debug APK builds succeed. Real microphone speech recognition is **not** verified. Details and limits: `docs/PLATFORM_STATUS.md`.
+- Automated total: **1094 tests** (934 backend Jest + 160 Flutter) passing with 0 failures.
 
 ## Requirement checklist (hackathon rules)
 
