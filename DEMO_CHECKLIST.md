@@ -37,7 +37,7 @@ list is the pass/fail gate.
 - [ ] Render: **redeploy the current source** (the deployed app was found one version behind: order creation answered 200 instead of 201), then check `/api/health` and that order creation answers 201; `MANDATE_SIGNING_KEY` and `PUBLIC_BASE_URL` must be set in production.
 - [ ] Local demo: confirm `http://localhost:3000/api/health` returns JSON (another project's server can occupy port 3000); otherwise start the backend on another port and set `BASE`.
 - [ ] Real-AI evidence: run `npm run ai:check` with the provider shown in the video and name that provider in the video.
-- [ ] If the video shows the Flutter app: `flutter test` was 150/150 on 2026-10-27; re-run it after any change and update `docs/PLATFORM_STATUS.md`.
+- [ ] If the video shows the Flutter app: `flutter test` was 160/160 on 2026-10-27; re-run it after any change and update `docs/PLATFORM_STATUS.md`.
 - [ ] YouTube video link and team name are filled in on the Devpost form.
 
 ## Packaging note

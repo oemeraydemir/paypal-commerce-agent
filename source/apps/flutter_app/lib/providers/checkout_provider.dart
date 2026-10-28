@@ -528,14 +528,15 @@ class CheckoutProvider extends ChangeNotifier {
     _quantityOverrides.clear();
 
     if (chat.lastPreparedCart == null) return;
-    try {
-      await chat.clearPreparedCart();
-    } catch (error) {
+    // The paid cart is consumed locally first, so it cannot be paid twice even
+    // if the server cleanup fails. Only the notice depends on that cleanup.
+    final cleaned = await chat.consumePaidCart();
+    if (!cleaned) {
       _setError(
         alreadyCompleted
             ? 'checkout.errorCartClearAfterAlreadyPaid'
             : 'checkout.errorCartClearAfterCapture',
-        [error],
+        [chat.error ?? ''],
       );
     }
   }

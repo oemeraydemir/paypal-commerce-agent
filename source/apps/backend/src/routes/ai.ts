@@ -3,6 +3,7 @@ import { aiService } from '../ai/service';
 import { executeTool } from '../ai/tool-executor';
 import { buildCatalogDiscovery, formatDiscoveryReply, parseOptionSelection, profileSignature, type CatalogDiscovery } from '../ai/catalog-discovery';
 import { runFallbackAssistant } from '../ai/fallback-planner';
+import { resolveNumberedChoice } from '../ai/numbered-choice';
 import { markSessionAIPrepared, clearAIPreparedSession } from '../ai/session-tracker';
 import { AppError } from '../middleware/error-handler';
 import { requireSession } from '../middleware/session-auth';
@@ -177,8 +178,10 @@ router.post('/ai/chat', requireSession, rateLimit, async (req, res, next) => {
       // labelled rule-based planner instead of a dead end. It is NOT AI: it never
       // marks the session AI-prepared, so the order stays attributed to HUMAN.
       if (aiErr instanceof AppError && aiErr.details?.code === 'AI_UNAVAILABLE') {
+        // A bare "1" answers the AI's earlier options list; give the planner the option title.
+        const planMessage = resolveNumberedChoice(message, history) ?? message;
         const fallback = runFallbackAssistant(
-          message,
+          planMessage,
           preferencesResult.data,
           { sessionId, userId },
           { aiConfigured: env.isAIEnabled() }

@@ -3,7 +3,7 @@
 > **Backend counts re-measured on 2026-10-25 (audit pass, commands run in that session):** `tsc --noEmit` clean;
 > `npm test` **83 suites / 928 tests pass on 2026-10-27** (commit 364824d; six regression tests were added afterwards, so the next run should show 85 / 934);
 > `newman` against a local keyless server, public and private dashboard mode: **58 requests, 73 assertions, 0 failed**.
-> NOT re-run in that session: Flutter (no SDK there; the owner's 2026-10-27 run, 150 tests, is row E14b and
+> NOT re-run in that session: Flutter (no SDK there; the owner's 2026-10-27 run, 160 tests, is row E14b and
 > `docs/PLATFORM_STATUS.md`), the real-Chrome AG Grid test, `test:smoke` against a real PostgreSQL. The older rows below keep
 > their original dates. The
 > PayPal Sandbox and real-AI-provider rows remain **BLOCKED** — this environment has no credentials. The

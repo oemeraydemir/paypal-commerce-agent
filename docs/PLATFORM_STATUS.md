@@ -26,8 +26,8 @@ Nothing here is claimed beyond its evidence.
 
 | Check | Result | Evidence | Limits |
 |---|---|---|---|
-| `flutter test` | **PASS, 150 / 150** | owner machine, 2026-10-27, raw log ("All tests passed!") | Earlier snapshots (79, 118) are superseded |
-| `flutter analyze` | 1 info-level lint on 2026-10-27, fixed in source afterwards (`chat_screen.dart`, braces around an `if`) | owner machine | Re-run to confirm "No issues found" |
+| `flutter test` | **PASS, 160 / 160** | owner machine, 2026-10-27, raw log ("All tests passed!") | Earlier snapshots (79, 118) are superseded |
+| `flutter analyze` | **No issues found** | owner machine, 2026-10-27, commit f4d2d38 | |
 | `flutter build web --debug` | PASS | same report | |
 | `flutter build apk --debug` | PASS (155 MB debug APK) | same report | Debug build, not a release build |
 | Android emulator run (against a current-source backend) | PASS for the scenarios below | same report | |

@@ -234,6 +234,30 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Consumes the prepared cart **after a successful payment**.
+  ///
+  /// The local cart is dropped first and unconditionally, so a failing or slow
+  /// server cleanup can never leave an already-paid cart that could be paid a
+  /// second time. The server-side delete is best effort; the returned value says
+  /// whether it succeeded so the caller can show an honest notice.
+  Future<bool> consumePaidCart([String lang = 'en']) async {
+    _lastPreparedCart = null;
+    _lastPreparedCartMode = null;
+    _checkoutReady = false;
+    _error = null;
+    notifyListeners();
+    try {
+      await api.deletePreparedCart();
+      return true;
+    } catch (error) {
+      _error = error is ApiException
+          ? '${AppStrings.get(lang, 'error.clearCartPrefix')} (${error.statusCode}): ${error.message}'
+          : '${AppStrings.get(lang, 'error.clearCartUnreachable')}: $error';
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<void> clearPreparedCart([String lang = 'en']) async {
     try {
       await api.deletePreparedCart();
