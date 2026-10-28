@@ -76,8 +76,8 @@ Not used on purpose: Bryntum, Channel3, Elastic (no meaningful fit for a 25-item
 
 - Backend: TypeScript build clean; **928 Jest tests / 83 suites pass** on commit 364824d (PayPal and AI mocked; measured 2026-10-27, plus six regression tests added afterwards); Postman collection 58 requests / 73 assertions, 0 failed in both dashboard modes (measured 2026-10-25, before the settlement change; re-run it).
 - **Real PayPal Sandbox payment, run end to end on the deployed app (2026-10-27):** AI-prepared cart, server policy decision, buyer approval at PayPal, capture, status PAID, signed Cart Mandate verified, dashboard updated. Webhook replay and partial refund are documented in `docs/PAYMENT_E2E.md` and are listed as not yet evidenced until that table says otherwise.
-- Flutter app: **160 tests pass** and `flutter analyze` reports no issues (owner machine, 2026-10-27, commit f4d2d38); web and debug APK builds succeed; an Android emulator run matched the web run for language, cart, policy and checkout messaging. Real microphone speech recognition is **not** verified. Details and limits: `docs/PLATFORM_STATUS.md`.
-- Automated total: **1094 tests** (934 backend Jest + 160 Flutter), measured on commit f4d2d38.
+- Flutter app: **163 tests pass** and `flutter analyze` reports no issues (owner machine, 2026-10-27, commit 75fc8c7 plus later changes); web and debug APK builds succeed; an Android emulator run matched the web run for language, cart, policy and checkout messaging. Real microphone speech recognition is **not** verified. Details and limits: `docs/PLATFORM_STATUS.md`.
+- Automated total: **1101 tests** (938 backend Jest + 163 Flutter), measured on commit 75fc8c7 plus later changes.
 
 ## Requirement checklist (hackathon rules)
 

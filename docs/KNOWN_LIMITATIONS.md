@@ -8,8 +8,8 @@
 | Area | Result | Evidence |
 |---|---|---|
 | Backend | 928 Jest tests / 83 suites pass on commit `364824d` (PayPal and AI mocked, PostgreSQL emulated); one storefront regression test was added afterwards (934 / 85) | `npm test`, 2026-10-27 |
-| Flutter app | 160 tests pass, `flutter analyze`: no issues | `flutter test`, 2026-10-27, commit f4d2d38 |
-| Automated total | 1094 tests (934 backend Jest + 160 Flutter) | measured on commit f4d2d38; tests added later are not in this figure |
+| Flutter app | 163 tests pass, `flutter analyze`: no issues | `flutter test`, 2026-10-27, commit 75fc8c7 plus later changes |
+| Automated total | 1101 tests (938 backend Jest + 163 Flutter) | measured on commit 75fc8c7 plus later changes; tests added later are not in this figure |
 | Live Sandbox payment | AI-prepared cart → server policy decision → buyer approval at PayPal → capture → PAID → signed Cart Mandate verified → dashboard shows PAID | deployed app, 2026-10-27; `docs/PAYMENT_E2E.md` |
 | Payment authority | The AI has no payment tool. The mandate states "Agent may authorize payment: no" and the server enforces the policy decision | `docs/EVIDENCE.md` |
 

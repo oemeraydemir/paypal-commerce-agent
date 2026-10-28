@@ -167,6 +167,33 @@
     }
     if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
   }
+  // Markdown tables are shown as cards (one per row), not as a spreadsheet-like grid.
+  function splitTableRow(line) {
+    var t = line.trim();
+    if (t.charAt(0) === '|') t = t.slice(1);
+    if (t.charAt(t.length - 1) === '|') t = t.slice(0, -1);
+    return t.split('|').map(function (c) { return c.trim(); });
+  }
+  function isTableSeparator(cells) {
+    return cells.length > 0 && cells.every(function (c) { return /^:?-{3,}:?$/.test(c); });
+  }
+  function renderTableCards(container, header, rows) {
+    var wrap = document.createElement('div'); wrap.className = 'cards';
+    rows.forEach(function (cells) {
+      var card = document.createElement('div'); card.className = 'card';
+      var title = document.createElement('div'); title.className = 'card-t';
+      addInlineText(title, cells[0] || ''); card.appendChild(title);
+      for (var k = 1; k < cells.length; k++) {
+        if (!cells[k]) continue;
+        var kv = document.createElement('div'); kv.className = 'kv';
+        var key = document.createElement('span'); key.className = 'k'; key.textContent = header[k] || '';
+        var val = document.createElement('span'); val.className = 'v'; addInlineText(val, cells[k]);
+        kv.appendChild(key); kv.appendChild(val); card.appendChild(kv);
+      }
+      wrap.appendChild(card);
+    });
+    container.appendChild(wrap);
+  }
   function renderMarkdown(container, raw) {
     container.textContent = '';
     if (!raw) return;
@@ -175,6 +202,14 @@
     while (i < n) {
       var trimmed = lines[i].trim();
       if (trimmed === '') { i++; continue; }
+      if (trimmed.charAt(0) === '|') {
+        var trows = [], tj = i;
+        while (tj < n && lines[tj].trim().charAt(0) === '|') { trows.push(splitTableRow(lines[tj])); tj++; }
+        if (trows.length >= 3 && isTableSeparator(trows[1])) {
+          renderTableCards(container, trows[0], trows.slice(2));
+          i = tj; continue;
+        }
+      }
       var ulMatch = /^[-*•]\s+/.exec(trimmed);
       var olMatch = /^\d+[.)]\s+/.exec(trimmed);
       if (ulMatch || olMatch) {
@@ -421,6 +456,7 @@
     btn.type = 'button';
     btn.onclick = function () {
       if (busy) return;
+      cartSource = 'rule';
       cart = {}; s.items.forEach(function (i) { cart[i.productId] = i.quantity; });
       save(CKEY, cart); renderCart();
       btn.disabled = true; btn.textContent = i18nT('suggest.added');
@@ -428,6 +464,7 @@
     group.appendChild(btn); wrap.appendChild(group);
     var log = $('log'); log.appendChild(wrap); log.scrollTop = log.scrollHeight;
   }
+  var cartSource = null; // 'ai' | 'rule' once the assistant prepared (or the shopper added) a cart
   function ask(text) {
     if (busy || !text.trim()) return;
     quickReplyGeneration++;
@@ -435,6 +472,7 @@
     var thinking = $('log').lastChild;
     api('/api/ai/chat', { method: 'POST', body: JSON.stringify({ message: text, preferences: prefs(), intent: 'catalog_discovery' }) }).then(function (r) {
       thinking.remove(); say('a', r.response || i18nT('agent.noAnswer'));
+      if (r.preparedCart) { cartSource = r.mode === 'rule-based' ? 'rule' : 'ai'; }
       if (r.mode === 'rule-based') { say('s', i18nT('agent.ruleBased')); }
       if (r.mode === 'rule-based' && !r.preparedCart && r.suggestion) { addSuggestion(r.suggestion); }
       if (r.preparedCart && r.preparedCart.items) {
@@ -543,6 +581,15 @@
     var ol = el('ol', 'rsteps');
     steps.forEach(function (t) { var li = el('li', 'step'); li.appendChild(el('span', 'ic', '✓')); li.appendChild(el('span', '', t)); ol.appendChild(li); });
     box.appendChild(ol);
+    // Who did what: makes the AI / human split visible. The AI row appears only when an assistant prepared the cart.
+    var who = el('div', 'who');
+    who.appendChild(el('div', 'who-t', i18nT('who.title')));
+    var whoRow = function (icon, text) { var r = el('div', 'who-r'); r.appendChild(el('span', 'who-i', icon)); r.appendChild(el('span', '', text)); who.appendChild(r); };
+    if (cartSource === 'ai') whoRow('🤖', i18nT('who.ai'));
+    else if (cartSource === 'rule') whoRow('⚙️', i18nT('who.rule'));
+    whoRow('🧑', i18nT('who.you'));
+    whoRow('🔒', i18nT('who.cannot'));
+    box.appendChild(who);
     if (d.orderId) box.appendChild(mandateBlock(d.orderId));
     var link = el('a', 'rlink', i18nT('receipt.controlCenter')); link.href = '/dashboard.html'; link.setAttribute('rel', 'noopener');
     box.appendChild(link);
