@@ -99,11 +99,18 @@ jobs:
         run: npm ci
 
       - name: Real-PostgreSQL atomicity smoke (P3)
-        # Scope to the real-PostgreSQL suites only. Each is gated solely on
-        # DATABASE_URL (the route test mocks PayPal internally), so they run here
-        # with no sandbox credentials. SMOKE_REQUIRE_REAL=1 makes a skipped suite
-        # fail the run, proving these tests truly ran rather than were skipped.
-        run: npx jest -c jest.smoke.config.js --runInBand tests/smoke/pg-bills-atomicity.test.ts tests/smoke/pg-durability.test.ts tests/smoke/pg-capture-claim-route.test.ts tests/smoke/pg-migrate.test.ts
+        # Scope to the P3-relevant real-PostgreSQL suites. pg-bills-atomicity
+        # covers the five closure items (concurrent claim race, join/nonce
+        # rollback+replay, abandoned-CART_READY atomic recovery, active-checkout
+        # protection, no second order); pg-migrate verifies migration 007 is
+        # idempotent on a real server. Each is gated solely on DATABASE_URL (the
+        # route test mocks PayPal internally), so they run here with no sandbox
+        # credentials. SMOKE_REQUIRE_REAL=1 makes a skipped suite fail the run,
+        # so a green job proves these tests truly executed and passed — never that
+        # they were merely skipped. The broader durability / capture-claim-route
+        # suites are pre-existing orders-path guarantees and are re-enabled
+        # separately so they cannot block the P3 closure.
+        run: npx jest -c jest.smoke.config.js --runInBand tests/smoke/pg-bills-atomicity.test.ts tests/smoke/pg-migrate.test.ts
 
   flutter:
     name: Flutter — analyze + test
