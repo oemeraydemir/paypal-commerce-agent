@@ -10,6 +10,7 @@ import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/chat_message.dart';
 import 'package:flutter_app/models/evidence_package.dart';
+import 'package:flutter_app/services/error_body.dart';
 import 'package:flutter_app/services/session_service.dart';
 
 /// Raised when the backend responds with a non-2xx status.
@@ -30,7 +31,35 @@ class ApiException implements Exception {
   /// on its own (see [checkout_provider.dart]).
   final bool? settled;
 
-  ApiException(this.statusCode, this.message, {this.settled});
+  /// Structured Checkout Rescue details (backend `details`). All are optional
+  /// and only set when the server actually supplied them, so the UI can
+  /// surface recovery guidance without ever auto-retrying.
+  final String? code;
+  final String? paypalIssue;
+
+  /// Whether the backend says a retry is safe to attempt.
+  final bool retryable;
+
+  /// Suggested wait (seconds) before retrying; 0 when absent.
+  final int retryAfterSeconds;
+
+  /// Whether the backend confirmed the shopper's cart is still saved.
+  final bool cartSaved;
+  final String? suggestion;
+  final String? alternativePayment;
+
+  ApiException(
+    this.statusCode,
+    this.message, {
+    this.settled,
+    this.code,
+    this.paypalIssue,
+    this.retryable = false,
+    this.retryAfterSeconds = 0,
+    this.cartSaved = false,
+    this.suggestion,
+    this.alternativePayment,
+  });
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -496,44 +525,55 @@ class ApiService {
 
   void _ensureOk(http.Response res, String op) {
     if (res.statusCode < 200 || res.statusCode >= 300) {
+      final f = _failureDetails(res);
       throw ApiException(
         res.statusCode,
-        _errMsg(res, op),
-        settled: _settledFlag(res),
+        f.message.isEmpty ? 'HTTP ${res.statusCode} ($op)' : f.message,
+        settled: f.settled,
+        code: f.code,
+        paypalIssue: f.paypalIssue,
+        retryable: f.retryable,
+        retryAfterSeconds: f.retryAfterSeconds,
+        cartSaved: f.cartSaved,
+        suggestion: f.suggestion,
+        alternativePayment: f.alternativePayment,
       );
     }
   }
 
-  /// Reads the backend's verified-completion flag from a 409 capture/cancel
-  /// conflict body (`{ error, details: { settled } }`). Returns `true`/`false`
-  /// only when the backend explicitly supplied a boolean; `null` otherwise so
-  /// the caller can distinguish "server did not assert completion" from a
-  /// verified `false`. See [ApiException.settled].
-  bool? _settledFlag(http.Response res) {
-    try {
-      final b = jsonDecode(res.body);
-      if (b is Map) {
-        final details = b['details'];
-        if (details is Map && details['settled'] is bool) {
-          return details['settled'] as bool;
-        }
-      }
-    } catch (_) {
-      // ignore parse errors, fall through to "not supplied"
-    }
-    return null;
+  /// Parses the backend error body `{ error, details }` in one pass. The
+  /// Checkout Rescue fields (`code`, `paypalIssue`, `retryable`,
+  /// `retryAfterSeconds`, `cartSaved`, `suggestion`, `alternativePayment`) and
+  /// the verified-completion flag (`details.settled`) live under `details`, but
+  /// top-level fallbacks are accepted too for robustness.
+  ({
+    String message,
+    bool? settled,
+    String? code,
+    String? paypalIssue,
+    bool retryable,
+    int retryAfterSeconds,
+    bool cartSaved,
+    String? suggestion,
+    String? alternativePayment,
+  }) _failureDetails(http.Response res) {
+    final f = parseErrorBody(res.body);
+    return (
+      message: f.message,
+      settled: f.settled,
+      code: f.code,
+      paypalIssue: f.paypalIssue,
+      retryable: f.retryable,
+      retryAfterSeconds: f.retryAfterSeconds,
+      cartSaved: f.cartSaved,
+      suggestion: f.suggestion,
+      alternativePayment: f.alternativePayment,
+    );
   }
 
   String _errMsg(http.Response res, [String? op]) {
-    try {
-      final b = jsonDecode(res.body);
-      if (b is Map) {
-        if (b['error'] != null) return b['error'].toString();
-        if (b['message'] != null) return b['message'].toString();
-      }
-    } catch (_) {
-      // ignore parse errors, fall through to generic message
-    }
+    final msg = _failureDetails(res).message;
+    if (msg.isNotEmpty) return msg;
     return 'HTTP ${res.statusCode}${op != null ? ' ($op)' : ''}';
   }
 

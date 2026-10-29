@@ -1420,6 +1420,11 @@ class _CheckoutStatus extends StatelessWidget {
       );
     }
 
+    final rescue = checkout.rescue;
+    if (rescue != null) {
+      widgets.add(_rescuePanel(context, checkout, rescue));
+    }
+
     if (checkout.created != null &&
         checkout.captured == null &&
         !checkout.paypalApproved) {
@@ -1471,6 +1476,89 @@ class _CheckoutStatus extends StatelessWidget {
 
     if (widgets.isEmpty) return const SizedBox.shrink();
     return Column(children: widgets);
+  }
+
+  /// Checkout Rescue panel: recovery guidance straight from the backend. It is
+  /// display-only — we never auto-retry. The only action offered is to
+  /// re-check the existing (pending) order's real status, which the server
+  /// reconciles before doing anything, so it can never double-charge.
+  Widget _rescuePanel(
+    BuildContext context,
+    CheckoutProvider checkout,
+    CheckoutRescue rescue,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final lines = <Widget>[];
+
+    if (rescue.retryAfterSeconds > 0) {
+      lines.add(
+        Text(
+          t(context, 'checkout.rescue.retryAfter')
+              .replaceFirst('%s', '${rescue.retryAfterSeconds}'),
+          style: TextStyle(color: scheme.onPrimaryContainer, fontSize: 12),
+        ),
+      );
+    }
+    if (rescue.cartSaved) {
+      lines.add(
+        Text(
+          t(context, 'checkout.rescue.cartSaved'),
+          style: TextStyle(color: scheme.onPrimaryContainer, fontSize: 12),
+        ),
+      );
+    }
+    if (rescue.suggestion != null && rescue.suggestion!.isNotEmpty) {
+      lines.add(
+        Text(
+          t(context, 'checkout.rescue.suggestion')
+              .replaceFirst('%s', rescue.suggestion!),
+          style: TextStyle(color: scheme.onPrimaryContainer, fontSize: 12),
+        ),
+      );
+    }
+    if (rescue.alternativePayment != null &&
+        rescue.alternativePayment!.isNotEmpty) {
+      lines.add(
+        Text(
+          t(context, 'checkout.rescue.alternative')
+              .replaceFirst('%s', rescue.alternativePayment!),
+          style: TextStyle(color: scheme.onPrimaryContainer, fontSize: 12),
+        ),
+      );
+    }
+    if (checkout.canRetryCapture) {
+      lines.add(
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            icon: const Icon(Icons.fact_check_outlined, size: 18),
+            label: Text(t(context, 'checkout.rescue.checkStatus')),
+            onPressed: checkout.busy ? null : checkout.completeCheckout,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: double.infinity,
+      color: scheme.primaryContainer,
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            t(context, 'checkout.rescue.title'),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: scheme.onPrimaryContainer,
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 4),
+          ...lines,
+        ],
+      ),
+    );
   }
 }
 

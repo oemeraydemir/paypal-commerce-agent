@@ -25,6 +25,27 @@ import 'package:flutter_app/services/api_service.dart';
 /// idle) keeps the pay button disabled. The backend re-checks on order creation.
 enum CartPolicyStatus { idle, checking, allowed, needsApproval, blocked, error }
 
+/// Structured Checkout Rescue guidance surfaced from a backend error. It is
+/// display-only: the client NEVER auto-retries and never fabricates a payment
+/// outcome. All fields are optional and only present when the server sent them.
+class CheckoutRescue {
+  final bool retryable;
+  final int retryAfterSeconds;
+  final bool cartSaved;
+  final String? suggestion;
+  final String? alternativePayment;
+  final String? code;
+
+  const CheckoutRescue({
+    this.retryable = false,
+    this.retryAfterSeconds = 0,
+    this.cartSaved = false,
+    this.suggestion,
+    this.alternativePayment,
+    this.code,
+  });
+}
+
 class CheckoutProvider extends ChangeNotifier {
   final ApiService api;
   final ChatProvider chat;
@@ -46,6 +67,39 @@ class CheckoutProvider extends ChangeNotifier {
   String? _rawError;
   String? get error =>
       _errorKey == null ? _rawError : _localized(_errorKey!, _errorArgs);
+
+  /// Checkout Rescue guidance captured from the last backend error (if any).
+  CheckoutRescue? _rescue;
+  CheckoutRescue? get rescue => _rescue;
+
+  /// A retry of the pending capture is offered when the backend said the
+  /// operation is retryable and there is still an un-captured pending order.
+  /// This re-runs the server-side reconcile-first capture, so it NEVER
+  /// double-charges: it checks the existing order's real state first.
+  bool get canRetryCapture =>
+      _created != null && _captured == null && (_rescue?.retryable ?? false);
+
+  /// Captures the structured rescue guidance from an [ApiException], and clears
+  /// it when the error carries no usable recovery detail.
+  void _applyRescue(ApiException e) {
+    final hasInfo =
+        e.retryable ||
+        e.cartSaved ||
+        e.suggestion != null ||
+        e.alternativePayment != null ||
+        e.code != null ||
+        e.paypalIssue != null;
+    _rescue = hasInfo
+        ? CheckoutRescue(
+            retryable: e.retryable,
+            retryAfterSeconds: e.retryAfterSeconds,
+            cartSaved: e.cartSaved,
+            suggestion: e.suggestion,
+            alternativePayment: e.alternativePayment,
+            code: e.code ?? e.paypalIssue,
+          )
+        : null;
+  }
 
   String? _statusMessageKey;
   List<String> _statusMessageArgs = const [];
@@ -270,12 +324,14 @@ class CheckoutProvider extends ChangeNotifier {
     _errorKey = null;
     _errorArgs = const [];
     _rawError = null;
+    _rescue = null;
   }
 
   void _setRawError(String message) {
     _errorKey = null;
     _errorArgs = const [];
     _rawError = message;
+    _rescue = null;
   }
 
   void _setStatusMessage(String key, [List<Object?> args = const []]) {
@@ -427,6 +483,7 @@ class CheckoutProvider extends ChangeNotifier {
       try {
         recovered = await api.recoverPendingOrder(token);
       } on ApiException catch (e) {
+        _applyRescue(e);
         _setError('checkout.errorCheckoutApi', [e.statusCode, e.message]);
         notifyListeners();
         return true;
@@ -593,6 +650,7 @@ class CheckoutProvider extends ChangeNotifier {
       );
       if (!launched) _setError('checkout.errorOpenApprovalPage');
     } on ApiException catch (e) {
+      _applyRescue(e);
       _setError('checkout.errorCheckoutApi', [e.statusCode, e.message]);
       _clearStatusMessage();
     } catch (e) {
@@ -705,6 +763,7 @@ class CheckoutProvider extends ChangeNotifier {
       // other conflict (bare idempotent 409, unverified/failed reconciliation)
       // is unresolved: keep the pending order so the user can retry and the
       // webhook/reconciler can settle it. Never invent `PAID`/`COMPLETED`.
+      _applyRescue(e);
       final msg = e.message.toLowerCase();
       if (e.statusCode == 409 &&
           msg.contains('already captured') &&
@@ -771,6 +830,7 @@ class CheckoutProvider extends ChangeNotifier {
       // "already captured" only proves payment when the backend verified a real
       // PayPal COMPLETED capture (`details.settled == true`); otherwise it is
       // unresolved and the pending order must be kept, never fabricated as PAID.
+      _applyRescue(e);
       final msg = e.message.toLowerCase();
       if (e.statusCode == 409 &&
           msg.contains('already captured') &&

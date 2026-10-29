@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import 'package:flutter_app/l10n/app_strings.dart';
@@ -8,12 +9,15 @@ import 'package:flutter_app/services/api_service.dart';
 /// The Dispute Evidence Package section of the receipt.
 ///
 /// Shows the Order-to-Resolution Passport (order, the policy decisions the
-/// server actually enforced, the human approval and the capture), the
-/// integrity block and an independent verification.
+/// server actually enforced, the human approval and the capture), the rule
+/// details the server recorded, the dispute-defense statement, the integrity
+/// block and an independent verification.
 ///
 /// The package is prepared for PRESENTATION only: it is never submitted to
 /// PayPal automatically, and nothing here is ever inferred locally — every
-/// value comes from the server's signed payload.
+/// value comes from the server's signed payload. When a server field is absent
+/// (older backends) the section degrades gracefully and never breaks the
+/// receipt.
 class EvidencePackageSection extends StatefulWidget {
   final ApiService api;
   final String orderId;
@@ -36,6 +40,9 @@ class _EvidencePackageSectionState extends State<EvidencePackageSection> {
   bool _loading = false;
   bool _failed = false;
   bool _verifying = false;
+  bool _rulesExpanded = false;
+  bool _disputeExpanded = false;
+  bool _copied = false;
 
   String _s(String key) => AppStrings.get(widget.lang, key);
 
@@ -55,6 +62,36 @@ class _EvidencePackageSectionState extends State<EvidencePackageSection> {
     if (digest.isEmpty) return '—';
     if (digest.length <= 16) return digest;
     return '${digest.substring(0, 16)}…';
+  }
+
+  String _stepLabel(String kind) {
+    switch (kind) {
+      case 'ORDER_CREATED':
+        return _s('evidence.step.created');
+      case 'POLICY_EVALUATED':
+        return _s('evidence.step.policy');
+      case 'HUMAN_APPROVAL':
+        return _s('evidence.step.approval');
+      case 'PAYMENT_CAPTURED':
+        return _s('evidence.step.captured');
+      default:
+        return kind;
+    }
+  }
+
+  String _stepIcon(String kind) {
+    switch (kind) {
+      case 'ORDER_CREATED':
+        return '🛍️';
+      case 'POLICY_EVALUATED':
+        return '⚖️';
+      case 'HUMAN_APPROVAL':
+        return '✍️';
+      case 'PAYMENT_CAPTURED':
+        return '💰';
+      default:
+        return '•';
+    }
   }
 
   Future<void> _load() async {
@@ -97,6 +134,12 @@ class _EvidencePackageSectionState extends State<EvidencePackageSection> {
     }
   }
 
+  Future<void> _copyNarrative(EvidenceDisputeDefense defense) async {
+    await Clipboard.setData(ClipboardData(text: defense.narrative));
+    if (!mounted) return;
+    setState(() => _copied = true);
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -137,6 +180,14 @@ class _EvidencePackageSectionState extends State<EvidencePackageSection> {
             ),
           if (_pkg != null) ...[
             _passport(scheme),
+            if (_hasRules) ...[
+              const SizedBox(height: 8),
+              _rulesBlock(scheme),
+            ],
+            if (_pkg!.disputeDefense != null) ...[
+              const SizedBox(height: 8),
+              _disputeBlock(scheme, _pkg!.disputeDefense!),
+            ],
             const SizedBox(height: 8),
             _integrity(scheme),
             const SizedBox(height: 6),
@@ -147,58 +198,75 @@ class _EvidencePackageSectionState extends State<EvidencePackageSection> {
     );
   }
 
-  // The Order-to-Resolution Passport: order, policy decisions, human approval
-  // and capture, in one timeline.
+  bool get _hasRules =>
+      _pkg!.policyEvents.any((e) => e.ruleDetails.isNotEmpty);
+
+  // The Order-to-Resolution Passport. When the server sends a timeline we
+  // render it verbatim (it is the authoritative, chronological record).
+  // Otherwise we fall back to composing one from the order + policy events.
   Widget _passport(ColorScheme scheme) {
     final pkg = _pkg!;
     final rows = <Widget>[];
 
-    rows.add(
-      _step(
-        scheme,
-        _s('evidence.step.created'),
-        pkg.orderId,
-        _stamp(pkg.orderCreatedAt),
-      ),
-    );
-
-    for (final event in pkg.policyEvents) {
-      final detail = event.violatedRules.isEmpty
-          ? event.reason
-          : (event.reason.isEmpty
-                ? event.violatedRules.join(', ')
-                : '${event.reason} · ${event.violatedRules.join(', ')}');
+    if (pkg.timeline.isNotEmpty) {
+      for (final step in pkg.timeline) {
+        final detail = step.decision.isNotEmpty
+            ? '[${step.decision}]${step.detail.isEmpty ? '' : ' ${step.detail}'}'
+            : step.detail;
+        rows.add(
+          _step(
+            scheme,
+            _stepLabel(step.step),
+            detail,
+            _stamp(step.at),
+            icon: _stepIcon(step.step),
+          ),
+        );
+      }
+    } else {
       rows.add(
-        _step(
-          scheme,
-          '${_s('evidence.step.policy')} — ${event.decision}',
-          detail,
-          _stamp(event.timestamp),
-        ),
+        _step(scheme, _s('evidence.step.created'), pkg.orderId,
+            _stamp(pkg.orderCreatedAt)),
       );
-    }
-    if (pkg.policyEvents.isEmpty) {
-      rows.add(
-        _step(scheme, _s('evidence.noPolicyEvents'), '', '', icon: '·'),
-      );
-    }
 
-    final approval = switch (pkg.approvalState) {
-      'approved' => _s('evidence.approval.approved'),
-      'awaiting_approval' => _s('evidence.approval.awaiting'),
-      _ => _s('evidence.approval.notRecorded'),
-    };
-    rows.add(_step(scheme, _s('evidence.step.approval'), approval, ''));
+      for (final event in pkg.policyEvents) {
+        final detail = event.violatedRules.isEmpty
+            ? event.reason
+            : (event.reason.isEmpty
+                  ? event.violatedRules.join(', ')
+                  : '${event.reason} · ${event.violatedRules.join(', ')}');
+        rows.add(
+          _step(
+            scheme,
+            '${_s('evidence.step.policy')} — ${event.decision}',
+            detail,
+            _stamp(event.timestamp),
+          ),
+        );
+      }
+      if (pkg.policyEvents.isEmpty) {
+        rows.add(
+          _step(scheme, _s('evidence.noPolicyEvents'), '', '', icon: '·'),
+        );
+      }
 
-    if (pkg.captureId != null) {
-      rows.add(
-        _step(
-          scheme,
-          _s('evidence.step.captured'),
-          pkg.captureId!,
-          _stamp(pkg.orderUpdatedAt),
-        ),
-      );
+      final approval = switch (pkg.approvalState) {
+        'approved' => _s('evidence.approval.approved'),
+        'awaiting_approval' => _s('evidence.approval.awaiting'),
+        _ => _s('evidence.approval.notRecorded'),
+      };
+      rows.add(_step(scheme, _s('evidence.step.approval'), approval, ''));
+
+      if (pkg.captureId != null) {
+        rows.add(
+          _step(
+            scheme,
+            _s('evidence.step.captured'),
+            pkg.captureId!,
+            _stamp(pkg.orderUpdatedAt),
+          ),
+        );
+      }
     }
 
     return Column(
@@ -211,6 +279,159 @@ class _EvidencePackageSectionState extends State<EvidencePackageSection> {
         const SizedBox(height: 4),
         ...rows,
       ],
+    );
+  }
+
+  // Collapsible list of the rule details the server recorded (which rule
+  // fired, expected vs actual). Grouped by the policy event that produced them.
+  Widget _rulesBlock(ColorScheme scheme) {
+    final rows = <Widget>[];
+    for (final event in _pkg!.policyEvents) {
+      if (event.ruleDetails.isEmpty) continue;
+      for (final rule in event.ruleDetails) {
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${rule.type} — ${rule.rule}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                if (rule.message.isNotEmpty)
+                  Text(
+                    rule.message,
+                    style: TextStyle(
+                      color: scheme.onSurfaceVariant,
+                      fontSize: 11,
+                    ),
+                  ),
+                Text(
+                  '${_s('evidence.rule.expected')}: ${rule.expected.isEmpty ? '—' : rule.expected} · '
+                  '${_s('evidence.rule.actual')}: ${rule.actual.isEmpty ? '—' : rule.actual}',
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    return _expando(
+      scheme,
+      expanded: _rulesExpanded,
+      title: _s('evidence.rule.title'),
+      subtitle: '${_pkg!.policyEvents.fold<int>(0, (n, e) => n + e.ruleDetails.length)}',
+      onToggle: () => setState(() => _rulesExpanded = !_rulesExpanded),
+      icon: Icons.rule,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+    );
+  }
+
+  // Collapsible dispute-defense statement with the narrative and a copy action.
+  // The narrative is presented as evidence, never as a guaranteed win.
+  Widget _disputeBlock(ColorScheme scheme, EvidenceDisputeDefense defense) {
+    return _expando(
+      scheme,
+      expanded: _disputeExpanded,
+      title: _s('evidence.dispute.title'),
+      subtitle: defense.claimType,
+      onToggle: () => setState(() => _disputeExpanded = !_disputeExpanded),
+      icon: Icons.description_outlined,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _s('evidence.dispute.note'),
+            style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 11),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            defense.narrative,
+            style: const TextStyle(fontSize: 12, height: 1.4),
+          ),
+          const SizedBox(height: 6),
+          TextButton.icon(
+            icon: Icon(_copied ? Icons.check : Icons.copy, size: 16),
+            label: Text(
+              _copied ? _s('evidence.dispute.copied') : _s('evidence.dispute.copy'),
+            ),
+            onPressed: () => _copyNarrative(defense),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // A lightweight collapsible section (no extra dependency).
+  Widget _expando(
+    ColorScheme scheme, {
+    required bool expanded,
+    required String title,
+    required String subtitle,
+    required VoidCallback onToggle,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                children: [
+                  Icon(icon, size: 18, color: scheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                        if (subtitle.isNotEmpty)
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              color: scheme.onSurfaceVariant,
+                              fontSize: 11,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: child,
+            ),
+        ],
+      ),
     );
   }
 

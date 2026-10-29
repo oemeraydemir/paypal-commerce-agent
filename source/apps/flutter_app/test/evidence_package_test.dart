@@ -42,8 +42,54 @@ Map<String, dynamic> samplePackage() => <String, dynamic>{
       'amountMinor': 2000,
       'currency': 'EUR',
       'policySnapshot': <String, dynamic>{},
+      'ruleDetails': <dynamic>[
+        <String, dynamic>{
+          'type': 'CONFIRMATION_THRESHOLD_EXCEEDED',
+          'rule': 'confirmationThresholdMinor',
+          'expected': 1500,
+          'actual': 2000,
+          'message': 'Cart total 2000 exceeds confirmation threshold.',
+        },
+      ],
     },
   ],
+  'timeline': <dynamic>[
+    <String, dynamic>{
+      'step': 'ORDER_CREATED',
+      'at': '2026-10-29T13:01:00.000Z',
+      'detail': 'order-1',
+    },
+    <String, dynamic>{
+      'step': 'POLICY_EVALUATED',
+      'at': '2026-10-29T13:01:10.000Z',
+      'decision': 'REQUIRE_CONFIRMATION',
+      'detail': 'Cart exceeds confirmation threshold',
+    },
+    <String, dynamic>{
+      'step': 'HUMAN_APPROVAL',
+      'at': '2026-10-29T13:02:00.000Z',
+      'detail': 'approved',
+    },
+    <String, dynamic>{
+      'step': 'PAYMENT_CAPTURED',
+      'at': '2026-10-29T13:02:00.000Z',
+      'detail': 'CAP-1',
+    },
+  ],
+  'disputeDefense': <String, dynamic>{
+    'templateVersion': 'aicafe.dispute-defense/1',
+    'claimType': 'AUTHORIZED_CHECKOUT',
+    'orderReference': 'order-1',
+    'amountMinor': 2000,
+    'currency': 'EUR',
+    'keyFacts': <String>['Order order-1 was created.'],
+    'evidencePointers': <dynamic>[
+      <String, dynamic>{'label': 'Timeline', 'pointer': 'timeline[]'},
+    ],
+    'recommendedResponse': 'This is an authorized checkout.',
+    'narrative':
+        'DISPUTE / CHARGEBACK DEFENSE STATEMENT\nOrder reference: order-1',
+  },
   'humanApproval': <String, dynamic>{
     'authority': 'buyer_approval_at_paypal',
     'state': 'approved',
@@ -115,6 +161,53 @@ void main() {
       raw.remove('humanApproval');
       final pkg = EvidencePackage.tryParse(raw)!;
       expect(pkg.approvalState, 'not_recorded');
+    });
+
+    test('parses timeline, rule details and dispute defense (forward fields)', () {
+      final pkg = EvidencePackage.tryParse(samplePackage())!;
+      expect(pkg.timeline, hasLength(4));
+      expect(pkg.timeline.first.step, 'ORDER_CREATED');
+      expect(pkg.timeline.last.detail, 'CAP-1');
+
+      expect(pkg.disputeDefense, isNotNull);
+      expect(pkg.disputeDefense!.templateVersion, 'aicafe.dispute-defense/1');
+      expect(pkg.disputeDefense!.orderReference, 'order-1');
+      expect(pkg.disputeDefense!.amountMinor, 2000);
+      expect(pkg.disputeDefense!.currency, 'EUR');
+      expect(pkg.disputeDefense!.keyFacts, isNotEmpty);
+      expect(pkg.disputeDefense!.evidencePointers, hasLength(1));
+      expect(pkg.disputeDefense!.narrative, contains('DEFENSE'));
+      expect(pkg.disputeDefense!.recommendedResponse, isNotEmpty);
+
+      final event = pkg.policyEvents.first;
+      expect(event.ruleDetails, hasLength(1));
+      expect(event.ruleDetails.first.type, 'CONFIRMATION_THRESHOLD_EXCEEDED');
+      expect(event.ruleDetails.first.rule, 'confirmationThresholdMinor');
+      expect(event.ruleDetails.first.expected, '1500');
+      expect(event.ruleDetails.first.actual, '2000');
+      expect(event.ruleDetails.first.message, isNotEmpty);
+    });
+
+    test('older payloads without the new fields still parse (backward compatible)', () {
+      final raw = samplePackage();
+      raw.remove('timeline');
+      raw.remove('disputeDefense');
+      ((raw['policyEvents'] as List).first as Map<String, dynamic>)
+          .remove('ruleDetails');
+      final pkg = EvidencePackage.tryParse(raw)!;
+      expect(pkg.timeline, isEmpty);
+      expect(pkg.disputeDefense, isNull);
+      expect(pkg.policyEvents.first.ruleDetails, isEmpty);
+      expect(pkg.orderId, 'order-1');
+      expect(pkg.status, 'PAID');
+      expect(pkg.captureId, 'CAP-1');
+    });
+
+    test('a malformed dispute-defense block degrades to null', () {
+      final raw = samplePackage();
+      raw['disputeDefense'] = <String, dynamic>{'foo': 'bar'};
+      final pkg = EvidencePackage.tryParse(raw)!;
+      expect(pkg.disputeDefense, isNull);
     });
   });
 
