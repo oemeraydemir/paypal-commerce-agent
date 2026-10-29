@@ -172,3 +172,31 @@ describe('configuration errors', () => {
     expect(JSON.stringify(health.body)).not.toMatch(/PRIVATE KEY/);
   });
 });
+
+describe('Cart Mandate share link (receipt QR)', () => {
+  test('the order id plus the mandate signature opens a public verification, with no session', async () => {
+    const orderId = await createOrder(sess);
+    const m = (await request(app).get(`/api/orders/${orderId}/mandate`).set(sess.headers)).body;
+    const r = await request(app).post('/api/mandates/public').send({ orderId, signature: m.signature });
+    expect(r.status).toBe(200);
+    expect(r.body.verification.valid).toBe(true);
+    expect(r.body.signed.mandate.constraints.agentMayAuthorizePayment).toBe(false);
+    expect(r.headers['cache-control']).toBe('no-store');
+    expect(JSON.stringify(r.body)).not.toContain(sess.token);
+    expect((await request(app).get(`/api/mandates/public/${orderId}/${m.signature}`)).status).toBe(404);
+  });
+
+  test('a wrong, malformed or foreign signature is indistinguishable from an unknown order', async () => {
+    const orderId = await createOrder(sess);
+    const other = await createOrder(sess, [{ productId: 'coffee', quantity: 2 }]);
+    const otherSig = (await request(app).get(`/api/orders/${other}/mandate`).set(sess.headers)).body.signature;
+    const wrong = await request(app).post('/api/mandates/public').send({ orderId, signature: otherSig });
+    const garbage = await request(app).post('/api/mandates/public').send({ orderId, signature: 'not-a-signature!' });
+    const unknown = await request(app).post('/api/mandates/public').send({ orderId: 'does-not-exist', signature: otherSig });
+    const noBody = await request(app).post('/api/mandates/public').send({});
+    for (const res of [wrong, garbage, unknown, noBody]) {
+      expect(res.status).toBe(404);
+      expect(res.body.error ?? res.body.message ?? '').not.toMatch(/signature/i);
+    }
+  });
+});

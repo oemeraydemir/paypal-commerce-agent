@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import { requireSession } from '../middleware/session-auth';
 import { OrderService } from '../orders/service';
@@ -29,6 +30,31 @@ router.get('/orders/:orderId/mandate', requireSession, (req, res, next) => {
 router.post('/mandates/verify', (req, res, next) => {
   try {
     res.json(verifyCartMandate(req.body ?? {}, (id) => orderService.getById(id)));
+  } catch (err) {
+    next(mapConfigError(err));
+  }
+});
+
+// Receipt QR / share link target. The link carries the order id and the Ed25519 signature of that
+// order's mandate. Only someone who was handed the link by the shopper can produce a matching pair
+// (the signature cannot be forged without the signing key), so no session is needed and nothing else
+// about the order can be read. A wrong pair is indistinguishable from an unknown order.
+const SIGNATURE_RE = /^[A-Za-z0-9_-]{20,200}$/;
+// POST (not GET) so the signature travels in the body and never lands in request logs or proxies.
+router.post('/mandates/public', (req, res, next) => {
+  try {
+    const { orderId, signature } = (req.body ?? {}) as { orderId?: unknown; signature?: unknown };
+    const order =
+      typeof orderId === 'string' && typeof signature === 'string' && SIGNATURE_RE.test(signature)
+        ? orderService.getById(orderId)
+        : undefined;
+    if (!order) throw new AppError(404, 'Mandate not found');
+    const signed = signCartMandate(order);
+    const a = Buffer.from(signed.signature);
+    const b = Buffer.from(signature as string);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new AppError(404, 'Mandate not found');
+    res.set('Cache-Control', 'no-store');
+    res.json({ signed, verification: verifyCartMandate(signed, (id) => orderService.getById(id)) });
   } catch (err) {
     next(mapConfigError(err));
   }

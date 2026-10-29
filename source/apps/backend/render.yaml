@@ -37,6 +37,9 @@ services:
         fromDatabase:
           name: aicafe-db
           property: connectionString
+      # This blueprint uses the same-region private database URL.
+      - key: DATABASE_SSL
+        value: false
       # Refuse to boot without a database instead of silently losing orders.
       # FIX-05 (R1/R2/R3): with REQUIRE_PERSISTENCE=true the service refuses to start in ANY
       # environment when DATABASE_URL is missing or the database is unreachable — it never

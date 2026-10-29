@@ -36,6 +36,16 @@ describe('initPersistence: REQUIRE_PERSISTENCE=true must never fall back to memo
     }
   );
 
+  test('production refuses volatile storage even when the override is explicitly false', async () => {
+    env.NODE_ENV = 'production';
+    env.DATABASE_URL = undefined;
+    env.REQUIRE_PERSISTENCE = 'false';
+
+    await expect(initPersistence()).rejects.toThrow(
+      /NODE_ENV=production requires DATABASE_URL/
+    );
+  });
+
   test('an unreachable database fails startup with a sanitized message (no connection string)', async () => {
     env.NODE_ENV = 'development';
     env.DATABASE_URL = 'postgres://aicafe:s3cret-pw-do-not-leak@127.0.0.1:1/aicafe_test';

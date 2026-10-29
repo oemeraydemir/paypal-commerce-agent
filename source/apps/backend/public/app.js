@@ -560,7 +560,30 @@
       }).catch(function (e) { out.textContent = 'Could not check the mandate: ' + e.message; btn.disabled = false; });
     };
     wrap.appendChild(btn); wrap.appendChild(out);
+    wrap.appendChild(qrBlock(orderId));
     return wrap;
+  }
+  // Receipt QR: scans to a public page that checks the signed Cart Mandate (/verify.html#<orderId>.<signature>).
+  // The fragment is never sent to a server log; the signature in it is what authorises the read-only check.
+  function verifyLink(orderId, signature) { return location.origin + '/verify.html#' + orderId + '.' + signature; }
+  function qrBlock(orderId) {
+    var box = el('div', 'qr'); box.hidden = true;
+    try {
+      if (typeof qrcode !== 'function') return box;
+      api('/api/orders/' + encodeURIComponent(orderId) + '/mandate').then(function (m) {
+        if (!m || typeof m.signature !== 'string') return;
+        var link = verifyLink(orderId, m.signature);
+        var q = qrcode(0, 'M'); q.addData(link); q.make();
+        var img = document.createElement('img');
+        img.src = q.createDataURL(4, 4); img.alt = i18nT('qr.alt'); img.width = img.height = q.getModuleCount() * 4 + 8;
+        box.appendChild(img);
+        box.appendChild(el('div', 'mut', i18nT('qr.hint')));
+        var a = el('a', 'rlink', i18nT('qr.open')); a.href = link; a.setAttribute('rel', 'noopener'); a.setAttribute('target', '_blank');
+        box.appendChild(a);
+        box.hidden = false;
+      }).catch(function () { /* the QR is an extra; the receipt stays complete without it */ });
+    } catch (e) { /* same */ }
+    return box;
   }
   function renderReceipt(d) {
     var box = $('receipt'); box.textContent = ''; box.hidden = false;

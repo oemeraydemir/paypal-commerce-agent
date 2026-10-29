@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:http/http.dart' as http;
 
 import 'package:flutter_app/models/order.dart';
+import 'package:flutter_app/models/paid_receipt.dart';
 import 'package:flutter_app/models/product.dart';
 import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/models/cart.dart';
@@ -116,6 +117,9 @@ class ApiService {
       _baseUrl = (baseUrl ?? resolveBaseUrl()).replaceFirst(RegExp(r'/$'), '');
 
   Uri _url(String path) => Uri.parse('$_baseUrl$path');
+
+  /// Base URL used to build links that are opened outside the app (receipt QR).
+  String get publicBaseUrl => _baseUrl;
 
   /// Ensures a server-issued session exists, minting one via `POST /api/sessions`
   /// when the store is empty. Throws [SessionException] on failure so callers
@@ -377,6 +381,36 @@ class ApiService {
     return OrderCaptureResult.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
     );
+  }
+
+  /// Recovers a payment whose deep-link return arrives when the app has no
+  /// local pending order (e.g. after an app restart). Backed by
+  /// `GET /api/orders/pending?token=`. Returns `null` when there is no matching
+  /// pending order.
+  Future<OrderCreateResult?> recoverPendingOrder(String token) async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.get(
+        _url('/api/orders/pending?token=$token'),
+        headers: headers,
+      );
+    });
+    if (res.statusCode == 404 || res.statusCode == 204) return null;
+    _ensureOk(res, 'recoverPendingOrder');
+    return OrderCreateResult.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// The shopper's own signed Cart Mandate for an order (`GET /api/orders/:id/mandate`).
+  /// Returns `null` when the payload is not what the receipt expects; the
+  /// receipt then simply has no QR code.
+  Future<MandateSummary?> getMandate(String orderId) async {
+    final res = await _executeWithAuth(
+      (headers) =>
+          _client.get(_url('/api/orders/$orderId/mandate'), headers: headers),
+    );
+    _ensureOk(res, 'getMandate');
+    return MandateSummary.tryParse(jsonDecode(res.body));
   }
 
   /// Cancels a not-yet-captured order. Backed by `POST /api/orders/:orderId/cancel`

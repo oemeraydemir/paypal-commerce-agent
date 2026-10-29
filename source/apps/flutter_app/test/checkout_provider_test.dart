@@ -123,6 +123,8 @@ void main() {
       'merges AI and manual items and captures only after PayPal approval',
       () async {
         final capturedRequests = <http.Request>[];
+        var createCalls = 0;
+        var cleanupCalls = 0;
         final api = ApiService(
           baseUrl: 'http://localhost:3000',
           storage: InMemorySessionStorage(),
@@ -158,6 +160,7 @@ void main() {
               );
             }
             if (request.url.path == '/api/orders/create') {
+              createCalls++;
               final body = jsonDecode(request.body) as Map<String, dynamic>;
               expect(body['items'], [
                 {'productId': 'coffee', 'quantity': 1},
@@ -189,9 +192,10 @@ void main() {
               );
             }
             if (request.url.path.startsWith('/api/ai/cart/')) {
+              cleanupCalls++;
               return http.Response(
-                jsonEncode({'message': 'AI-prepared cart cleared'}),
-                200,
+                jsonEncode({'error': 'temporary cleanup failure'}),
+                503,
               );
             }
             return http.Response('Not found', 404);
@@ -260,6 +264,12 @@ void main() {
           isEmpty,
           reason: 'the cart is cleared after a successful capture',
         );
+        expect(chat.lastPreparedCart, isNull,
+            reason: 'local AI cart is consumed even when server cleanup fails');
+        expect(cleanupCalls, 1);
+        expect(createCalls, 1);
+        expect(checkout.error, isNotNull,
+            reason: 'cleanup failure is shown as a notice, not a retryable cart');
         expect(
           capturedRequests.where(
             (request) => request.url.path.contains('/capture'),
@@ -499,5 +509,155 @@ void main() {
       expect(capturedKeys[0], isNotEmpty);
       expect(capturedKeys[0], capturedKeys[1]);
     });
+    test('F4: reuses the key after an ambiguous create failure and rotates for a changed cart', () async {
+      final keys = <String>[];
+      var createCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://localhost:3000',
+        storage: InMemorySessionStorage(),
+        client: withSession((request) async {
+          if (request.url.path == '/api/orders/create') {
+            createCalls++;
+            keys.add(request.headers['idempotency-key'] ?? '');
+            if (createCalls <= 2) return http.Response('upstream timeout', 502);
+            return http.Response(
+              jsonEncode({
+                'orderId': 'order-3',
+                'paypalOrderId': 'paypal-3',
+                'status': 'PAYMENT_PENDING',
+                'origin': 'MANUAL',
+                'totalMinor': 500,
+                'totalFormatted': 'EUR 5.00',
+                'currency': 'EUR',
+                'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
+              }),
+              201,
+            );
+          }
+          return http.Response('Not found', 404);
+        }),
+      );
+      final chat = ChatProvider(api);
+      final checkout = CheckoutProvider(api, chat, launchApproval: (_) async => true);
+      addTearDown(checkout.dispose);
+      addTearDown(api.dispose);
+
+      checkout.addProduct('coffee');
+      await checkout.startCheckout();
+      await checkout.startCheckout();
+      expect(keys, hasLength(2));
+      expect(keys[0], isNotEmpty);
+      expect(keys[1], keys[0]);
+
+      checkout.addProduct('latte');
+      await checkout.startCheckout();
+      expect(keys, hasLength(3));
+      expect(keys[2], isNot(keys[0]));
+      expect(checkout.created?.orderId, 'order-3');
+    });
+
+    test('cold PayPal success return recovers the matching pending order before capture', () async {
+      var recoveryCalls = 0;
+      var captureCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://localhost:3000',
+        storage: InMemorySessionStorage(),
+        client: withSession((request) async {
+          if (request.url.path == '/api/orders/pending') {
+            recoveryCalls++;
+            expect(request.url.queryParameters['token'], 'paypal-recovered-1');
+            return http.Response(
+              jsonEncode({
+                'orderId': 'order-recovered-1',
+                'paypalOrderId': 'paypal-recovered-1',
+                'status': 'PAYMENT_PENDING',
+                'origin': 'MANUAL',
+                'totalMinor': 500,
+                'totalFormatted': 'EUR 5.00',
+                'currency': 'EUR',
+                'approvalUrl': null,
+              }),
+              200,
+            );
+          }
+          if (request.url.path == '/api/orders/order-recovered-1/capture') {
+            captureCalls++;
+            return http.Response(
+              jsonEncode({
+                'orderId': 'order-recovered-1',
+                'status': 'PAID',
+                'paypalCaptureId': 'capture-recovered-1',
+                'paypalStatus': 'COMPLETED',
+              }),
+              200,
+            );
+          }
+          return http.Response('Not found', 404);
+        }),
+      );
+      final chat = ChatProvider(api);
+      final checkout = CheckoutProvider(api, chat, launchApproval: (_) async => true);
+      addTearDown(checkout.dispose);
+      addTearDown(api.dispose);
+
+      final handled = await checkout.handlePayPalReturn(Uri.parse(
+        'paypalcommerceagent://checkout/success?token=paypal-recovered-1',
+      ));
+      expect(handled, isTrue);
+      expect(recoveryCalls, 1);
+      expect(checkout.created?.orderId, 'order-recovered-1');
+      expect(checkout.paypalApproved, isTrue);
+
+      await checkout.completeCheckout();
+      expect(captureCalls, 1);
+      expect(checkout.captured?.status, 'PAID');
+    });
+
+    test('verified already-paid cancel conflict consumes the cart', () async {
+      var createCalls = 0;
+      final api = ApiService(
+        baseUrl: 'http://localhost:3000',
+        storage: InMemorySessionStorage(),
+        client: withSession((request) async {
+          if (request.url.path == '/api/orders/create') {
+            createCalls++;
+            return http.Response(
+              jsonEncode({
+                'orderId': 'order-paid-1',
+                'paypalOrderId': 'paypal-paid-1',
+                'status': 'PAYMENT_PENDING',
+                'origin': 'MANUAL',
+                'totalMinor': 500,
+                'totalFormatted': 'EUR 5.00',
+                'currency': 'EUR',
+                'approvalUrl': 'https://www.sandbox.paypal.com/checkout',
+              }),
+              201,
+            );
+          }
+          if (request.url.path == '/api/orders/order-paid-1/cancel') {
+            return http.Response(
+              jsonEncode({'error': 'Order already captured', 'details': {'settled': true}}),
+              409,
+            );
+          }
+          return http.Response('Not found', 404);
+        }),
+      );
+      final chat = ChatProvider(api);
+      final checkout = CheckoutProvider(api, chat, launchApproval: (_) async => true);
+      addTearDown(checkout.dispose);
+      addTearDown(api.dispose);
+
+      checkout.addProduct('coffee');
+      await checkout.startCheckout();
+      await checkout.cancelCheckout();
+      expect(checkout.captured?.status, 'PAID');
+      expect(checkout.cart, isEmpty);
+      await checkout.startCheckout();
+      expect(createCalls, 1);
+    });
+
+
   });
 }

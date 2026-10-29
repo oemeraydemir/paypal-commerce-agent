@@ -7,6 +7,9 @@
 // real values (or use a .env) and run `npm run test:smoke`.
 
 process.env.NODE_ENV = 'test';
+// Existing API integration suites exercise the sanitized public demo contract.
+// dashboard-access.test.ts overrides this in its explicit private-mode cases.
+process.env.DASHBOARD_PUBLIC = 'true';
 process.env.PAYPAL_ENABLED = 'true';
 process.env.PAYPAL_CLIENT_ID = 'test-client-id';
 process.env.PAYPAL_CLIENT_SECRET = 'test-client-secret';

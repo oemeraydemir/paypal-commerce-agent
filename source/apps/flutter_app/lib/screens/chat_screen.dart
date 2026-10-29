@@ -19,6 +19,8 @@ import 'package:flutter_app/providers/shopper_profile_provider.dart';
 import 'package:flutter_app/services/api_service.dart';
 import 'package:flutter_app/services/speech_to_text_voice_recognizer.dart';
 import 'package:flutter_app/services/voice_controller.dart';
+import 'package:flutter_app/utils/markdown_tables.dart';
+import 'package:flutter_app/widgets/paid_receipt_card.dart';
 import 'package:flutter_app/widgets/barista_avatar.dart';
 import 'package:flutter_app/widgets/assistant_quick_replies.dart';
 import 'package:flutter_app/widgets/typing_indicator.dart';
@@ -71,12 +73,95 @@ class _MarkdownText extends StatelessWidget {
     return out;
   }
 
+  Widget _textBlock(String src, Color linkColor) {
+    final normalized = src.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
+    final withBullets = normalized.replaceAllMapped(_bulletRe, (m) => '${m.group(1)}• ');
+    return Text.rich(TextSpan(style: style, children: _spans(withBullets, linkColor)));
+  }
+
+  /// A Markdown table drawn as cards: one rounded card per row, first column as
+  /// the title, the other columns as label/value pairs (parity with the web).
+  Widget _tableCards(BuildContext context, MdBlock block, Color linkColor) {
+    final scheme = Theme.of(context).colorScheme;
+    final header = block.header!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final cells in block.rows!)
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: scheme.outlineVariant),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text.rich(
+                  TextSpan(
+                    style: (style ?? const TextStyle()).copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                    children: _spans(cells.isEmpty ? '' : cells.first, linkColor),
+                  ),
+                ),
+                for (var k = 1; k < cells.length; k++)
+                  if (cells[k].isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            k < header.length ? header[k] : '',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text.rich(
+                              TextSpan(
+                                style: style,
+                                children: _spans(cells[k], linkColor),
+                              ),
+                              textAlign: TextAlign.right,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final linkColor = Theme.of(context).colorScheme.primary;
-    final normalized = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
-    final withBullets = normalized.replaceAllMapped(_bulletRe, (m) => '${m.group(1)}• ');
-    return Text.rich(TextSpan(style: style, children: _spans(withBullets, linkColor)));
+    final blocks = splitMarkdownBlocks(text);
+    // No table: exactly the previous single-Text rendering.
+    if (!blocks.any((b) => b.isTable)) return _textBlock(text, linkColor);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final b in blocks)
+          if (b.isTable)
+            _tableCards(context, b, linkColor)
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: _textBlock(b.text!, linkColor),
+            ),
+      ],
+    );
   }
 }
 
@@ -536,7 +621,31 @@ class _ChatScreenState extends State<ChatScreen> {
                     : const SizedBox.shrink(),
           ),
           Consumer<CheckoutProvider>(
-            builder: (ctx, checkout, _) => _CheckoutStatus(checkout: checkout),
+            builder: (ctx, checkout, _) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _CheckoutStatus(checkout: checkout),
+                if (checkout.receipt != null)
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.5,
+                    ),
+                    child: SingleChildScrollView(
+                      child: PaidReceiptCard(
+                        receipt: checkout.receipt!,
+                        lang: Provider.of<LocaleProvider>(
+                          ctx,
+                          listen: false,
+                        ).languageCode,
+                        catalogNames: {
+                          for (final p in _catalog) p.id: p.name,
+                        },
+                        onClose: checkout.dismissReceipt,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
           _inputRow(),
         ],

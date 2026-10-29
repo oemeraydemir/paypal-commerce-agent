@@ -5,6 +5,7 @@
 import 'dotenv/config';
 import { Pool } from 'pg';
 import { migrate, MIGRATIONS } from '../src/persistence/migrations';
+import { resolveDatabaseSslOptions } from '../src/persistence/database-ssl';
 
 (async () => {
   const url = process.env.DATABASE_URL?.trim();
@@ -14,7 +15,12 @@ import { migrate, MIGRATIONS } from '../src/persistence/migrations';
   }
   const pool = new Pool({
     connectionString: url,
-    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+    ssl: resolveDatabaseSslOptions({
+      nodeEnv: process.env.NODE_ENV,
+      enabled: process.env.DATABASE_SSL,
+      ca: process.env.DATABASE_SSL_CA,
+      rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED,
+    }),
     connectionTimeoutMillis: 10_000,
   });
   try {

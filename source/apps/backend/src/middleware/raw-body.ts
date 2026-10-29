@@ -18,10 +18,20 @@ export function rawBodyMiddleware(req: Request, res: Response, next: NextFunctio
     return;
   }
 
-  // Fast reject when the client declares an oversized body.
+  // Reject a declared oversized body without buffering it. Drain and discard the
+  // request before sending 413 so clients still receive the status instead of a
+  // connection reset while they are writing the body. Memory use remains bounded.
   const declared = Number(req.headers['content-length']);
   if (Number.isFinite(declared) && declared > MAX_WEBHOOK_BODY_BYTES) {
-    res.status(413).json({ error: 'Payload too large' });
+    req.once('end', () => {
+      if (!res.destroyed && !res.headersSent) {
+        res.status(413).json({ error: 'Payload too large' });
+      }
+    });
+    req.once('error', (err) => {
+      if (!res.destroyed && !res.headersSent) next(err);
+    });
+    req.resume(); // discard incoming bytes; do not store or parse them
     return;
   }
 

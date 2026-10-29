@@ -61,8 +61,21 @@ describe('private dashboard mode', () => {
   });
 });
 
-describe('public demo mode (default)', () => {
-  beforeEach(() => delete process.env.DASHBOARD_PUBLIC);
+describe('dashboard is private by default', () => {
+  beforeEach(() => {
+    delete process.env.DASHBOARD_PUBLIC;
+    process.env.OPS_COPILOT_KEY = KEY;
+  });
+
+  test.each(PRIVATE_ROUTES)('%s requires the merchant key when DASHBOARD_PUBLIC is unset', async (route) => {
+    expect((await request(app).get(route)).status).toBe(401);
+  });
+});
+
+describe('explicit public demo mode (opt-in)', () => {
+  beforeEach(() => {
+    process.env.DASHBOARD_PUBLIC = 'true';
+  });
 
   test('rows are minimised: no PayPal ids and no real session id', async () => {
     const res = await request(app).get('/api/orders');

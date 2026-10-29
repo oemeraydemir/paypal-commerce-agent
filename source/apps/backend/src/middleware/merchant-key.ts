@@ -6,7 +6,7 @@ import { SlidingWindowLimiter } from './rate-limit';
 // Guards the merchant-side read endpoints (orders, order stats, policy events) with the same
 // X-Ops-Key that protects the refund queue.
 //
-// DASHBOARD_PUBLIC=true (default, the judges' demo): no key needed; those endpoints already return a
+// DASHBOARD_PUBLIC=true (explicit opt-in demo mode): no key needed; those endpoints already return a
 // minimised view (no PayPal ids, hashed session labels).
 // DASHBOARD_PUBLIC=false: every one of those routes needs a valid X-Ops-Key (secure mode for any
 // deployment that holds real customer data).
@@ -24,7 +24,7 @@ export function keyMatches(provided: unknown, expected: string): boolean {
 }
 
 export function dashboardIsPublic(): boolean {
-  return (process.env.DASHBOARD_PUBLIC ?? 'true').toLowerCase() !== 'false';
+  return process.env.DASHBOARD_PUBLIC?.toLowerCase() === 'true';
 }
 
 export function requireDashboardAccess(req: Request, _res: Response, next: NextFunction): void {

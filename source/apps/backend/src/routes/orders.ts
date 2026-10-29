@@ -733,10 +733,28 @@ router.post('/orders/:orderId/cancel', requireSession, async (req, res, next) =>
   }
 });
 
-// PUBLIC, READ-ONLY DEMO CONTRACT (see docs/KNOWN_LIMITATIONS.md): the dashboard
-// is intentionally unauthenticated. These endpoints never expose real session
-// ids, PayPal order/capture ids, idempotency keys or PII. Put them behind
-// merchant auth before using this deployment with real customer data.
+// Dashboard rows are private by default through requireDashboardAccess. The
+// sanitized public demo is an explicit DASHBOARD_PUBLIC=true opt-in; never enable
+// it for a deployment containing real customer data.
+router.get('/orders/pending', requireSession, (req, res, next) => {
+  try {
+    const rawToken = Array.isArray(req.query.token) ? req.query.token[0] : req.query.token;
+    if (typeof rawToken !== 'string' || rawToken.length === 0 || rawToken.length > 256) {
+      throw new AppError(400, 'token is required');
+    }
+    const { sessionId } = req.session!;
+    const pending = orderService.getAll().find((order) =>
+      order.sessionId === sessionId &&
+      order.paypalOrderId === rawToken &&
+      order.status === OrderStatus.PAYMENT_PENDING
+    );
+    if (!pending) throw new AppError(404, 'Pending order not found');
+    res.json(createResponse(pending, rawToken));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.get('/orders', requireDashboardAccess, (req, res, next) => {
   try {
     const VALID_ORIGINS = Object.values(OrderOrigin);

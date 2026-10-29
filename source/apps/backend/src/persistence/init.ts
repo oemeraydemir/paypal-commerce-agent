@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { env } from '../config/environment';
+import { resolveDatabaseSslOptions } from './database-ssl';
 import { OrderService } from '../orders/service';
 import { sessionStore } from '../session';
 import { refundService } from '../refunds/service';
@@ -79,7 +80,7 @@ export function detachPersistence(): void {
   setRepos(null);
 }
 
-/** Production entry: PostgreSQL via DATABASE_URL, or memory with a loud warning. */
+/** Production requires PostgreSQL via DATABASE_URL; memory storage is development/test only. */
 export async function initPersistence(): Promise<PersistenceStatus> {
   if (!env.DATABASE_URL) {
     // The documented contract is environment-independent: when persistence is explicitly
@@ -88,11 +89,8 @@ export async function initPersistence(): Promise<PersistenceStatus> {
     if (env.REQUIRE_PERSISTENCE === 'true') {
       throw new Error('REQUIRE_PERSISTENCE=true but DATABASE_URL is not set; refusing to start.');
     }
-    if (env.NODE_ENV === 'production') {
-      console.warn(
-        '⚠️  PERSISTENCE DISABLED: DATABASE_URL is not set. Orders, reservations and idempotency ' +
-          'keys live in memory and are LOST on every restart/redeploy. Attach a managed PostgreSQL.'
-      );
+    if (String(env.NODE_ENV) === 'production') {
+      throw new Error('NODE_ENV=production requires DATABASE_URL; refusing to start with volatile storage.');
     }
     return { mode: 'memory', migrationsApplied: [], ordersLoaded: 0, reservationsLoaded: 0 };
   }
@@ -101,7 +99,12 @@ export async function initPersistence(): Promise<PersistenceStatus> {
     connectionString: env.DATABASE_URL,
     max: env.DATABASE_POOL_MAX,
     connectionTimeoutMillis: 10_000,
-    ssl: env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
+    ssl: resolveDatabaseSslOptions({
+      nodeEnv: env.NODE_ENV,
+      enabled: env.DATABASE_SSL,
+      ca: env.DATABASE_SSL_CA,
+      rejectUnauthorized: env.DATABASE_SSL_REJECT_UNAUTHORIZED,
+    }),
   });
   pool.on('error', (err: any) => console.error(`DB_POOL_ERROR ${err.message}`));
   // Any failure here must stop the boot: silently falling back to memory would

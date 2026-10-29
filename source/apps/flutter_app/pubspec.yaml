@@ -35,6 +35,8 @@ dependencies:
   # SFSpeechRecognizer). No cloud API key or subscription is required; availability
   # is checked at runtime so the mic is only shown where it actually works.
   speech_to_text: ^7.0.0
+  # Receipt QR code (renders the Cart Mandate verification link). Pure Dart/Flutter, no platform code.
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

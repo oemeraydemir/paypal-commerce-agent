@@ -37,11 +37,13 @@ const baseSchema = z.object({
   // Path to a business profile JSON (name, currency, limits, catalog) for a merchant other than
   // the built-in AI Café. Read and validated at boot by config/business-profile.ts.
   BUSINESS_PROFILE_PATH: z.string().optional(),
-  DATABASE_SSL: z.enum(['true', 'false']).default('false'),
+  DATABASE_SSL: z.enum(['true', 'false']).default(process.env.NODE_ENV === 'production' ? 'true' : 'false'),
+  DATABASE_SSL_CA: z.string().optional(),
+  DATABASE_SSL_REJECT_UNAUTHORIZED: z.enum(['true', 'false']).default('true'),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(20).default(5),
   // When 'true', refuse to start without DATABASE_URL — in ANY environment
   // (a silent in-memory fallback would lose orders on restart).
-  REQUIRE_PERSISTENCE: z.enum(['true', 'false']).default('false'),
+  REQUIRE_PERSISTENCE: z.enum(['true', 'false']).default(process.env.NODE_ENV === 'production' ? 'true' : 'false'),
   TRUST_PROXY_HOPS: z.coerce
     .number()
     .int()

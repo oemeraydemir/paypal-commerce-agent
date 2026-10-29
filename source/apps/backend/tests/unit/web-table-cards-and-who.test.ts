@@ -68,3 +68,28 @@ describe('storefront: tables as cards, and who-did-what on the receipt', () => {
     expect(text).not.toContain('who.ai');
   });
 });
+
+describe('storefront: receipt QR', () => {
+  test('qr.js and the verify page ship with the storefront and use no inline script', () => {
+    const pub = path.join(__dirname, '../../public');
+    expect(fs.readFileSync(path.join(pub, 'index.html'), 'utf8')).toContain('/qr.js');
+    const verify = fs.readFileSync(path.join(pub, 'verify.html'), 'utf8');
+    expect(verify).toContain('src="/verify.js"');
+    expect(verify).not.toMatch(/<script(?![^>]*\bsrc=)[^>]*>/);
+    expect(fs.readFileSync(path.join(pub, 'verify.js'), 'utf8')).not.toMatch(/innerHTML/);
+  });
+
+  test('the receipt still renders without the QR library (it is an extra, never a blocker)', () => {
+    const { t } = load();
+    expect(() => t.renderReceipt({ orderId: 'o1', items: [], totalText: '€1.00', maskedId: 'ab••ef', decision: 'AUTO_ALLOW' })).not.toThrow();
+  });
+
+  test('the share link fits a small, scannable QR code (not a dense one)', () => {
+    const ctx: any = {};
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../public/qr.js'), 'utf8') + '\nglobalThis.qrcode = qrcode;', ctx);
+    const link = 'https://aicafe.onrender.com/verify.html#' + '0b9d6f1e-7a3c-4c52-9f0e-1d2a3b4c5d6e' + '.' + 'A'.repeat(86);
+    const q = ctx.qrcode(0, 'M'); q.addData(link); q.make();
+    expect(q.getModuleCount()).toBeLessThanOrEqual(65);
+    expect(q.createDataURL(4, 4)).toMatch(/^data:image\/gif;base64,/);
+  });
+});

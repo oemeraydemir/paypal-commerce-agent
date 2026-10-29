@@ -34,6 +34,10 @@ describe('render.yaml deployment config (FIX-05)', () => {
     expect(renderYaml).toMatch(/- key: REQUIRE_PERSISTENCE\n\s+value: true/);
   });
 
+  test('sets the private Render database SSL mode explicitly', () => {
+    expect(renderYaml).toMatch(/- key: DATABASE_SSL\n\s+value: false/);
+  });
+
   test('declares the Cart Mandate signing key slot (set in the dashboard, never committed)', () => {
     expect(renderYaml).toMatch(/- key: MANDATE_SIGNING_KEY\n\s+sync: false/);
     // A secret must never be inlined in the repository.

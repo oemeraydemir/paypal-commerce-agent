@@ -65,3 +65,12 @@ After deployment, validate these URLs:
 5. `https://<your-service>/dashboard` — AG Grid dashboard (read-only)
 
 This project is a demo deployment, not a production-grade payment system. The backend is designed for sandbox checkout, a read-only public summary, and demonstration only.
+
+## Production persistence, access, and scaling guardrails
+
+- `NODE_ENV=production` requires `DATABASE_URL` and defaults `REQUIRE_PERSISTENCE=true`; the process refuses to boot into volatile storage. Production PostgreSQL TLS defaults to certificate verification. Set `DATABASE_SSL_CA` when the database uses a private CA. The Render Blueprint uses the private same-region DB URL and explicitly sets `DATABASE_SSL=false`; do not reuse that exception for public database endpoints.
+- The merchant dashboard is private unless `DASHBOARD_PUBLIC=true` is explicitly set. Only use public mode with sanitized demo data.
+- Daily policy spend limits are currently attached to the anonymous server session/user identity, not a verified shopper account. They are not an account-wide limit.
+- Some queues, caches, and coordination maps are process-local. Keep one backend instance until those components use shared atomic persistence/coordination; managed PostgreSQL does not automatically make every in-memory path multi-instance safe.
+- Automation delivery is best-effort and lacks a transactional outbox/exactly-once guarantee. Reconcile refunds and provider payment state manually; see `PRIORITY_PLAN_IMPLEMENTATION.md` for the pre-demo checklist.
+

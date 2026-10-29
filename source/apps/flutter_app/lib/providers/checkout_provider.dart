@@ -1,11 +1,10 @@
-import 'dart:math';
-
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_app/l10n/app_strings.dart';
 import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/order.dart';
+import 'package:flutter_app/models/paid_receipt.dart';
 import 'package:flutter_app/providers/chat_provider.dart';
 import 'package:flutter_app/providers/locale_provider.dart';
 import 'package:flutter_app/services/api_service.dart';
@@ -161,21 +160,88 @@ class CheckoutProvider extends ChangeNotifier {
   OrderCaptureResult? _captured;
   OrderCaptureResult? get captured => _captured;
 
+  /// Receipt for the payment that was just confirmed. Built from the cart as it
+  /// was at capture time (the cart itself is consumed right after), then
+  /// completed with the signed Cart Mandate (prices + QR link) when that loads.
+  PaidReceipt? _receipt;
+  PaidReceipt? get receipt => _receipt;
+
+  void dismissReceipt() {
+    if (_receipt == null) return;
+    _receipt = null;
+    notifyListeners();
+  }
+
+  PaidReceipt _buildReceipt({required String orderId, String? captureId}) {
+    final prepared = chat.lastPreparedCart;
+    final preparedLines = <String, CartLine>{
+      for (final l in prepared?.items ?? const <CartLine>[]) l.productId: l,
+    };
+    final lines = cart.entries.map((e) {
+      final p = preparedLines[e.key];
+      // A price is shown only while the quantity is the one the server priced.
+      return ReceiptLine(
+        productId: e.key,
+        name: p?.name,
+        quantity: e.value,
+        lineTotalMinor: (p != null && p.quantity == e.value)
+            ? p.lineTotalMinor
+            : null,
+      );
+    }).toList(growable: false);
+    final created = _created;
+    return PaidReceipt(
+      orderId: orderId,
+      captureId: captureId,
+      lines: lines,
+      totalFormatted: created?.totalFormatted ?? '',
+      totalMinor: created?.totalMinor,
+      currency: created?.currency ?? 'EUR',
+      source: receiptSourceFor(
+        hadPreparedCart: prepared != null,
+        mode: chat.lastPreparedCartMode,
+      ),
+      paidAt: DateTime.now(),
+    );
+  }
+
+  /// Completes the receipt with the server's signed mandate. Best effort: the
+  /// payment is already confirmed, so any failure here only means "no QR code".
+  Future<void> _attachMandate() async {
+    final current = _receipt;
+    if (current == null) return;
+    try {
+      final mandate = await api
+          .getMandate(current.orderId)
+          .timeout(const Duration(seconds: 8));
+      if (_disposed || mandate == null || mandate.orderId != current.orderId) {
+        return;
+      }
+      if (_receipt == null || _receipt!.orderId != current.orderId) return;
+      _receipt = _receipt!.withMandate(mandate, api.publicBaseUrl);
+      notifyListeners();
+    } catch (_) {
+      // Keep the receipt without a QR code.
+    }
+  }
+
   bool _paypalApproved = false;
   bool get paypalApproved => _paypalApproved;
 
-  /// Stable per-checkout-attempt idempotency key sent as `Idempotency-Key` (F4).
-  /// One key per logical attempt; reused across transport retries, regenerated
-  /// for the next attempt.
+  /// Deterministic per-cart idempotency key sent as `Idempotency-Key` (F4).
+  /// Derived purely from the sorted cart items, so the same cart always maps to
+  /// the same key: transport retries AND repeated attempts reuse it, while any
+  /// cart change produces a new key.
   String? _idempotencyKey;
 
-  String _newIdempotencyKey() {
-    final rand = Random();
-    final entropy = List<int>.generate(
-      8,
-      (_) => rand.nextInt(256),
-    ).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    return 'co-${DateTime.now().microsecondsSinceEpoch.toRadixString(36)}-$entropy';
+  String _idempotencyKeyFor(List<OrderItem> items) {
+    final canonical = items.map((i) => '${i.id}=${i.quantity}').join('|');
+    var hash = 0x811c9dc5;
+    for (final unit in canonical.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return 'co-${hash.toRadixString(36)}';
   }
 
   void _setError(String key, [List<Object?> args = const []]) {
@@ -302,6 +368,7 @@ class CheckoutProvider extends ChangeNotifier {
     _clearPolicyReason();
     _created = null;
     _captured = null;
+    _receipt = null;
     _paypalApproved = false;
     _clearStatusMessage();
     _clearError();
@@ -332,8 +399,35 @@ class CheckoutProvider extends ChangeNotifier {
     }
     final token = uri.queryParameters['token'];
     if (_created == null) {
-      // Nothing pending locally; ignore a return link with no matching order.
-      _setStatusMessage('checkout.statusNoPendingHandle');
+      // Cold return: the app has no local pending order (e.g. it was restarted
+      // after the user approved on PayPal). Recover the matching pending order
+      // from the backend before deciding how to handle this return link.
+      if (token == null || token.isEmpty) {
+        _setStatusMessage('checkout.statusNoPendingHandle');
+        notifyListeners();
+        return true;
+      }
+      OrderCreateResult? recovered;
+      try {
+        recovered = await api.recoverPendingOrder(token);
+      } on ApiException catch (e) {
+        _setError('checkout.errorCheckoutApi', [e.statusCode, e.message]);
+        notifyListeners();
+        return true;
+      }
+      if (recovered == null || recovered.paypalOrderId != token) {
+        _setStatusMessage('checkout.statusNoPendingHandle');
+        notifyListeners();
+        return true;
+      }
+      _created = recovered;
+      _clearError();
+      if (uri.path == '/cancel') {
+        await _cancelViaBackend();
+      } else {
+        _paypalApproved = true;
+        _setStatusMessage('checkout.statusApprovedCapture');
+      }
       notifyListeners();
       return true;
     }
@@ -449,16 +543,17 @@ class CheckoutProvider extends ChangeNotifier {
     _busy = true;
     _clearError();
     _captured = null;
+    _receipt = null;
     _created = null;
     _paypalApproved = false;
     _setStatusMessage('checkout.statusCreatingOrder');
     notifyListeners();
 
     try {
-      // One stable key per logical checkout attempt (F4). It is reused if the
-      // request is transparently retried (e.g. on a 401 session refresh inside
-      // ApiService) and regenerated on the next startCheckout call.
-      _idempotencyKey = _newIdempotencyKey();
+      // One deterministic key per cart (F4). Same cart => same key, so both
+      // transport retries and repeated attempts reuse it; a changed cart yields
+      // a new key. Derived from the current items, which are already sorted.
+      _idempotencyKey = _idempotencyKeyFor(currentItems);
       final result = await api.createOrder(
         items: currentItems,
         idempotencyKey: _idempotencyKey,
@@ -564,6 +659,11 @@ class CheckoutProvider extends ChangeNotifier {
       final result = await api.captureOrder(_created!.orderId);
       if (result.status == 'PAID') {
         _captured = result;
+        _receipt = _buildReceipt(
+          orderId: result.orderId,
+          captureId:
+              result.paypalCaptureId != 'unknown' ? result.paypalCaptureId : null,
+        );
         _setStatusMessage('checkout.statusCaptured', [
           result.status,
           result.paypalCaptureId != 'unknown'
@@ -571,6 +671,8 @@ class CheckoutProvider extends ChangeNotifier {
               : '',
         ]);
         await _clearCartAfterPaid(alreadyCompleted: false);
+        notifyListeners();
+        await _attachMandate();
       } else if (result.status == 'PAYMENT_PENDING') {
         _setStatusMessage('checkout.statusPaymentPending');
       } else {
@@ -600,12 +702,15 @@ class CheckoutProvider extends ChangeNotifier {
           paypalCaptureId: 'unknown',
           paypalStatus: 'COMPLETED',
         );
+        _receipt = _buildReceipt(orderId: _created!.orderId);
         _created = null;
         _paypalApproved = false;
         _setStatusMessage('checkout.statusAlreadyCompleted');
         await _clearCartAfterPaid(
           alreadyCompleted: true,
         );
+        notifyListeners();
+        await _attachMandate();
       } else if (e.statusCode == 502 || e.statusCode == 409) {
         // Ambiguous transport / capture-in-progress / unverified 409: preserve
         // the recoverable pending order and let the user retry.
@@ -655,16 +760,21 @@ class CheckoutProvider extends ChangeNotifier {
           msg.contains('already captured') &&
           e.settled == true) {
         // The order is actually paid (server-verified); reflect that instead of
-        // leaving a stale pending order. Not marked cancelled.
+        // leaving a stale pending order. Not marked cancelled. The cart is
+        // consumed because the payment succeeded.
         _captured = OrderCaptureResult(
           orderId: target,
           status: 'PAID',
           paypalCaptureId: 'unknown',
           paypalStatus: 'COMPLETED',
         );
+        _receipt = _buildReceipt(orderId: target);
         _created = null;
         _paypalApproved = false;
         _setStatusMessage('checkout.statusOrderAlreadyPaid');
+        await _clearCartAfterPaid(alreadyCompleted: true);
+        notifyListeners();
+        await _attachMandate();
       } else if (e.statusCode == 404) {
         // Order no longer exists on the server: safe to drop the local pending
         // reference (nothing to cancel).

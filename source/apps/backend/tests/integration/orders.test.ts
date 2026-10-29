@@ -109,6 +109,31 @@ describe('Orders API', () => {
     expect(order.sessionId).toBeDefined();
   });
 
+  test('GET /api/orders/pending only recovers a pending order for its session', async () => {
+    const created = await request(app)
+      .post('/api/orders/create')
+      .set(sess.headers)
+      .set('Idempotency-Key', 'pending-recovery-session-001')
+      .send({ items: [{ productId: 'coffee', quantity: 1 }] })
+      .expect(201);
+    const token = created.body.paypalOrderId as string;
+
+    const owner = await request(app)
+      .get('/api/orders/pending')
+      .set(sess.headers)
+      .query({ token })
+      .expect(200);
+    expect(owner.body.orderId).toBe(created.body.orderId);
+    expect(owner.body.paypalOrderId).toBe(token);
+
+    const otherSession = await newSession(app);
+    await request(app)
+      .get('/api/orders/pending')
+      .set(otherSession.headers)
+      .query({ token })
+      .expect(404);
+  });
+
   test('B5: a BLOCKed create does not consume the AI-prepared marker (retry stays AI_AGENT)', async () => {
     // This session has an AI-prepared cart.
     markSessionAIPrepared(sess.sessionId, 'AI_AGENT');
