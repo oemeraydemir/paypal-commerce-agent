@@ -18,12 +18,17 @@ class PaidReceiptCard extends StatelessWidget {
   final Map<String, String> catalogNames;
   final VoidCallback? onClose;
 
+  /// Optional Dispute Evidence Package section (Order-to-Resolution Passport).
+  /// The parent owns it so the receipt card stays free of network access.
+  final Widget? evidenceSection;
+
   const PaidReceiptCard({
     super.key,
     required this.receipt,
     required this.lang,
     this.catalogNames = const <String, String>{},
     this.onClose,
+    this.evidenceSection,
   });
 
   String _s(String key) => AppStrings.get(lang, key);
@@ -106,6 +111,10 @@ class PaidReceiptCard extends StatelessWidget {
             if (receipt.verifyLink != null) ...[
               const SizedBox(height: 12),
               _qrBlock(context, scheme),
+            ],
+            if (evidenceSection != null) ...[
+              const SizedBox(height: 10),
+              evidenceSection!,
             ],
           ],
         ),

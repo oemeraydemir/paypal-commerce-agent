@@ -20,6 +20,7 @@ import 'package:flutter_app/services/api_service.dart';
 import 'package:flutter_app/services/speech_to_text_voice_recognizer.dart';
 import 'package:flutter_app/services/voice_controller.dart';
 import 'package:flutter_app/utils/markdown_tables.dart';
+import 'package:flutter_app/widgets/evidence_package_section.dart';
 import 'package:flutter_app/widgets/paid_receipt_card.dart';
 import 'package:flutter_app/widgets/barista_avatar.dart';
 import 'package:flutter_app/widgets/assistant_quick_replies.dart';
@@ -641,6 +642,14 @@ class _ChatScreenState extends State<ChatScreen> {
                           for (final p in _catalog) p.id: p.name,
                         },
                         onClose: checkout.dismissReceipt,
+                        evidenceSection: EvidencePackageSection(
+                          api: checkout.api,
+                          orderId: checkout.receipt!.orderId,
+                          lang: Provider.of<LocaleProvider>(
+                            ctx,
+                            listen: false,
+                          ).languageCode,
+                        ),
                       ),
                     ),
                   ),

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_app/providers/checkout_provider.dart';
 import 'package:flutter_app/providers/locale_provider.dart';
 import 'package:flutter_app/providers/receipt_controller.dart';
+import 'package:flutter_app/widgets/evidence_package_section.dart';
 import 'package:flutter_app/widgets/paid_receipt_card.dart';
 
 /// Drop-in section for the chat screen: shows the receipt after a confirmed
@@ -79,6 +80,13 @@ class _ReceiptSectionState extends State<ReceiptSection> {
               lang: Provider.of<LocaleProvider>(ctx).languageCode,
               catalogNames: _names,
               onClose: controller.dismiss,
+              evidenceSection: _checkout == null
+                  ? null
+                  : EvidencePackageSection(
+                      api: _checkout!.api,
+                      orderId: receipt.orderId,
+                      lang: Provider.of<LocaleProvider>(ctx).languageCode,
+                    ),
             ),
           ),
         );

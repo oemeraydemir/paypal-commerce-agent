@@ -9,6 +9,7 @@ import 'package:flutter_app/models/product.dart';
 import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/chat_message.dart';
+import 'package:flutter_app/models/evidence_package.dart';
 import 'package:flutter_app/services/session_service.dart';
 
 /// Raised when the backend responds with a non-2xx status.
@@ -440,6 +441,42 @@ class ApiService {
     );
     _ensureOk(res, 'getMandate');
     return MandateSummary.tryParse(jsonDecode(res.body));
+  }
+
+  /// The shopper's own Dispute Evidence Package for an order
+  /// (`GET /api/orders/:id/evidence`). The server assembles it from its own
+  /// records and signs it. Returns `null` when the payload is not what the UI
+  /// expects; the receipt then simply has no evidence section.
+  Future<EvidencePackage?> getEvidence(String orderId) async {
+    final res = await _executeWithAuth(
+      (headers) => _client.get(
+        _url('/api/orders/$orderId/evidence'),
+        headers: headers,
+      ),
+    );
+    _ensureOk(res, 'getEvidence');
+    return EvidencePackage.tryParse(jsonDecode(res.body));
+  }
+
+  /// Verifies a signed evidence package (`POST /api/evidence/verify`). The
+  /// package is self-contained and signed, so anyone may verify it; the request
+  /// carries no session.
+  Future<EvidenceVerification> verifyEvidence(EvidencePackage pkg) async {
+    final res = await _client
+        .post(
+          _url('/api/evidence/verify'),
+          headers: const <String, String>{'Content-Type': 'application/json'},
+          body: pkg.encode(),
+        )
+        .timeout(_requestTimeout);
+    _ensureOk(res, 'verifyEvidence');
+    final decoded = jsonDecode(res.body);
+    if (decoded is! Map) {
+      throw ApiException(res.statusCode, 'Unexpected verify reply');
+    }
+    return EvidenceVerification.fromJson(
+      Map<String, dynamic>.from(decoded),
+    );
   }
 
   /// Cancels a not-yet-captured order. Backed by `POST /api/orders/:orderId/cancel`
