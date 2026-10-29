@@ -16,12 +16,14 @@ import { Order, OrderItem, OrderOrigin, OrderStatus } from '../orders/domain';
 export function buildPolicyContext(
   userId: string,
   merchantId: string,
-  tracker: DailySpendTracker
+  tracker: DailySpendTracker,
+  extra: { now?: Date; ordersLastHour?: number; countryCode?: string } = {}
 ): PolicyEvaluationContext {
   return {
     merchantId,
     currentDailySpendMinor: tracker.getSpentToday(userId),
     pendingReservationsMinor: tracker.getPendingReservations(userId),
+    ...extra,
   };
 }
 

@@ -69,6 +69,13 @@ function policyView(userId: string): Record<string, unknown> {
       pendingMinor: pending,
       remainingTodayMinor: remaining,
     },
+    // Priority 4: optional risk-style rules (empty/null when not configured).
+    rules: {
+      nightWindow: policy.nightWindow ?? null,
+      categorySpendLimits: policy.categorySpendLimits ?? {},
+      maxOrdersPerHour: policy.maxOrdersPerHour ?? null,
+      allowedCountries: policy.allowedCountries ?? [],
+    },
   };
 }
 
@@ -134,6 +141,69 @@ router.patch('/policy', requireSession, (req, res, next) => {
     if (body.enabled !== undefined) {
       if (typeof body.enabled !== 'boolean') throw boundsError('enabled', 'a boolean', body.enabled);
       updates.enabled = body.enabled;
+    }
+
+    // ---- Priority 4: optional risk-style rules (null clears a rule) ----------
+    if (body.maxOrdersPerHour !== undefined) {
+      if (body.maxOrdersPerHour === null) {
+        updates.maxOrdersPerHour = undefined;
+      } else {
+        const n = toNumber(body.maxOrdersPerHour, 'maxOrdersPerHour');
+        if (n === undefined || !Number.isSafeInteger(n) || n < 0) {
+          throw boundsError('maxOrdersPerHour', 'a non-negative integer', body.maxOrdersPerHour);
+        }
+        updates.maxOrdersPerHour = n;
+      }
+    }
+
+    if (body.nightWindow !== undefined) {
+      if (body.nightWindow === null) {
+        updates.nightWindow = undefined;
+      } else {
+        const nw = (body.nightWindow ?? {}) as Record<string, unknown>;
+        const startHour = toNumber(nw.startHour, 'nightWindow.startHour');
+        const endHour = toNumber(nw.endHour, 'nightWindow.endHour');
+        const maxMinor = toNumber(nw.maxMinor, 'nightWindow.maxMinor');
+        if (startHour === undefined || !Number.isInteger(startHour) || startHour < 0 || startHour > 23) {
+          throw boundsError('nightWindow.startHour', 'an integer between 0 and 23', nw.startHour);
+        }
+        if (endHour === undefined || !Number.isInteger(endHour) || endHour < 0 || endHour > 23) {
+          throw boundsError('nightWindow.endHour', 'an integer between 0 and 23', nw.endHour);
+        }
+        if (maxMinor === undefined || !Number.isSafeInteger(maxMinor) || maxMinor < 0) {
+          throw boundsError('nightWindow.maxMinor', 'a non-negative integer', nw.maxMinor);
+        }
+        updates.nightWindow = { startHour, endHour, maxMinor };
+      }
+    }
+
+    if (body.categorySpendLimits !== undefined) {
+      if (body.categorySpendLimits === null) {
+        updates.categorySpendLimits = undefined;
+      } else {
+        const raw = body.categorySpendLimits;
+        if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+          throw boundsError('categorySpendLimits', 'an object of { category: minor }', raw);
+        }
+        const limits: Record<string, number> = {};
+        for (const [category, value] of Object.entries(raw as Record<string, unknown>)) {
+          const n = toNumber(value, `categorySpendLimits.${category}`);
+          if (n === undefined || !Number.isSafeInteger(n) || n < 0) {
+            throw boundsError(`categorySpendLimits.${category}`, 'a non-negative integer', value);
+          }
+          limits[category] = n;
+        }
+        updates.categorySpendLimits = limits;
+      }
+    }
+
+    if (body.allowedCountries !== undefined) {
+      if (body.allowedCountries === null) {
+        updates.allowedCountries = undefined;
+      } else {
+        const countries = toStringArray(body.allowedCountries, 'allowedCountries') ?? [];
+        updates.allowedCountries = countries.map((c) => c.toUpperCase());
+      }
     }
 
     // Cross-field invariants (mirror business-profile / default-policy rules).

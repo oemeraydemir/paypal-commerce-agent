@@ -350,6 +350,7 @@
             <span class="dot"></span>
             <span id="lastUpdatedText">Not yet refreshed</span>
           </div>
+          <button type="button" class="theme-btn" id="printBtn" aria-label="Print or save the dashboard as PDF">Print / PDF</button>
           <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle light/dark theme">Dark mode</button>
         </div>
       </div>
@@ -375,6 +376,16 @@
           <p id="revenueValue" class="stat-value">€0.00</p>
           <div class="stat-sub" id="revenueSub">captured from paid orders</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-label">Block rate</div>
+          <p id="blockRateValue" class="stat-value">0%</p>
+          <div class="stat-sub" id="blockRateSub">of policy checks</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Avg basket</div>
+          <p id="avgBasketValue" class="stat-value">€0.00</p>
+          <div class="stat-sub" id="avgBasketSub">per order</div>
+        </div>
       </div>
 
       <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
@@ -385,7 +396,8 @@
         <div class="grid-toolbar">
           <input type="text" id="ordersQuickFilter" placeholder="Quick filter orders…" aria-label="Quick filter orders" />
           <button type="button" id="ordersCsvBtn">Export CSV</button>
-          <span class="hint">sort · filter · pin · paginate · export CSV</span>
+          <button type="button" id="ordersJsonBtn">Export JSON</button>
+          <span class="hint">sort · filter (date / amount / status) · paginate · export CSV/JSON</span>
         </div>
         <p class="grid-status" id="ordersStatus" role="status" aria-live="polite"></p>
         <p class="grid-error" id="ordersError" role="alert" hidden></p>
@@ -397,7 +409,8 @@
         <div class="grid-toolbar">
           <input type="text" id="eventsQuickFilter" placeholder="Quick filter policy events…" aria-label="Quick filter policy events" />
           <button type="button" id="eventsCsvBtn">Export CSV</button>
-          <span class="hint">click a row for reason &amp; violated rules</span>
+          <button type="button" id="eventsJsonBtn">Export JSON</button>
+          <span class="hint">click a row for reason &amp; violated rules · filter by date / decision</span>
         </div>
         <p class="grid-status" id="eventsStatus" role="status" aria-live="polite"></p>
         <p class="grid-error" id="eventsError" role="alert" hidden></p>

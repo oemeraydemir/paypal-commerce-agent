@@ -114,12 +114,28 @@ async function startPayPalCheckout(
     // re-authenticates and retries pointlessly. Upstream failures are reported as 502.
     const upstreamStatus = (err as any)?.statusCode;
     if (!(err instanceof AppError) && typeof upstreamStatus === 'number') {
+      if (upstreamStatus === 401 || upstreamStatus === 403) {
+        throw new AppError(
+          502,
+          'PayPal rejected the merchant credentials. Check PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET.',
+          { code: 'PAYPAL_UPSTREAM_ERROR', upstreamStatus }
+        );
+      }
+      // Priority 2 (Checkout Rescue): an upstream 5xx/timeout is usually transient.
+      // Say so plainly, tell the buyer how long to wait, and reassure them their
+      // cart is safe. We NEVER auto-retry: the buyer stays in control.
       throw new AppError(
         502,
-        upstreamStatus === 401 || upstreamStatus === 403
-          ? 'PayPal rejected the merchant credentials. Check PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET.'
-          : 'PayPal could not create the order. Please retry.',
-        { code: 'PAYPAL_UPSTREAM_ERROR', upstreamStatus }
+        'PayPal is busy right now. Please wait about 30 seconds and try again.',
+        {
+          code: 'PAYPAL_BUSY',
+          upstreamStatus,
+          retryable: true,
+          retryAfterSeconds: 30,
+          suggestion: 'Wait about 30 seconds, then retry. Your cart is saved.',
+          alternativePayment: 'You can also try a card or another payment method.',
+          cartSaved: true,
+        }
       );
     }
     throw err;
@@ -253,6 +269,14 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
     // S10 (R9/R10): AUTHORITATIVE policy evaluation on an in-memory snapshot
     // BEFORE the order is persisted or PayPal is contacted. The client's
     // policyDecision/violations/origin/reservationId are NEVER trusted.
+    //
+    // Priority 4: feed the order-frequency rule with this session's orders in the
+    // trailing hour (the order being created now is not persisted yet).
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    const ordersLastHour = orderService
+      .getAll()
+      .filter((o) => o.sessionId === sessionId && o.createdAt.getTime() >= oneHourAgo)
+      .length;
     const evaluation = policyService.evaluatePurchase(
       buildEvaluationOrder(
         sessionId,
@@ -262,7 +286,9 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
         origin
       ),
       policy,
-      buildPolicyContext(userId, currentBusiness.businessId, dailySpendTracker)
+      buildPolicyContext(userId, currentBusiness.businessId, dailySpendTracker, {
+        ordersLastHour,
+      })
     );
 
     if (evaluation.decision === 'BLOCK') {
@@ -587,7 +613,20 @@ router.post('/orders/:orderId/capture', requireSession, checkoutLimiter, async (
       } else {
         // R15: ambiguous transport/network error — do NOT release the reservation,
         // because the capture may have succeeded remotely.
-        throw new AppError(502, 'PayPal error', { paypalIssue });
+        // Priority 2 (Checkout Rescue): explain the wait honestly and keep the cart.
+        throw new AppError(
+          502,
+          'PayPal could not be reached. Your cart is saved; please wait about 30 seconds and try again.',
+          {
+            paypalIssue,
+            code: 'PAYPAL_BUSY',
+            retryable: true,
+            retryAfterSeconds: 30,
+            suggestion: 'Wait about 30 seconds, then retry. Your cart is saved.',
+            alternativePayment: 'You can also try a card or another payment method.',
+            cartSaved: true,
+          }
+        );
       }
     }
 

@@ -141,6 +141,10 @@
     events: { api: null, rows: new Map(), initial: true }
   };
 
+  // Priority 3: last full payloads, for the JSON export buttons.
+  var lastOrdersJson = [];
+  var lastEventsJson = [];
+
   function normalizeOrder(o) {
     return {
       id: o.id,
@@ -211,6 +215,19 @@
       ? (oStats.revenueFormatted || '') + ' captured · ' + (oStats.refundedFormatted || '') + ' refunded' +
         ((oStats.pendingRefundMinor || 0) > 0 ? ' · ' + oStats.pendingRefundMinor + ' minor pending' : '')
       : (oStats.revenueMinor || 0) + ' minor captured';
+
+    // Priority 3: reconciliation summary — policy block rate and average basket.
+    var checks = eStats.totalRequests || 0;
+    var blockRate = checks > 0 ? Math.round((blocked / checks) * 100) : 0;
+    var blockRateValue = el('blockRateValue');
+    if (blockRateValue) blockRateValue.textContent = blockRate + '%';
+    var blockRateSub = el('blockRateSub');
+    if (blockRateSub) blockRateSub.textContent = blocked + ' of ' + checks + ' policy checks';
+    var avgMinor = total > 0 ? Math.round((oStats.revenueMinor || 0) / total) : 0;
+    var avgBasketValue = el('avgBasketValue');
+    if (avgBasketValue) avgBasketValue.textContent = formatMoney(avgMinor, 'EUR');
+    var avgBasketSub = el('avgBasketSub');
+    if (avgBasketSub) avgBasketSub.textContent = 'across ' + total + ' orders';
   }
 
   function setLastUpdated() {
@@ -617,6 +634,8 @@
 
     var oJson = await oResp.json();
     var eJson = await eResp.json();
+    lastOrdersJson = oJson.orders || [];
+    lastEventsJson = eJson.events || [];
     var ordersRaw = (oJson.orders || []).map(normalizeOrder);
     attachOrderItems(ordersRaw, oJson.orders || []);
     var eventsRaw = (eJson.events || []).map(normalizeEvent);
@@ -664,6 +683,23 @@
   el('eventsCsvBtn').addEventListener('click', function () {
     eventsApi.exportDataAsCsv({ fileName: 'policy-events.csv' });
   });
+
+  // Priority 3: JSON export + print / save-as-PDF. Guarded because the DOM shim
+  // used by the a11y unit test does not define these nodes.
+  function downloadJson(fileName, data) {
+    var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+  var ordersJsonBtn = el('ordersJsonBtn');
+  if (ordersJsonBtn) ordersJsonBtn.addEventListener('click', function () { downloadJson('orders.json', lastOrdersJson); });
+  var eventsJsonBtn = el('eventsJsonBtn');
+  if (eventsJsonBtn) eventsJsonBtn.addEventListener('click', function () { downloadJson('policy-events.json', lastEventsJson); });
+  var printBtn = el('printBtn');
+  if (printBtn) printBtn.addEventListener('click', function () { window.print(); });
 
   el('closeSide').addEventListener('click', closeSidePanel);
   el('sideBackdrop').addEventListener('click', closeSidePanel);

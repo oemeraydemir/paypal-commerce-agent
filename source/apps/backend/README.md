@@ -61,6 +61,27 @@ configuration, test commands, and demo flow.
 | GET | `/api/checkout/cancel` | Return after cancelling PayPal checkout |
 | GET | `/dashboard` | Read-only AG Grid order dashboard |
 
+## Graceful degradation (when the AI is unavailable)
+
+The AI is an *assistant*, never a dependency of the money path. If every
+configured AI provider is exhausted or unconfigured, the backend does **not**
+fail the shop:
+
+- The AI client tries each provider in order. When all are exhausted it raises
+  `503 AI_UNAVAILABLE`; `/api/ai/chat` then degrades to a **labelled rule-based
+  planner** instead of a dead end.
+- The rule-based response carries `mode: "rule-based"` and `provider: "rule-based"`.
+  It is explicitly *not* AI: it never marks the session as AI-prepared (the order
+  stays attributed `HUMAN`) and records no `AI_AGENT` policy event.
+- Prices still come from the server-side catalog, and the **same deterministic
+  policy engine** (`PolicyService`) is consulted for the decision. The rule-based
+  planner never sees PayPal and cannot create or capture an order.
+
+So: **if the AI crashes, the system does not crash — the server rules take over.**
+Policy enforcement, order creation, PayPal checkout and capture are all
+independent of the LLM. The trust guarantees (server-set prices, buyer approval
+at PayPal, signed evidence) hold with or without AI.
+
 ## Security and demo boundaries
 
 - AI tools can search products and prepare a cart; they cannot create or

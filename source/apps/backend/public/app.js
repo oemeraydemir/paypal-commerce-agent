@@ -607,6 +607,8 @@
       return (typeof v === 'string' && v.length > 16) ? v.slice(0, 16) + '…' : (v || '—');
     }
     // Order-to-Resolution Passport: the order/payment/approval timeline in ONE place.
+    // Prefers the server-built canonical timeline (Priority 1); falls back to
+    // deriving it from the order + policy events for older packages.
     function passport(p) {
       var list = el('ol', 'rsteps');
       var add = function (when, what, detail) {
@@ -619,30 +621,109 @@
         li.appendChild(body);
         list.appendChild(li);
       };
-      var o = p.order || {};
-      add(stamp(o.createdAt), i18nT('evidence.step.created'), o.id || '');
-      var events = p.policyEvents || [];
-      events.forEach(function (e) {
-        var rules = (e.violatedRules || []).join(', ');
-        var detail = e.reason || '';
-        if (rules) detail += (detail ? ' · ' : '') + rules;
-        add(stamp(e.timestamp), i18nT('evidence.step.policy') + ' — ' + (e.decision || ''), detail);
-      });
-      if (!events.length) {
-        var li = el('li', 'step');
-        li.appendChild(el('span', 'ic', '·'));
-        li.appendChild(el('span', 'mut', i18nT('evidence.noPolicyEvents')));
-        list.appendChild(li);
-      }
       var ha = p.humanApproval || {};
       var state = ha.state === 'approved' ? i18nT('evidence.approval.approved')
         : ha.state === 'awaiting_approval' ? i18nT('evidence.approval.awaiting')
         : i18nT('evidence.approval.notRecorded');
-      add('', i18nT('evidence.step.approval'), state);
-      if (o.paypalCaptureId) {
-        add(stamp(o.updatedAt), i18nT('evidence.step.captured'), maskId(o.paypalCaptureId));
+      var tl = p.timeline || [];
+      if (tl.length) {
+        var labelFor = {
+          ORDER_CREATED: i18nT('evidence.step.created'),
+          POLICY_EVALUATED: i18nT('evidence.step.policy'),
+          HUMAN_APPROVAL: i18nT('evidence.step.approval'),
+          PAYMENT_CAPTURED: i18nT('evidence.step.captured')
+        };
+        tl.forEach(function (s) {
+          var what = labelFor[s.step] || s.step;
+          var detail = s.detail || '';
+          if (s.step === 'POLICY_EVALUATED') {
+            what += ' — ' + (s.decision || '');
+          } else if (s.step === 'HUMAN_APPROVAL') {
+            detail = state;
+          } else if (s.step === 'PAYMENT_CAPTURED' && detail) {
+            detail = maskId(detail);
+          }
+          add(stamp(s.at), what, detail);
+        });
+      } else {
+        var o = p.order || {};
+        add(stamp(o.createdAt), i18nT('evidence.step.created'), o.id || '');
+        var events = p.policyEvents || [];
+        events.forEach(function (e) {
+          var rules = (e.violatedRules || []).join(', ');
+          var detail = e.reason || '';
+          if (rules) detail += (detail ? ' · ' : '') + rules;
+          add(stamp(e.timestamp), i18nT('evidence.step.policy') + ' — ' + (e.decision || ''), detail);
+        });
+        if (!events.length) {
+          var li = el('li', 'step');
+          li.appendChild(el('span', 'ic', '·'));
+          li.appendChild(el('span', 'mut', i18nT('evidence.noPolicyEvents')));
+          list.appendChild(li);
+        }
+        add('', i18nT('evidence.step.approval'), state);
+        if (o.paypalCaptureId) {
+          add(stamp(o.updatedAt), i18nT('evidence.step.captured'), maskId(o.paypalCaptureId));
+        }
       }
-      return list;
+      var wrap = el('div', '');
+      wrap.appendChild(list);
+      var rules = ruleList(p);
+      if (rules) wrap.appendChild(rules);
+      return wrap;
+    }
+    function fmtVal(v) {
+      if (v === null || v === undefined) return '—';
+      if (Array.isArray(v)) return v.join(', ');
+      return String(v);
+    }
+    // Priority 1: per-rule detail (which rule fired, expected vs actual).
+    function ruleList(p) {
+      var rows = [];
+      (p.policyEvents || []).forEach(function (e) {
+        (e.ruleDetails || []).forEach(function (r) { rows.push(r); });
+      });
+      if (!rows.length) return null;
+      var box = el('div', '');
+      box.appendChild(el('div', 'mut', i18nT('evidence.rule.title')));
+      var ul = el('ul', 'ritems');
+      rows.forEach(function (r) {
+        var li = el('li', '');
+        li.appendChild(el('span', '', (r.type || '') + ' (' + (r.rule || '') + ')'));
+        li.appendChild(el('span', '', i18nT('evidence.rule.expected') + ' ' + fmtVal(r.expected) + ' · ' + i18nT('evidence.rule.actual') + ' ' + fmtVal(r.actual)));
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+      return box;
+    }
+    // Priority 1: auto-generated dispute-defense statement (download as .txt,
+    // printable to PDF from any browser).
+    function disputeDefense(p) {
+      var d = p.disputeDefense;
+      if (!d) return null;
+      var box = el('div', '');
+      box.appendChild(el('div', 'who-t', i18nT('evidence.dispute.title')));
+      if (d.keyFacts && d.keyFacts.length) {
+        var ul = el('ul', 'ritems');
+        d.keyFacts.forEach(function (f) {
+          var li = el('li', '');
+          li.appendChild(el('span', '', f));
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      }
+      var btn = el('button', '', i18nT('evidence.dispute.download')); btn.type = 'button';
+      btn.onclick = function () {
+        var blob = new Blob([d.narrative || ''], { type: 'text/plain' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = 'aicafe-dispute-defense-' + p.orderId + '.txt';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      };
+      box.appendChild(btn);
+      box.appendChild(el('div', 'mut', i18nT('evidence.dispute.note')));
+      return box;
     }
     function integrity(p) {
       var box = el('div', '');
@@ -695,6 +776,8 @@
         out.textContent = '';
         out.appendChild(el('div', 'who-t', i18nT('evidence.passport')));
         out.appendChild(passport(p));
+        var dd = disputeDefense(p);
+        if (dd) out.appendChild(dd);
         out.appendChild(integrity(p));
         out.appendChild(verify(p));
         out.appendChild(download(p));

@@ -12,7 +12,28 @@ export type PolicyViolationType =
   | 'DIETARY_ATTRIBUTE_BLOCKED'
   | 'CONFIRMATION_THRESHOLD_EXCEEDED'
   | 'CURRENCY_MISMATCH'
-  | 'ALLOWANCE_EXPIRED';
+  | 'ALLOWANCE_EXPIRED'
+  // Priority 4: richer, risk-style rules (time window, per-category budget,
+  // order frequency and geo restriction). All are OPTIONAL: they only fire when
+  // the corresponding policy field is configured.
+  | 'TIME_WINDOW_LIMIT_EXCEEDED'
+  | 'CATEGORY_SPEND_LIMIT_EXCEEDED'
+  | 'FREQUENCY_LIMIT_EXCEEDED'
+  | 'GEO_RESTRICTED';
+
+/**
+ * A "quiet hours" / night-window cap, e.g. "between 23:00 and 06:00 the cart may
+ * not exceed EUR 10". Hours are evaluated in UTC (deterministic across servers);
+ * a start hour greater than the end hour wraps around midnight.
+ */
+export interface NightWindowRule {
+  /** Inclusive start hour, 0-23. */
+  startHour: number;
+  /** Exclusive end hour, 0-23. */
+  endHour: number;
+  /** Maximum cart total allowed inside the window, in minor units. */
+  maxMinor: number;
+}
 
 export type PolicyValue = string | number | string[] | number[];
 
@@ -39,6 +60,18 @@ export interface PurchasePolicy {
   /** Optional scoped-allowance expiry. When set and in the past, the allowance
    *  is treated as expired and the purchase is blocked (ALLOWANCE_EXPIRED). */
   validUntil?: Date;
+
+  // ---- Priority 4: optional risk-style rules -------------------------------
+  /** Night/quiet-hours cap, e.g. { startHour: 23, endHour: 6, maxMinor: 1000 }. */
+  nightWindow?: NightWindowRule;
+  /** Per-category budget for THIS cart, keyed by product category id (minor units). */
+  categorySpendLimits?: Record<string, number>;
+  /** Max orders allowed in the trailing hour (0 or undefined = unlimited). */
+  maxOrdersPerHour?: number;
+  /** ISO-3166 alpha-2 allow-list. Placeholder: only enforced when a countryCode
+   *  is supplied in the evaluation context (no real geo-IP in the sandbox). */
+  allowedCountries?: string[];
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -47,6 +80,12 @@ export interface PolicyEvaluationContext {
   merchantId: string;
   currentDailySpendMinor: number;
   pendingReservationsMinor: number;
+  /** Clock used for the night-window rule (injectable so tests are deterministic). */
+  now?: Date;
+  /** Orders already created by this shopper in the trailing hour (frequency rule). */
+  ordersLastHour?: number;
+  /** Buyer country (ISO-3166 alpha-2); only used by the geo placeholder rule. */
+  countryCode?: string;
 }
 
 export interface PolicyEvaluation {
@@ -121,6 +160,18 @@ export function policyBlockReason(
   }
   if (violationTypes.includes('ALLOWANCE_EXPIRED')) {
     return 'The spending allowance has expired';
+  }
+  if (violationTypes.includes('TIME_WINDOW_LIMIT_EXCEEDED')) {
+    return 'Cart exceeds the limit allowed during quiet hours';
+  }
+  if (violationTypes.includes('CATEGORY_SPEND_LIMIT_EXCEEDED')) {
+    return 'Cart exceeds a category spending limit';
+  }
+  if (violationTypes.includes('FREQUENCY_LIMIT_EXCEEDED')) {
+    return 'Too many orders in a short period';
+  }
+  if (violationTypes.includes('GEO_RESTRICTED')) {
+    return 'The buyer region is not allowed by policy';
   }
   if (decision === 'BLOCK') {
     return 'Purchase blocked by policy';
