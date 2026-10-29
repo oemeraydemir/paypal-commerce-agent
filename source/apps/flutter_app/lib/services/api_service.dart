@@ -348,6 +348,35 @@ class ApiService {
     return PolicyPreview.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// The session-scoped spending allowance (`GET /api/policy`).
+  Future<PolicyAllowance> fetchPolicy() async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.get(_url('/api/policy'), headers: headers);
+    });
+    _ensureOk(res, 'fetchPolicy');
+    return PolicyAllowance.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Updates the caller's own allowance (`PATCH /api/policy`). Only whitelisted
+  /// fields are accepted server-side; returns the new authoritative state.
+  Future<PolicyAllowance> updatePolicy({
+    int? maxPerPurchaseMinor,
+    int? dailySpendLimitMinor,
+    int? confirmationThresholdMinor,
+    String? validUntil,
+  }) async {
+    final body = <String, dynamic>{};
+    if (maxPerPurchaseMinor != null) body['maxPerPurchaseMinor'] = maxPerPurchaseMinor;
+    if (dailySpendLimitMinor != null) body['dailySpendLimitMinor'] = dailySpendLimitMinor;
+    if (confirmationThresholdMinor != null) body['confirmationThresholdMinor'] = confirmationThresholdMinor;
+    if (validUntil != null) body['validUntil'] = validUntil;
+    final res = await _executeWithAuth((headers) async {
+      return _client.patch(_url('/api/policy'), headers: headers, body: jsonEncode(body));
+    });
+    _ensureOk(res, 'updatePolicy');
+    return PolicyAllowance.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   Future<OrderCreateResult> createOrder({
     required List<OrderItem> items,
     String? idempotencyKey,

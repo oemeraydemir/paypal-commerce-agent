@@ -44,6 +44,14 @@ export interface CartMandate {
     paymentAuthority: 'buyer_approval_at_paypal';
     pricesSetByServer: true;
     policyEnforcedByServer: true;
+    /** Stage 2: the allowance that was actually enforced for this order (server-set). */
+    appliedLimits?: {
+      maxPerPurchaseMinor: number;
+      dailySpendLimitMinor: number;
+      confirmationThresholdMinor: number;
+      enabled: boolean;
+      validUntil: string | null;
+    };
   };
 }
 
@@ -272,6 +280,7 @@ export function buildCartMandate(order: Order, expiresAt?: string): CartMandate 
       paymentAuthority: 'buyer_approval_at_paypal',
       pricesSetByServer: true,
       policyEnforcedByServer: true,
+      ...(order.policyAppliedLimits ? { appliedLimits: order.policyAppliedLimits } : {}),
     },
   };
 }
@@ -290,6 +299,29 @@ export function signCartMandate(order: Order): SignedCartMandate {
   const mandate = buildCartMandate(order);
   const signature = crypto.sign(null, Buffer.from(stringify(mandate)), k.active.privateKey);
   return { mandate, signature: b64url(signature), alg: 'EdDSA', kid: k.active.kid, canonicalization: CANONICALIZATION };
+}
+
+/**
+ * Stage 3: sign an arbitrary canonical JSON object with the SAME keyring used
+ * for Cart Mandates. Used to sign the evidence package, so a single verifiable
+ * key set covers both the mandate and the assembled evidence.
+ */
+export function signPayload(payload: object): { signature: string; kid: string } {
+  const k = okKeyring();
+  const canonical = Buffer.from(stringify(payload));
+  const signature = crypto.sign(null, canonical, k.active.privateKey);
+  return { signature: b64url(signature), kid: k.active.kid };
+}
+
+export function verifyPayloadSignature(signature: string, kid: string, payload: object): boolean {
+  const k = okKeyring();
+  const key = kid === k.active.kid ? k.active.publicKey : k.previous.get(kid);
+  if (!key) return false;
+  try {
+    return crypto.verify(null, Buffer.from(stringify(payload)), key, fromB64url(signature));
+  } catch {
+    return false;
+  }
 }
 
 export function verifyCartMandate(

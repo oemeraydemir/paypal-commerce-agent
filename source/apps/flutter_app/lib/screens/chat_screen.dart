@@ -1559,6 +1559,19 @@ class _CartSheet extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (checkout.allowance != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _allowanceLine(
+                      ctx,
+                      checkout,
+                      lang,
+                      catalog.isEmpty ? 'EUR' : catalog.first.currency,
+                    ),
+                    key: const Key('cart-allowance-status'),
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
               ],
               const SizedBox(height: 8),
               Row(
@@ -1612,6 +1625,29 @@ class _CartSheet extends StatelessWidget {
       case CartPolicyStatus.idle:
         return '';
     }
+  }
+
+  String _allowanceLine(
+    BuildContext context,
+    CheckoutProvider c,
+    String lang,
+    String currency,
+  ) {
+    final a = c.allowance;
+    if (a == null) return '';
+    final remaining = AppStrings.formatMoney(lang, a.remainingTodayMinor, currency);
+    final daily = AppStrings.formatMoney(lang, a.dailySpendLimitMinor, currency);
+    final perPurchase = AppStrings.formatMoney(lang, a.maxPerPurchaseMinor, currency);
+    final parts = <String>[
+      t(context, 'policy.allowanceRemaining').replaceAll('%s', '$remaining / $daily'),
+      t(context, 'policy.allowancePerPurchase').replaceAll('%s', perPurchase),
+    ];
+    if (!a.enabled) {
+      parts.add(t(context, 'policy.allowanceDisabled'));
+    } else if (a.validUntil != null) {
+      parts.add(t(context, 'policy.allowanceExpires').replaceAll('%s', a.validUntil!));
+    }
+    return parts.join(' · ');
   }
 
   Product _placeholder(String id) => Product(

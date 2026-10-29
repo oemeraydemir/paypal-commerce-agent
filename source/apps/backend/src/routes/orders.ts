@@ -358,6 +358,16 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
     // S10 (R13): server-owned reservation correlation on the typed domain field.
     orderService.setReservationId(order.id, reservation.id);
 
+    // Stage 2: record the allowance that was actually enforced, so the signed
+    // Cart Mandate can evidence it. Server-set; never read from the client.
+    order.policyAppliedLimits = {
+      maxPerPurchaseMinor: policy.maxPerPurchaseMinor,
+      dailySpendLimitMinor: policy.dailySpendLimitMinor,
+      confirmationThresholdMinor: policy.confirmationThresholdMinor,
+      enabled: policy.enabled,
+      validUntil: policy.validUntil ? policy.validUntil.toISOString() : null,
+    };
+
     // WRITE-AHEAD: the order (and, queued before it, its reservation) must be durable
     // BEFORE PayPal is contacted. If storage is down nothing was sent to PayPal.
     try {

@@ -53,6 +53,7 @@ router.post('/policy/preview', requireSession, previewLimiter, (req, res, next) 
       dailyRemainingMinor: Math.max(0, policy.dailySpendLimitMinor - spent - pending),
       blockedDietaryAttributes: policy.blockedDietaryAttributes,
       policyEnabled: policy.enabled,
+      validUntil: policy.validUntil ? policy.validUntil.toISOString() : null,
     };
 
     const rawItems = req.body?.items;

@@ -15,8 +15,24 @@ export class PolicyService {
     policy: PurchasePolicy,
     context: PolicyEvaluationContext
   ): PolicyEvaluation {
-    if (!policy.enabled) {
+    const validUntil = policy.validUntil;
+    const allowanceExpired = validUntil instanceof Date && validUntil.getTime() <= Date.now();
+    if (!policy.enabled && !allowanceExpired) {
       return { decision: 'AUTO_ALLOW', violations: [] };
+    }
+    if (allowanceExpired) {
+      return {
+        decision: 'BLOCK',
+        violations: [
+          {
+            type: 'ALLOWANCE_EXPIRED',
+            rule: 'validUntil',
+            expected: (validUntil as Date).toISOString(),
+            actual: new Date().toISOString(),
+            message: 'The spending allowance has expired; no purchases are allowed.',
+          },
+        ],
+      };
     }
 
     const violations: PolicyViolation[] = [];

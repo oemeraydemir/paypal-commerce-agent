@@ -69,6 +69,21 @@ class CheckoutProvider extends ChangeNotifier {
       ? _policyReason
       : _localized(_policyReasonKey!);
 
+  // Stage 2: session-scoped allowance snapshot (limits + usage + expiry).
+  PolicyAllowance? _allowance;
+  PolicyAllowance? get allowance => _allowance;
+
+  Future<void> refreshAllowance() async {
+    try {
+      final value = await api.fetchPolicy();
+      if (_disposed) return;
+      _allowance = value;
+      notifyListeners();
+    } catch (_) {
+      // Allowance is advisory UI; failure is non-fatal.
+    }
+  }
+
   void _clearPolicyReason() {
     _policyReason = null;
     _policyReasonKey = null;
@@ -127,6 +142,7 @@ class CheckoutProvider extends ChangeNotifier {
     _observedPreparedCart = chat.lastPreparedCart;
     chat.addListener(_onChatChanged);
     if (cart.isNotEmpty) _refreshPolicy();
+    refreshAllowance();
   }
 
   void _onChatChanged() {

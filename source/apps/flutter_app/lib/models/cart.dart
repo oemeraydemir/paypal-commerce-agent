@@ -209,3 +209,48 @@ class PolicyPreview {
     );
   }
 }
+
+/// Server-sourced snapshot of the session-scoped spending allowance
+/// (`GET /api/policy`, `PATCH /api/policy`). This is advisory display data;
+/// the server remains the enforcement boundary at `/orders/create` + `/capture`.
+class PolicyAllowance {
+  final bool enabled;
+  final String? validUntil;
+  final int maxPerPurchaseMinor;
+  final int dailySpendLimitMinor;
+  final int confirmationThresholdMinor;
+  final int spentTodayMinor;
+  final int pendingMinor;
+  final int remainingTodayMinor;
+
+  const PolicyAllowance({
+    required this.enabled,
+    this.validUntil,
+    required this.maxPerPurchaseMinor,
+    required this.dailySpendLimitMinor,
+    required this.confirmationThresholdMinor,
+    required this.spentTodayMinor,
+    required this.pendingMinor,
+    required this.remainingTodayMinor,
+  });
+
+  factory PolicyAllowance.fromJson(Map<String, dynamic> json) {
+    final limits = json['limits'] is Map
+        ? json['limits'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    final usage = json['usage'] is Map
+        ? json['usage'] as Map<String, dynamic>
+        : const <String, dynamic>{};
+    int n(Object? v, [int d = 0]) => v is num ? v.toInt() : d;
+    return PolicyAllowance(
+      enabled: json['enabled'] == true,
+      validUntil: json['validUntil'] as String?,
+      maxPerPurchaseMinor: n(limits['maxPerPurchaseMinor']),
+      dailySpendLimitMinor: n(limits['dailySpendLimitMinor']),
+      confirmationThresholdMinor: n(limits['confirmationThresholdMinor']),
+      spentTodayMinor: n(usage['spentTodayMinor']),
+      pendingMinor: n(usage['pendingMinor']),
+      remainingTodayMinor: n(usage['remainingTodayMinor']),
+    );
+  }
+}

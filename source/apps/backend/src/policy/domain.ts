@@ -11,7 +11,8 @@ export type PolicyViolationType =
   | 'DIETARY_REQUIREMENT_NOT_MET'
   | 'DIETARY_ATTRIBUTE_BLOCKED'
   | 'CONFIRMATION_THRESHOLD_EXCEEDED'
-  | 'CURRENCY_MISMATCH';
+  | 'CURRENCY_MISMATCH'
+  | 'ALLOWANCE_EXPIRED';
 
 export type PolicyValue = string | number | string[] | number[];
 
@@ -35,6 +36,9 @@ export interface PurchasePolicy {
   blockedDietaryAttributes: string[];
   confirmationThresholdMinor: number;
   enabled: boolean;
+  /** Optional scoped-allowance expiry. When set and in the past, the allowance
+   *  is treated as expired and the purchase is blocked (ALLOWANCE_EXPIRED). */
+  validUntil?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -114,6 +118,9 @@ export function policyBlockReason(
   }
   if (violationTypes.includes('CONFIRMATION_THRESHOLD_EXCEEDED')) {
     return 'Cart exceeds confirmation threshold; explicit approval required';
+  }
+  if (violationTypes.includes('ALLOWANCE_EXPIRED')) {
+    return 'The spending allowance has expired';
   }
   if (decision === 'BLOCK') {
     return 'Purchase blocked by policy';

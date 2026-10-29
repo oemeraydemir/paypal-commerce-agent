@@ -256,6 +256,42 @@ describe('PolicyService', () => {
     );
   });
 
+  test('BLOCK when a scoped allowance has expired (validUntil in the past)', () => {
+    const result = evaluate(
+      createOrder(),
+      createPolicy({ validUntil: new Date('2020-01-01T00:00:00.000Z') })
+    );
+
+    expect(result.decision).toBe('BLOCK');
+    expect(result.violations.map((v) => v.type)).toContain('ALLOWANCE_EXPIRED');
+  });
+
+  test('AUTO_ALLOW when a scoped allowance is still valid (validUntil in the future)', () => {
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    expect(evaluate(createOrder(), createPolicy({ validUntil: future })).decision).toBe(
+      'AUTO_ALLOW'
+    );
+  });
+
+  test('AUTO_ALLOW when the policy is disabled and has no past validUntil', () => {
+    expect(evaluate(createOrder(), createPolicy({ enabled: false })).decision).toBe(
+      'AUTO_ALLOW'
+    );
+  });
+
+  test('BLOCK when the policy is disabled but the allowance has expired', () => {
+    const result = evaluate(
+      createOrder(),
+      createPolicy({
+        enabled: false,
+        validUntil: new Date('2020-01-01T00:00:00.000Z'),
+      })
+    );
+
+    expect(result.decision).toBe('BLOCK');
+    expect(result.violations.map((v) => v.type)).toContain('ALLOWANCE_EXPIRED');
+  });
+
   test('returns identical evaluations for identical inputs', () => {
     const order = createOrder('premium_cake', 4500);
     const purchasePolicy = createPolicy({ confirmationThresholdMinor: 4000 });

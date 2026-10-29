@@ -51,6 +51,21 @@ export interface OrderItem {
   lineTotalMinor: number;
 }
 
+/**
+ * Server-owned snapshot of the allowance that was actually enforced when this
+ * order was created (Stage 2: Scoped AI Allowance). Never accepted from the
+ * client. Set at /orders/create immediately after the authoritative policy
+ * evaluation passes, and embedded into the signed Cart Mandate so the applied
+ * limits can be evidenced later.
+ */
+export interface PolicyAppliedLimits {
+  maxPerPurchaseMinor: number;
+  dailySpendLimitMinor: number;
+  confirmationThresholdMinor: number;
+  enabled: boolean;
+  validUntil: string | null;
+}
+
 export interface Order {
   id: string;
   sessionId: string;
@@ -69,6 +84,8 @@ export interface Order {
   // immediately after a daily-spend reservation is taken, so the /capture route
   // can confirm or cancel it. NEVER accepted from the client.
   reservationId?: string;
+  // Stage 2: the allowance snapshot that was enforced for this order (server-set).
+  policyAppliedLimits?: PolicyAppliedLimits;
   // Write-ahead marker: set and PERSISTED before the capture call goes to PayPal.
   // If the process dies mid-capture, startup reconciliation asks PayPal for the truth.
   captureStartedAt?: Date;

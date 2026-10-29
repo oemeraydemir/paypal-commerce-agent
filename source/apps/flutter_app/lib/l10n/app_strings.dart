@@ -148,6 +148,10 @@ class AppStrings {
       'policy.needsApproval': 'Needs your approval on PayPal.',
       'policy.blocked': 'Blocked by your policy: %s',
       'policy.error': 'Policy check unavailable.',
+      'policy.allowanceRemaining': 'Remaining today: %s',
+      'policy.allowancePerPurchase': 'max %s per purchase',
+      'policy.allowanceDisabled': 'allowance off',
+      'policy.allowanceExpires': 'expires %s',
       'allergy.core':
           'This shop does not publish allergen data, so no item can be '
           'confirmed safe or allergen-free.',
@@ -330,6 +334,10 @@ class AppStrings {
       'policy.needsApproval': 'PayPal’da onayın gerekiyor.',
       'policy.blocked': 'Politikan tarafından engellendi: %s',
       'policy.error': 'Politika kontrolü kullanılamıyor.',
+      'policy.allowanceRemaining': 'Bugün kalan: %s',
+      'policy.allowancePerPurchase': 'satın alma başına maksimum %s',
+      'policy.allowanceDisabled': 'izin kapalı',
+      'policy.allowanceExpires': '%s tarihine kadar geçerli',
       'allergy.core':
           'Bu işletme alerjen verisi yayınlamaz; bu yüzden hiçbir ürünün '
           'güvenli veya alerjensiz olduğu doğrulanamaz.',
