@@ -9,6 +9,7 @@ import { webhookService } from '../paypal/webhook-service';
 import { dailySpendTracker } from '../policy/daily-spend-tracker';
 import { migrate } from './migrations';
 import { Queryable } from './types';
+import { resolveDatabaseSslOptions } from './database-ssl';
 import { createPgRepositories } from './pg-repositories';
 import { registerRetrier, setRepos } from './registry';
 
