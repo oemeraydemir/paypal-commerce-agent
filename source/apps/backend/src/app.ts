@@ -23,6 +23,7 @@ import mcpRoutes from './routes/mcp';
 import mandateRoutes, { wellKnownMandateKeys } from './routes/mandates';
 import evidenceRoutes from './routes/evidence';
 import discoveryRoutes from './routes/discovery';
+import billsRoutes from './routes/bills';
 import { currentBusiness } from './config/business-config';
 import { rejectClientTenantOverride } from './config/tenant';
 import fs from 'fs';
@@ -122,6 +123,7 @@ export function createApp() {
   app.use('/api', mcpRoutes);
   app.use('/api', mandateRoutes);
   app.use('/api', evidenceRoutes);
+  app.use('/api', billsRoutes);
   app.use('/', wellKnownMandateKeys);
 
   app.use(errorHandler);
