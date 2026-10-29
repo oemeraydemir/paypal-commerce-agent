@@ -34,8 +34,11 @@ describe('render.yaml deployment config (FIX-05)', () => {
     expect(renderYaml).toMatch(/- key: REQUIRE_PERSISTENCE\n\s+value: true/);
   });
 
-  test('sets the private Render database SSL mode explicitly', () => {
-    expect(renderYaml).toMatch(/- key: DATABASE_SSL\n\s+value: false/);
+  test('sets the private Render database SSL mode with certificate verification disabled', () => {
+    // Render's managed Postgres terminates TLS with a self-signed internal cert;
+    // the blueprint keeps TLS on but disables peer-CA verification.
+    expect(renderYaml).toMatch(/- key: DATABASE_SSL\n\s+value: true/);
+    expect(renderYaml).toMatch(/- key: DATABASE_SSL_REJECT_UNAUTHORIZED\n\s+value: false/);
   });
 
   test('declares the Cart Mandate signing key slot (set in the dashboard, never committed)', () => {

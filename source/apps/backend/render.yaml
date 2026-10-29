@@ -37,8 +37,13 @@ services:
         fromDatabase:
           name: aicafe-db
           property: connectionString
-      # This blueprint uses the same-region private database URL.
+      # This blueprint uses the same-region private database URL, whose managed
+      # Postgres terminates TLS with a self-signed internal certificate. Keep TLS
+      # on but disable peer-CA verification (standard for Render's managed DB);
+      # set DATABASE_SSL_CA to verify the certificate instead.
       - key: DATABASE_SSL
+        value: true
+      - key: DATABASE_SSL_REJECT_UNAUTHORIZED
         value: false
       # Refuse to boot without a database instead of silently losing orders.
       # FIX-05 (R1/R2/R3): with REQUIRE_PERSISTENCE=true the service refuses to start in ANY
