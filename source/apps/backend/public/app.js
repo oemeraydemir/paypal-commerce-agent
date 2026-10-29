@@ -585,6 +585,129 @@
     } catch (e) { /* same */ }
     return box;
   }
+  // ---- Dispute Evidence Package (Stage 3) + Order-to-Resolution Passport -----------------------
+  // The package is assembled by the SERVER from its own records (signed Cart Mandate, policy
+  // events, order, human approval) and signed with the same keyring, so a third party can
+  // verify it without trusting this page. It is prepared for presentation only: nothing is
+  // ever submitted to PayPal automatically.
+  function evidenceBlock(orderId) {
+    var wrap = el('div', 'mandate');
+    wrap.appendChild(el('div', 'who-t', i18nT('evidence.title')));
+    wrap.appendChild(el('div', 'mut', i18nT('evidence.subtitle')));
+
+    var open = el('button', '', i18nT('evidence.open')); open.type = 'button';
+    var out = el('div', 'mut'); out.setAttribute('aria-live', 'polite');
+
+    function stamp(v) {
+      if (!v) return '';
+      var d = new Date(v);
+      return isNaN(d.getTime()) ? '' : fmtDate(d);
+    }
+    function short(v) {
+      return (typeof v === 'string' && v.length > 16) ? v.slice(0, 16) + '…' : (v || '—');
+    }
+    // Order-to-Resolution Passport: the order/payment/approval timeline in ONE place.
+    function passport(p) {
+      var list = el('ol', 'rsteps');
+      var add = function (when, what, detail) {
+        var li = el('li', 'step');
+        li.appendChild(el('span', 'ic', '✓'));
+        var body = el('span', '');
+        body.appendChild(el('div', '', what));
+        if (detail) body.appendChild(el('div', 'mut', detail));
+        if (when) body.appendChild(el('div', 'mut', when));
+        li.appendChild(body);
+        list.appendChild(li);
+      };
+      var o = p.order || {};
+      add(stamp(o.createdAt), i18nT('evidence.step.created'), o.id || '');
+      var events = p.policyEvents || [];
+      events.forEach(function (e) {
+        var rules = (e.violatedRules || []).join(', ');
+        var detail = e.reason || '';
+        if (rules) detail += (detail ? ' · ' : '') + rules;
+        add(stamp(e.timestamp), i18nT('evidence.step.policy') + ' — ' + (e.decision || ''), detail);
+      });
+      if (!events.length) {
+        var li = el('li', 'step');
+        li.appendChild(el('span', 'ic', '·'));
+        li.appendChild(el('span', 'mut', i18nT('evidence.noPolicyEvents')));
+        list.appendChild(li);
+      }
+      var ha = p.humanApproval || {};
+      var state = ha.state === 'approved' ? i18nT('evidence.approval.approved')
+        : ha.state === 'awaiting_approval' ? i18nT('evidence.approval.awaiting')
+        : i18nT('evidence.approval.notRecorded');
+      add('', i18nT('evidence.step.approval'), state);
+      if (o.paypalCaptureId) {
+        add(stamp(o.updatedAt), i18nT('evidence.step.captured'), maskId(o.paypalCaptureId));
+      }
+      return list;
+    }
+    function integrity(p) {
+      var box = el('div', '');
+      var i = p.integrity || {};
+      box.appendChild(el('div', '', i18nT('evidence.integrity') + ': ' + (i.alg || '—') + ' · key ' + (i.kid || '—')));
+      box.appendChild(el('div', 'mut', i18nT('evidence.digest') + ': ' + short(i.digest)));
+      box.appendChild(el('div', 'mut', i18nT('evidence.canonicalization') + ': ' + (i.canonicalization || '—')));
+      return box;
+    }
+    // Independent verification: anyone (no session) can check the signed package.
+    function verify(p) {
+      var vbtn = el('button', '', i18nT('evidence.verify')); vbtn.type = 'button';
+      var vout = el('div', 'mut'); vout.setAttribute('aria-live', 'polite');
+      vbtn.onclick = function () {
+        vbtn.disabled = true; vout.textContent = i18nT('evidence.verifying');
+        api('/api/evidence/verify', { method: 'POST', body: JSON.stringify(p), auth: false }).then(function (v) {
+          vout.textContent = '';
+          var ok = v.valid === true;
+          vout.appendChild(el('div', ok ? 'okline' : 'badline', (ok ? '✓ ' : '✗ ') + (ok ? i18nT('evidence.valid') : i18nT('evidence.invalid'))));
+          var c = v.checks || {};
+          [['evidence.check.signature', c.signature], ['evidence.check.digest', c.digest], ['evidence.check.mandate', c.mandateValid], ['evidence.check.order', c.matchesOrder]].forEach(function (pair) {
+            vout.appendChild(el('div', '', i18nT(pair[0]) + ': ' + (pair[1] === true ? 'yes' : 'no')));
+          });
+          if (v.reason) vout.appendChild(el('div', 'mut', v.reason));
+          vbtn.disabled = false;
+        }).catch(function (e) { vout.textContent = i18nT('evidence.error') + e.message; vbtn.disabled = false; });
+      };
+      var box = el('div', '');
+      box.appendChild(vbtn); box.appendChild(vout);
+      return box;
+    }
+    function download(p) {
+      var dbtn = el('button', '', i18nT('evidence.download')); dbtn.type = 'button';
+      dbtn.onclick = function () {
+        var blob = new Blob([JSON.stringify(p, null, 2)], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = 'aicafe-evidence-' + p.orderId + '.json';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      };
+      var box = el('div', '');
+      box.appendChild(dbtn);
+      box.appendChild(el('div', 'mut', i18nT('evidence.exportNote')));
+      return box;
+    }
+    open.onclick = function () {
+      open.disabled = true; out.textContent = i18nT('evidence.loading');
+      api('/api/orders/' + encodeURIComponent(orderId) + '/evidence').then(function (p) {
+        out.textContent = '';
+        out.appendChild(el('div', 'who-t', i18nT('evidence.passport')));
+        out.appendChild(passport(p));
+        out.appendChild(integrity(p));
+        out.appendChild(verify(p));
+        out.appendChild(download(p));
+        open.disabled = false;
+      }).catch(function (e) {
+        out.textContent = i18nT('evidence.error') + e.message;
+        open.disabled = false;
+      });
+    };
+    wrap.appendChild(open);
+    wrap.appendChild(out);
+    return wrap;
+  }
   function renderReceipt(d) {
     var box = $('receipt'); box.textContent = ''; box.hidden = false;
     box.appendChild(el('h3', '', i18nT('receipt.title')));
@@ -614,6 +737,7 @@
     whoRow('🔒', i18nT('who.cannot'));
     box.appendChild(who);
     if (d.orderId) box.appendChild(mandateBlock(d.orderId));
+    if (d.orderId) box.appendChild(evidenceBlock(d.orderId));
     var link = el('a', 'rlink', i18nT('receipt.controlCenter')); link.href = '/dashboard.html'; link.setAttribute('rel', 'noopener');
     box.appendChild(link);
     setCartChrome(false);
