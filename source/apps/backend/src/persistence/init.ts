@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { env } from '../config/environment';
 
 import { OrderService } from '../orders/service';
+import { BillService } from '../bills/service';
 import { sessionStore } from '../session';
 import { refundService } from '../refunds/service';
 import { policyStorage } from '../policy/storage';
@@ -58,6 +59,15 @@ export async function attachPersistence(
   await refundService.hydrate();
   await policyStorage.hydrate();
   await webhookService.hydrate();
+
+  // Split Bill: rebuild the in-memory read model from durable state, then clear
+  // any claims left dangling by a crashed instance (TTL-guarded so in-flight
+  // payments are never double-claimed).
+  const billsLoaded = await BillService.getInstance().hydrate();
+  const orphanClaimsCleared = await repos.bills.reconcileOrphanClaims();
+  if (billsLoaded > 0 || orphanClaimsCleared > 0) {
+    console.log(`BILL_HYDRATE groups=${billsLoaded} orphanClaimsCleared=${orphanClaimsCleared}`);
+  }
 
   const purge = () =>
     repos.idempotency

@@ -17,6 +17,7 @@
 
 import { Router } from 'express';
 import { createHash } from 'crypto';
+import { v4 as uuidv4 } from 'uuid';
 import { requireSession } from '../middleware/session-auth';
 import { AppError } from '../middleware/error-handler';
 import { currentBusiness } from '../config/business-config';
@@ -32,6 +33,7 @@ import { formatMoney } from '../utils/money';
 import { dailySpendTracker } from '../policy/daily-spend-tracker';
 import { policyService } from '../policy/service';
 import { policyStorage } from '../policy/storage';
+import { getRepos } from '../persistence/registry';
 import { buildEvaluationOrder, buildPolicyContext, buildPolicyOutcome } from '../policy/context-builder';
 import {
   BillGroup,
@@ -199,12 +201,12 @@ router.post('/bills/:id/invite', requireSession, (req, res, next) => {
   }
 });
 
-router.post('/bills/join', requireSession, (req, res, next) => {
+router.post('/bills/join', requireSession, async (req, res, next) => {
   try {
     const { userId } = req.session!;
     const token = req.body?.token;
     if (typeof token !== 'string' || !token) throw new AppError(400, 'token is required');
-    const { group, shareId } = billService.joinWithToken(token, userId);
+    const { group, shareId } = await billService.joinWithToken(token, userId);
     res.json({ shareId, bill: serializeGroup(group) });
   } catch (err) {
     next(err);
@@ -335,57 +337,114 @@ router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, n
       throw new AppError(403, 'Purchase blocked by policy', { reason: 'Cart exceeds daily spend limit' });
     }
 
-    // ---- Atomic per-share claim barrier ----
-    // The share→order binding below happens in the SAME synchronous turn as the
-    // `share.orderId` check at the top of this handler (there is no `await`
-    // between them). Node is single-threaded, so a concurrent duplicate request
-    // cannot interleave here: whichever request binds first is the only one that
-    // creates an order and reaches PayPal; any later request sees the bound id
-    // and takes the resume/conflict path above. This is what prevents two orders
-    // (and two PayPal orders) for one share under concurrent POSTs.
-    const order = orderService.create(sessionId, orderItems, group.currency, origin, `bill-pay-${share.id}`);
-    orderService.setReservationId(order.id, reservation.id);
-    order.policyAppliedLimits = {
+    // ---- Atomic per-share claim barrier (claim-before-order) ----
+    // The share→order binding is decided by the DB, not by in-process state:
+    //   - with a durable store: generate the order id FIRST, win the per-share
+    //     claim mutex with it, THEN create an order that REUSES the same id. A
+    //     concurrent duplicate for this share loses the claim and must not create
+    //     a second order/PayPal order (multi-instance safe).
+    //   - without a durable store (dev/test): keep the original single-instance
+    //     in-memory behavior where `share.orderId` is bound synchronously.
+    const repos = getRepos();
+    const policyLimits = {
       maxPerPurchaseMinor: policy.maxPerPurchaseMinor,
       dailySpendLimitMinor: policy.dailySpendLimitMinor,
       confirmationThresholdMinor: policy.confirmationThresholdMinor,
       enabled: policy.enabled,
       validUntil: policy.validUntil ? policy.validUntil.toISOString() : null,
     };
-    share.orderId = order.id;
-    group.updatedAt = new Date();
 
-    try {
-      await orderService.saveNow(order.id);
-    } catch (err: any) {
-      abandonOrder(order.id, reservation.id);
-      console.error(`BILL_ORDER_PERSIST_FAILED order=${order.id} error=${err?.message ?? err}`);
-      throw new AppError(503, 'Storage unavailable; order was not created. Please retry.');
+    if (repos) {
+      const orderId = uuidv4();
+      const claimed = await repos.bills.claimShareForPayment(share.id, orderId);
+      if (!claimed) {
+        dailySpendTracker.cancelReservation(reservation.id);
+        throw new AppError(409, 'Payment already in progress for this share');
+      }
+      const order = orderService.create(sessionId, orderItems, group.currency, origin, `bill-pay-${share.id}`, undefined, orderId);
+      orderService.setReservationId(order.id, reservation.id);
+      order.policyAppliedLimits = policyLimits;
+      share.orderId = orderId;
+      group.updatedAt = new Date();
+      try {
+        await orderService.saveNow(order.id);
+      } catch (err: any) {
+        // Storage failed after the claim won: release the claim so the share is
+        // retryable, and roll back the reservation.
+        await repos.bills.releaseClaim(share.id, orderId).catch(() => undefined);
+        share.orderId = undefined;
+        abandonOrder(order.id, reservation.id);
+        console.error(`BILL_ORDER_PERSIST_FAILED order=${order.id} error=${err?.message ?? err}`);
+        throw new AppError(503, 'Storage unavailable; order was not created. Please retry.');
+      }
+      try {
+        policyStorage.recordEvent({
+          userId,
+          sessionId,
+          cartId: `bill_${group.id}`,
+          orderId: order.id,
+          agent: 'server',
+          amountMinor: total,
+          currency: group.currency,
+          evaluation,
+          policy,
+        });
+      } catch {
+        /* non-fatal: order + claim are already durable */
+      }
+      try {
+        const paypalOrder = await startSharePayPalCheckout(order, reservation.id, `bill-pay-${share.id}`);
+        res.status(201).json({
+          shareId: share.id,
+          orderId: order.id,
+          paypalOrderId: paypalOrder.id,
+          status: order.status,
+          totalMinor: order.totalMinor,
+          currency: order.currency,
+          approvalUrl: paypalOrder.links?.find((l: any) => l.rel === 'approve')?.href,
+        });
+      } catch (err) {
+        // PayPal/checkout failed: the order is cancelled inside startSharePayPalCheckout;
+        // release the claim so the share stays retryable, then rethrow.
+        await repos.bills.releaseClaim(share.id, orderId).catch(() => undefined);
+        share.orderId = undefined;
+        throw err;
+      }
+    } else {
+      const order = orderService.create(sessionId, orderItems, group.currency, origin, `bill-pay-${share.id}`);
+      orderService.setReservationId(order.id, reservation.id);
+      order.policyAppliedLimits = policyLimits;
+      share.orderId = order.id;
+      group.updatedAt = new Date();
+      try {
+        await orderService.saveNow(order.id);
+      } catch (err: any) {
+        abandonOrder(order.id, reservation.id);
+        console.error(`BILL_ORDER_PERSIST_FAILED order=${order.id} error=${err?.message ?? err}`);
+        throw new AppError(503, 'Storage unavailable; order was not created. Please retry.');
+      }
+      policyStorage.recordEvent({
+        userId,
+        sessionId,
+        cartId: `bill_${group.id}`,
+        orderId: order.id,
+        agent: 'server',
+        amountMinor: total,
+        currency: group.currency,
+        evaluation,
+        policy,
+      });
+      const paypalOrder = await startSharePayPalCheckout(order, reservation.id, `bill-pay-${share.id}`);
+      res.status(201).json({
+        shareId: share.id,
+        orderId: order.id,
+        paypalOrderId: paypalOrder.id,
+        status: order.status,
+        totalMinor: order.totalMinor,
+        currency: order.currency,
+        approvalUrl: paypalOrder.links?.find((l: any) => l.rel === 'approve')?.href,
+      });
     }
-
-    policyStorage.recordEvent({
-      userId,
-      sessionId,
-      cartId: `bill_${group.id}`,
-      orderId: order.id,
-      agent: 'server',
-      amountMinor: total,
-      currency: group.currency,
-      evaluation,
-      policy,
-    });
-
-    const paypalOrder = await startSharePayPalCheckout(order, reservation.id, `bill-pay-${share.id}`);
-
-    res.status(201).json({
-      shareId: share.id,
-      orderId: order.id,
-      paypalOrderId: paypalOrder.id,
-      status: order.status,
-      totalMinor: order.totalMinor,
-      currency: order.currency,
-      approvalUrl: paypalOrder.links?.find((l: any) => l.rel === 'approve')?.href,
-    });
   } catch (err) {
     next(err);
   }

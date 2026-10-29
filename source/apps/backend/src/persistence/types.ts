@@ -1,4 +1,6 @@
 import { Order } from '../orders/domain';
+import { BillGroup } from '../bills/domain';
+import { BillShare } from '../bills/domain';
 
 export type ReservationRowState = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED';
 
@@ -112,6 +114,65 @@ export interface CaptureClaimRepository {
   release(orderId: string): Promise<void>;
 }
 
+export interface InviteNonceRow {
+  nonce: string;
+  billId: string;
+  status: 'PENDING' | 'CONSUMED';
+  expiresAt: Date;
+  createdAt: Date;
+  consumedAt?: Date;
+}
+
+export type BillJoinResult =
+  | { ok: true; shareId: string }
+  | { ok: false; reason: 'INVALID_OR_EXPIRED' | 'ALREADY_USED' | 'FULL' | 'ALREADY_PARTICIPANT' | 'BILL_NOT_FOUND' };
+
+/**
+ * Split Bill P3 repository. Decisions that MUST be atomic across instances are
+ * performed by the DB (atomic UPDATEs / a transaction) and are NEVER routed
+ * through the fire-and-forget write queue; the write queue is only used for
+ * convergent snapshot persistence of already-decided state.
+ */
+export interface BillRepository {
+  loadAllGroups(): Promise<BillGroup[]>;
+  loadAllShares(): Promise<(BillShare & { billId: string })[]>;
+  /** Loads one group with its shares (durable read). */
+  getGroup(billId: string): Promise<BillGroup | undefined>;
+  /** Loads one share (with its bill id). */
+  getShare(shareId: string): Promise<(BillShare & { billId: string }) | undefined>;
+  /** Loads all invite nonces (used to rebuild the single-use sets on hydrate). */
+  loadAllNonces(): Promise<InviteNonceRow[]>;
+  /** Upserts a group and all of its shares (convergent snapshot). */
+  saveGroup(group: BillGroup): Promise<void>;
+  /** Registers a freshly minted invite nonce (PENDING). */
+  insertInviteNonce(row: InviteNonceRow): Promise<void>;
+  /**
+   * Atomic per-share payment claim. The `bill_share_claims` mutex (PK on
+   * share_id, `INSERT … ON CONFLICT DO NOTHING`) makes exactly one of N
+   * concurrent callers the winner; the losers get false and must NOT create an
+   * order. The winner also records `order_id` on the share (the unique index
+   * `bill_shares_order_uq` is a backstop). Only the winner mutates the share.
+   */
+  claimShareForPayment(shareId: string, orderId: string): Promise<boolean>;
+  /** Releases a failed claim so the share can be paid again (only if still this order). */
+  releaseClaim(shareId: string, orderId: string): Promise<boolean>;
+  /**
+   * Atomic, transactional join: consumes the invite nonce AND binds an open slot
+   * in one transaction. Serializes per-bill joins so two different tokens racing
+   * for the last slot cannot both bind, and the same token can never be replayed.
+   */
+  joinBill(opts: { billId: string; nonce: string; userId: string }): Promise<BillJoinResult>;
+  /**
+   * Boot recovery: clears claims whose order row does not exist AND that are
+   * older than the TTL (`claimed_at < now() - 5min`). A claim that is minutes-old
+   * with no order means the instance crashed between the claim and the order
+   * row insert — safe to free. A claim set moments ago (order row merely not yet
+   * written) is NEVER cleared, so an in-flight payment can never be double-claimed.
+   * Returns the number of cleared claims.
+   */
+  reconcileOrphanClaims(): Promise<number>;
+}
+
 export interface Repositories {
   mode: 'postgres';
   orders: OrderRepository;
@@ -123,6 +184,7 @@ export interface Repositories {
   webhookEvents: WebhookEventRepository;
   webhookReviews: WebhookReviewRepository;
   captureClaims: CaptureClaimRepository;
+  bills: BillRepository;
   ping(): Promise<void>;
   close(): Promise<void>;
 }

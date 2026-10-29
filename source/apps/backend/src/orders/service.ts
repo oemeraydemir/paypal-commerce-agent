@@ -46,7 +46,8 @@ export class OrderService {
     currency: string,
     origin: OrderOrigin, // FIX #7: server-side, never taken from the client
     idempotencyKey?: string,
-    requestFingerprint?: string
+    requestFingerprint?: string,
+    id?: string // caller-supplied id (Split Bill claim-before-order reuses the share's claim orderId)
   ): Order {
     // Validate quantities
     for (const item of items) {
@@ -60,7 +61,7 @@ export class OrderService {
     OrderService.createdAtCursor += 1;
 
     const order: Order = {
-      id: uuidv4(),
+      id: id ?? uuidv4(),
       sessionId,
       status: OrderStatus.CART_READY,
       origin,

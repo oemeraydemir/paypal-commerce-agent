@@ -114,68 +114,68 @@ describe('invite tokens — signature, single-use, abuse protection', () => {
     });
   }
 
-  test('join binds the next open slot and consumes the token', () => {
+  test('join binds the next open slot and consumes the token', async () => {
     const group = createBill(3);
     const { token } = billService.mintInvite(group.id);
-    const { shareId } = billService.joinWithToken(token, 'user-B');
+    const { shareId } = await billService.joinWithToken(token, 'user-B');
     expect(group.shares[1].participantUserId).toBe('user-B');
     expect(shareId).toBe(group.shares[1].id);
     expect(billService.isParticipant(group, 'user-B')).toBe(true);
   });
 
-  test('a token cannot be replayed after it is consumed', () => {
+  test('a token cannot be replayed after it is consumed', async () => {
     const group = createBill(4);
     const { token } = billService.mintInvite(group.id);
-    billService.joinWithToken(token, 'user-B');
-    expect(() => billService.joinWithToken(token, 'user-C')).toThrow(
+    await billService.joinWithToken(token, 'user-B');
+    await expect(billService.joinWithToken(token, 'user-C')).rejects.toThrow(
       new AppError(409, 'Invite token already used')
     );
   });
 
-  test('tampered signature is rejected', () => {
+  test('tampered signature is rejected', async () => {
     const group = createBill(3);
     const { token } = billService.mintInvite(group.id);
     const tampered = token.slice(0, -1) + (token.endsWith('a') ? 'b' : 'a');
-    expect(() => billService.joinWithToken(tampered, 'user-B')).toThrow(
+    await expect(billService.joinWithToken(tampered, 'user-B')).rejects.toThrow(
       new AppError(400, 'Invalid invite token')
     );
   });
 
-  test('malformed tokens are rejected', () => {
-    expect(() => billService.joinWithToken('not-a-token', 'user-B')).toThrow(
+  test('malformed tokens are rejected', async () => {
+    await expect(billService.joinWithToken('not-a-token', 'user-B')).rejects.toThrow(
       new AppError(400, 'Malformed invite token')
     );
-    expect(() => billService.joinWithToken('x.y.z', 'user-B')).toThrow(
+    await expect(billService.joinWithToken('x.y.z', 'user-B')).rejects.toThrow(
       new AppError(400, 'Malformed invite token')
     );
   });
 
-  test('expired tokens are rejected', () => {
+  test('expired tokens are rejected', async () => {
     const group = createBill(3);
     const { token } = billService.mintInvite(group.id);
     const realNow = Date.now();
     jest.spyOn(Date, 'now').mockReturnValue(realNow + 2 * 60 * 60 * 1000); // +2h
-    expect(() => billService.joinWithToken(token, 'user-B')).toThrow(
+    await expect(billService.joinWithToken(token, 'user-B')).rejects.toThrow(
       new AppError(400, 'Invite token expired')
     );
   });
 
-  test('a participant cannot join twice', () => {
+  test('a participant cannot join twice', async () => {
     const group = createBill(3);
     const { token } = billService.mintInvite(group.id);
-    billService.joinWithToken(token, 'user-B');
+    await billService.joinWithToken(token, 'user-B');
     const { token: token2 } = billService.mintInvite(group.id);
-    expect(() => billService.joinWithToken(token2, 'user-B')).toThrow(
+    await expect(billService.joinWithToken(token2, 'user-B')).rejects.toThrow(
       new AppError(409, 'You are already a participant in this bill')
     );
   });
 
-  test('a full bill rejects further joiners with a fresh token', () => {
+  test('a full bill rejects further joiners with a fresh token', async () => {
     const group = createBill(2);
     const t1 = billService.mintInvite(group.id).token;
-    billService.joinWithToken(t1, 'user-B');
+    await billService.joinWithToken(t1, 'user-B');
     const t2 = billService.mintInvite(group.id).token;
-    expect(() => billService.joinWithToken(t2, 'user-C')).toThrow(
+    await expect(billService.joinWithToken(t2, 'user-C')).rejects.toThrow(
       new AppError(409, 'Bill is full')
     );
   });

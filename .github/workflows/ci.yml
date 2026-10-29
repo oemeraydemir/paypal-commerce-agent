@@ -48,6 +48,63 @@ jobs:
           test -f dist/public/dashboard.html || (echo "MISSING dist/public/dashboard.html" && exit 1)
           echo "Build artifacts OK"
 
+  # Real-PostgreSQL atomicity smoke. This job is the ONLY place DATABASE_URL is
+  # set, so the default `npm test` (pg-mem) is unaffected and the smoke suites
+  # (tests/smoke) only touch a throwaway per-run schema that they create/drop
+  # themselves. It exists to verify the P3 atomic DECISION guarantees that pg-mem
+  # cannot model: single-winner concurrent share claims, join/nonce rollback &
+  # replay protection, abandoned-CART_READY atomic recovery, active-checkout
+  # protection, and "no second order for the same share". The PayPal smoke still
+  # skips (no sandbox creds in CI); that is expected and reported, not a failure.
+  #
+  # NOTE: this is a temporary verification gate for the P3 closure. Keep it until
+  # the real-PG results are green, then it may be removed or promoted to required.
+  smoke-real-pg:
+    name: Backend — real PostgreSQL atomicity smoke
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: aicafe_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/aicafe_test
+      # Fail the job if any real-PG suite is skipped (e.g. the service was not
+      # reachable or DATABASE_URL did not propagate). This guarantees a green
+      # check means the atomicity suites actually EXECUTED and passed — never
+      # that they were merely skipped. The PayPal smoke is intentionally excluded
+      # below because CI has no sandbox credentials for it.
+      SMOKE_REQUIRE_REAL: '1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: source/apps/backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Real-PostgreSQL atomicity smoke (P3)
+        # Scope to the real-PostgreSQL suites only. Each is gated solely on
+        # DATABASE_URL (the route test mocks PayPal internally), so they run here
+        # with no sandbox credentials. SMOKE_REQUIRE_REAL=1 makes a skipped suite
+        # fail the run, proving these tests truly ran rather than were skipped.
+        run: npx jest -c jest.smoke.config.js --runInBand tests/smoke/pg-bills-atomicity.test.ts tests/smoke/pg-durability.test.ts tests/smoke/pg-capture-claim-route.test.ts tests/smoke/pg-migrate.test.ts
+
   flutter:
     name: Flutter — analyze + test
     runs-on: ubuntu-latest

@@ -99,6 +99,7 @@ describe('migrations', () => {
       '004_webhook_events',
       '005_capture_claims',
       '006_webhook_reviews',
+      '007_bill_persistence',
     ]);
     expect(await migrate(fresh as any, { advisoryLock: false })).toEqual([]);
   });

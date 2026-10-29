@@ -144,6 +144,67 @@ export const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS webhook_reviews_order_idx ON webhook_reviews (order_id)`,
     ],
   },
+  {
+    // Split Bill P3: durable groups/shares/invite nonces. The DB is the source of
+    // truth for atomic decisions: the per-share payment claim (one order per share)
+    // and the single-use nonce consumption + open-slot binding are enforced here
+    // with atomic statements / row locks, not with the fire-and-forget write queue.
+    id: '007_bill_persistence',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS bill_groups (
+         id text PRIMARY KEY,
+         merchant_id text NOT NULL,
+         currency text NOT NULL,
+         total_minor integer NOT NULL,
+         strategy text NOT NULL,
+         created_by_user_id text NOT NULL,
+         status text NOT NULL,
+         items jsonb NOT NULL,
+         created_at timestamptz NOT NULL,
+         updated_at timestamptz NOT NULL
+       )`,
+      `CREATE TABLE IF NOT EXISTS bill_shares (
+         id text PRIMARY KEY,
+         bill_id text NOT NULL REFERENCES bill_groups (id),
+         participant_user_id text,
+         amount_minor integer NOT NULL,
+         status text NOT NULL,
+         order_id text,
+         paid_at timestamptz,
+         created_at timestamptz NOT NULL,
+         updated_at timestamptz NOT NULL
+       )`,
+      // At most ONE order ever bound to a share (duplicate-payment guard).
+      // The binding is enforced by the unique index below AND by the atomic
+      // `bill_share_claims` mutex table used by `claimShareForPayment`.
+      `CREATE UNIQUE INDEX IF NOT EXISTS bill_shares_order_uq
+         ON bill_shares (order_id) WHERE order_id IS NOT NULL`,
+      // A participant may bind at most ONE share per bill.
+      `CREATE UNIQUE INDEX IF NOT EXISTS bill_shares_one_per_user_uq
+         ON bill_shares (bill_id, participant_user_id) WHERE participant_user_id IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS bill_shares_bill_idx ON bill_shares (bill_id)`,
+      // Atomic per-share payment claim mutex (one live claim per share).
+      // `INSERT … ON CONFLICT (share_id) DO NOTHING` makes exactly one of N
+      // concurrent callers the winner; the losers get no row. This is the same
+      // proven primitive as `captureClaims`, verified on both pg-mem and real
+      // PostgreSQL. `claimed_at` drives the stale-claim (orphan) recovery TTL.
+      `CREATE TABLE IF NOT EXISTS bill_share_claims (
+         share_id text PRIMARY KEY,
+         order_id text NOT NULL,
+         claimed_at timestamptz NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS bill_share_claims_order_idx ON bill_share_claims (order_id)`,
+      `CREATE TABLE IF NOT EXISTS bill_invite_nonces (
+         nonce text PRIMARY KEY,
+         bill_id text NOT NULL REFERENCES bill_groups (id),
+         status text NOT NULL,
+         expires_at timestamptz NOT NULL,
+         created_at timestamptz NOT NULL,
+         consumed_at timestamptz
+       )`,
+      `CREATE INDEX IF NOT EXISTS bill_invite_nonces_bill_idx ON bill_invite_nonces (bill_id)`,
+    ],
+  },
 ];
 
 export interface MigrateOptions {

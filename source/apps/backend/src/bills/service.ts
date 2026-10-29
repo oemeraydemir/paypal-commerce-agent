@@ -27,6 +27,7 @@ import { signPayload, verifyPayloadSignature } from '../mandate/mandate-service'
 import { AppError } from '../middleware/error-handler';
 import { OrderService } from '../orders/service';
 import { OrderStatus, Order } from '../orders/domain';
+import { getRepos, writeQueue } from '../persistence/registry';
 import {
   BillGroup,
   BillItem,
@@ -163,6 +164,16 @@ export class BillService {
       updatedAt: now,
     };
     this.groups.set(id, group);
+    // Convergent snapshot to the durable store (retryable, serialized) — the DB
+    // is the source of truth for atomic decisions; this only heals the read model.
+    const repos = getRepos();
+    if (repos) {
+      writeQueue
+        .enqueue(`bill-group:${id}`, () => repos.bills.saveGroup(group))
+        .catch((err: any) =>
+          console.error(`BILL_GROUP_PERSIST_FAILED id=${id} error=${err?.message ?? err}`)
+        );
+    }
     return group;
   }
 
@@ -186,14 +197,53 @@ export class BillService {
     const nonce = crypto.randomUUID();
     // Reserve before returning so a minted nonce is tracked even if the response is lost.
     this.pendingInviteNonces.add(nonce);
-    const exp = Math.floor(Date.now() / 1000) + INVITE_TTL_MS / 1000;
+    const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
+    const repos = getRepos();
+    if (repos) {
+      // Persist the nonce so a restart keeps it single-use (token fails closed if lost).
+      repos.bills
+        .insertInviteNonce({ nonce, billId, status: 'PENDING', expiresAt, createdAt: new Date() })
+        .catch((err: any) =>
+          console.error(`BILL_NONCE_PERSIST_FAILED nonce=${nonce} error=${err?.message ?? err}`)
+        );
+    }
+    const exp = Math.floor(expiresAt.getTime() / 1000);
     const payload = { billId, nonce, exp };
     const { signature, kid } = signPayload(payload);
     const token = `${b64url(Buffer.from(stringify(payload)))}.${signature}.${kid}`;
     return { token, ttlSeconds: INVITE_TTL_MS / 1000 };
   }
 
-  joinWithToken(token: string, userId: string): { group: BillGroup; shareId: string } {
+  /**
+   * Repopulates the in-memory read model from the durable store. Must run once at
+   * boot (before listen). The DB remains the source of truth for atomic decisions;
+   * memory is just the fast read/serve model. Returns the number of groups loaded.
+   */
+  async hydrate(): Promise<number> {
+    const repos = getRepos();
+    if (!repos) return 0;
+    const groups = await repos.bills.loadAllGroups();
+    let loaded = 0;
+    for (const g of groups) {
+      const full = await repos.bills.getGroup(g.id);
+      if (full) {
+        this.groups.set(full.id, full);
+        loaded++;
+      }
+    }
+    const nonces = await repos.bills.loadAllNonces();
+    for (const n of nonces) {
+      if (n.status === 'PENDING') this.pendingInviteNonces.add(n.nonce);
+      else this.consumedInviteNonces.add(n.nonce);
+    }
+    return loaded;
+  }
+
+  joinWithToken(token: string, userId: string): Promise<{ group: BillGroup; shareId: string }> {
+    return this.joinWithTokenImpl(token, userId);
+  }
+
+  private async joinWithTokenImpl(token: string, userId: string): Promise<{ group: BillGroup; shareId: string }> {
     const parts = token.split('.');
     if (parts.length !== 3) throw new AppError(400, 'Malformed invite token');
     const [rawPayload, signature, kid] = parts;
@@ -212,12 +262,14 @@ export class BillService {
     if (typeof billId !== 'string' || typeof nonce !== 'string' || typeof exp !== 'number') {
       throw new AppError(400, 'Invalid invite token');
     }
-    if (!this.pendingInviteNonces.has(nonce)) {
-      throw new AppError(400, 'Invalid or expired invite token');
-    }
-    // True single-use: a token can be redeemed exactly once.
+    // True single-use: a token can be redeemed exactly once. Check this BEFORE
+    // the pending/forged check so a replayed (already-consumed) token is clearly
+    // distinguished from a forged/unknown one.
     if (this.consumedInviteNonces.has(nonce)) {
       throw new AppError(409, 'Invite token already used');
+    }
+    if (!this.pendingInviteNonces.has(nonce)) {
+      throw new AppError(400, 'Invalid or expired invite token');
     }
     if (exp <= Math.floor(Date.now() / 1000)) {
       throw new AppError(400, 'Invite token expired');
@@ -227,11 +279,46 @@ export class BillService {
     if (this.isParticipant(group, userId)) {
       throw new AppError(409, 'You are already a participant in this bill');
     }
+
+    const repos = getRepos();
+    if (repos) {
+      // Atomic, transactional decision in the DB: consumes the nonce AND binds an
+      // open slot. Every failure rolls back and leaves the nonce PENDING (reusable).
+      const res = await repos.bills.joinBill({ billId, nonce, userId });
+      if (!res.ok) {
+        switch (res.reason) {
+          case 'ALREADY_USED':
+            throw new AppError(409, 'Invite token already used');
+          case 'FULL':
+            throw new AppError(409, 'Bill is full');
+          case 'ALREADY_PARTICIPANT':
+            throw new AppError(409, 'You are already a participant in this bill');
+          case 'INVALID_OR_EXPIRED':
+            throw new AppError(400, 'Invalid or expired invite token');
+          case 'BILL_NOT_FOUND':
+          default:
+            throw new AppError(404, 'Bill not found');
+        }
+      }
+      // Mirror the committed DB decision in memory (joinBill already persisted it).
+      const share = group.shares.find((s) => s.id === res.shareId);
+      if (share) {
+        share.participantUserId = userId;
+        share.status = ShareStatus.PENDING;
+      }
+      group.updatedAt = new Date();
+      this.consumedInviteNonces.add(nonce);
+      this.pendingInviteNonces.delete(nonce);
+      return { group, shareId: res.shareId };
+    }
+
+    // In-memory only (no durable store): original single-instance behavior.
     const open = group.shares.find((s) => !s.participantUserId && s.status === ShareStatus.PENDING);
     if (!open) throw new AppError(409, 'Bill is full');
     open.participantUserId = userId;
     group.updatedAt = new Date();
     this.consumedInviteNonces.add(nonce);
+    this.pendingInviteNonces.delete(nonce);
     return { group, shareId: open.id };
   }
 
