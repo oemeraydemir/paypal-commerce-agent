@@ -1,4 +1,12 @@
-// Split Bill service — P1 (read-only group).
+// Split Bill service — P1 (read-only group) + P2 (per-share payment).
+//
+// ⚠️  PERSISTENCE LIMITATION — PROTOTYPE-ONLY.
+//   All state here (groups, invite nonces) is IN MEMORY and per process instance:
+//   restarts lose groups/nonces, and the single-use nonce reservation and the
+//   per-share payment claim are only atomic within one process — NOT across
+//   multiple instances. Multi-instance production requires a durable,
+//   atomically-reserved store (e.g. Postgres unique constraint / row lock) and
+//   explicit approval.
 //
 // Holds the in-memory group store, computes server-authoritative shares, and
 // mints/verifies signed single-use invite tokens. P1 deliberately exposes no
@@ -17,6 +25,8 @@ import crypto from 'crypto';
 import stringify from 'fast-json-stable-stringify';
 import { signPayload, verifyPayloadSignature } from '../mandate/mandate-service';
 import { AppError } from '../middleware/error-handler';
+import { OrderService } from '../orders/service';
+import { OrderStatus, Order } from '../orders/domain';
 import {
   BillGroup,
   BillItem,
@@ -76,6 +86,30 @@ export function deriveBillProgress(shares: BillShare[]): BillProgress {
     sharesWaived: shares.filter((s) => s.status === ShareStatus.WAIVED).length,
     paidMinor: paid.reduce((sum, s) => sum + s.amountMinor, 0),
   };
+}
+
+/**
+ * P2: a share's effective status is DERIVED from its underlying order (the
+ * single source of truth for money). The stored `BillShare.status` field is a
+ * fallback only; once a share has an order, PayPal/order state decides.
+ */
+export function effectiveShareStatus(share: BillShare): ShareStatus {
+  const order: Order | undefined = share.orderId
+    ? OrderService.getInstance().getById(share.orderId)
+    : undefined;
+  if (order) {
+    if (order.status === OrderStatus.PAID || order.status === OrderStatus.ORDER_CONFIRMED) {
+      return ShareStatus.PAID;
+    }
+    if (
+      order.status === OrderStatus.PAYMENT_FAILED ||
+      order.status === OrderStatus.ORDER_CANCELLED
+    ) {
+      return ShareStatus.FAILED;
+    }
+    // PAYMENT_PENDING / CART_READY etc. still count as pending.
+  }
+  return share.status;
 }
 
 export class BillService {
@@ -139,6 +173,11 @@ export class BillService {
   isParticipant(group: BillGroup, userId: string): boolean {
     if (group.createdByUserId === userId) return true;
     return group.shares.some((s) => s.participantUserId === userId);
+  }
+
+  /** Snapshot of shares with effective (order-derived) status for read serialization. */
+  effectiveShares(group: BillGroup): BillShare[] {
+    return group.shares.map((s) => ({ ...s, status: effectiveShareStatus(s) }));
   }
 
   mintInvite(billId: string): { token: string; ttlSeconds: number } {

@@ -1,14 +1,20 @@
-import { BillService, computeEqualSplit, deriveBillProgress, deriveBillStatus } from '../../src/bills/service';
+import { BillService, computeEqualSplit, deriveBillProgress, deriveBillStatus, effectiveShareStatus } from '../../src/bills/service';
 import { AppError } from '../../src/middleware/error-handler';
-import { BillItem, BillStatus, ShareStatus } from '../../src/bills/domain';
+import { BillItem, BillShare, BillStatus, ShareStatus } from '../../src/bills/domain';
+import { OrderService } from '../../src/orders/service';
+import { OrderOrigin } from '../../src/orders/domain';
 
 const billService = BillService.getInstance();
+const orderService = OrderService.getInstance();
 
 function itemsForTotal(totalMinor: number): BillItem[] {
   return [{ productId: 'p1', name: 'P1', quantity: totalMinor, unitPriceMinor: 1, lineTotalMinor: totalMinor }];
 }
 
-beforeEach(() => billService.reset());
+beforeEach(() => {
+  billService.reset();
+  orderService.reset();
+});
 afterEach(() => jest.restoreAllMocks());
 
 describe('computeEqualSplit — deterministic equal split math', () => {
@@ -178,5 +184,38 @@ describe('invite tokens — signature, single-use, abuse protection', () => {
     expect(() => billService.mintInvite('bill_unknown')).toThrow(
       new AppError(404, 'Bill not found')
     );
+  });
+});
+
+describe('effectiveShareStatus (P2 — order-derived)', () => {
+  test('a share bound to a PAID order is PAID', () => {
+    const order = orderService.create(
+      's',
+      [{ productId: 'p', name: 'P', quantity: 1, unitPriceMinor: 100, lineTotalMinor: 100 }],
+      'EUR',
+      OrderOrigin.HUMAN
+    );
+    orderService.setPayPalOrderId(order.id, 'PP');
+    orderService.setPayPalCaptureResult(order.id, 'CAP', 'COMPLETED');
+    const share: BillShare = { id: 'share1', amountMinor: 100, status: ShareStatus.PENDING, orderId: order.id };
+    expect(effectiveShareStatus(share)).toBe(ShareStatus.PAID);
+  });
+
+  test('a share bound to a failed order is FAILED', () => {
+    const order = orderService.create(
+      's',
+      [{ productId: 'p', name: 'P', quantity: 1, unitPriceMinor: 100, lineTotalMinor: 100 }],
+      'EUR',
+      OrderOrigin.HUMAN
+    );
+    orderService.setPayPalOrderId(order.id, 'PP');
+    orderService.setPayPalCaptureResult(order.id, 'CAP', 'DECLINED');
+    const share: BillShare = { id: 'share1', amountMinor: 100, status: ShareStatus.PENDING, orderId: order.id };
+    expect(effectiveShareStatus(share)).toBe(ShareStatus.FAILED);
+  });
+
+  test('falls back to the stored status when there is no order', () => {
+    const share: BillShare = { id: 'share1', amountMinor: 100, status: ShareStatus.PENDING };
+    expect(effectiveShareStatus(share)).toBe(ShareStatus.PENDING);
   });
 });

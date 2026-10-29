@@ -1,7 +1,18 @@
 import request from 'supertest';
 import { createApp } from '../../src/app';
+import { paypalClient } from '../../src/paypal/client';
 import { newSession, resetSessionState, TestSession } from '../helpers/session';
 import { BillService } from '../../src/bills/service';
+import { OrderService } from '../../src/orders/service';
+
+// MOCKED PayPal (no network): P2 share payment/capture rely on the same pipeline
+// as /orders/create + /orders/:orderId/capture, which we exercise end-to-end.
+jest.mock('../../src/paypal/client', () => ({
+  paypalClient: { createOrder: jest.fn(), captureOrder: jest.fn(), getOrder: jest.fn() },
+}));
+const createOrder = paypalClient.createOrder as jest.Mock;
+const captureOrder = paypalClient.captureOrder as jest.Mock;
+const getOrder = paypalClient.getOrder as jest.Mock;
 
 // P1 route contract: create a bill from a server-priced cart, invite/join, and
 // read state. These routes move no money and expose no capture/settlement path.
@@ -19,6 +30,9 @@ beforeEach(async () => {
   owner = await newSession(app);
   joiner = await newSession(app);
   outsider = await newSession(app);
+  createOrder.mockReset().mockResolvedValue({ id: 'PP-SHARE', status: 'CREATED', links: [{ rel: 'approve', href: 'https://x/approve' }] });
+  captureOrder.mockReset();
+  getOrder.mockReset();
 });
 
 describe('POST /api/bills', () => {
@@ -177,5 +191,162 @@ describe('GET /api/bills/:id', () => {
   test('unknown bill is a 404', async () => {
     const res = await request(app).get('/api/bills/bill_unknown').set(owner.headers);
     expect(res.status).toBe(404);
+  });
+});
+
+describe('P2: per-share payment', () => {
+  // coffee × 2 = 600 total; participantCount 2 → each share = 300.
+  async function createBillJoinPair() {
+    const created = await request(app)
+      .post('/api/bills')
+      .set(owner.headers)
+      .send({ items: [{ productId: 'coffee', quantity: 2 }], participantCount: 2 });
+    billId = created.body.id;
+    const invite = await request(app).post(`/api/bills/${billId}/invite`).set(owner.headers);
+    const joined = await request(app).post('/api/bills/join').set(joiner.headers).send({ token: invite.body.token });
+    expect(joined.status).toBe(200);
+    return { groupId: billId, shareId: joined.body.shareId as string };
+  }
+
+  const completedCapture = (value: string, currency = 'EUR') => ({
+    id: 'PP-SHARE',
+    status: 'COMPLETED',
+    purchaseUnits: [{ payments: { captures: [{ id: 'CAP1', status: 'COMPLETED', amount: { value, currency_code: currency } }] } }],
+  });
+
+  test('participant pays their share → order created, share stays PENDING until capture', async () => {
+    const { groupId, shareId } = await createBillJoinPair();
+    const pay = await request(app).post(`/api/bills/${groupId}/shares/${shareId}/pay`).set(joiner.headers);
+    expect(pay.status).toBe(201);
+    expect(typeof pay.body.orderId).toBe('string');
+    expect(pay.body.paypalOrderId).toBe('PP-SHARE');
+    expect(pay.body.approvalUrl).toBe('https://x/approve');
+    expect(pay.body.totalMinor).toBe(300);
+
+    const bill = await request(app).get(`/api/bills/${groupId}`).set(owner.headers);
+    const share = bill.body.shares.find((s: any) => s.id === shareId);
+    expect(share.status).toBe('PENDING');
+    expect(share.orderId).toBe(pay.body.orderId);
+    expect(bill.body.progress.sharesPaid).toBe(0);
+  });
+
+  test('capturing the share order via the existing route marks it PAID and advances the group', async () => {
+    const { groupId, shareId } = await createBillJoinPair();
+    const pay = await request(app).post(`/api/bills/${groupId}/shares/${shareId}/pay`).set(joiner.headers);
+    captureOrder.mockResolvedValueOnce(completedCapture('3.00'));
+
+    const cap = await request(app).post(`/api/orders/${pay.body.orderId}/capture`).set(joiner.headers);
+    expect(cap.status).toBe(200);
+    expect(cap.body.status).toBe('PAID');
+
+    const bill = await request(app).get(`/api/bills/${groupId}`).set(joiner.headers);
+    const share = bill.body.shares.find((s: any) => s.id === shareId);
+    expect(share.status).toBe('PAID');
+    expect(share.paypalCaptureId).toBe('CAP1');
+    expect(bill.body.progress.sharesPaid).toBe(1);
+    expect(bill.body.status).toBe('PARTIALLY_SETTLED');
+  });
+
+  test('cannot pay someone else\'s share (outsider or the owner)', async () => {
+    const { groupId, shareId } = await createBillJoinPair();
+    let res = await request(app).post(`/api/bills/${groupId}/shares/${shareId}/pay`).set(outsider.headers);
+    expect(res.status).toBe(404);
+    res = await request(app).post(`/api/bills/${groupId}/shares/${shareId}/pay`).set(owner.headers);
+    expect(res.status).toBe(404);
+  });
+
+  test('cannot pay an already-paid share', async () => {
+    const { groupId, shareId } = await createBillJoinPair();
+    const pay = await request(app).post(`/api/bills/${groupId}/shares/${shareId}/pay`).set(joiner.headers);
+    captureOrder.mockResolvedValueOnce(completedCapture('3.00'));
+    await request(app).post(`/api/orders/${pay.body.orderId}/capture`).set(joiner.headers);
+
+    const again = await request(app).post(`/api/bills/${groupId}/shares/${shareId}/pay`).set(joiner.headers);
+    expect(again.status).toBe(409);
+  });
+
+  test('two concurrent pays for the same share create exactly one order / PayPal order', async () => {
+    const { groupId, shareId } = await createBillJoinPair();
+    const payUrl = `/api/bills/${groupId}/shares/${shareId}/pay`;
+
+    // Gate the mocked PayPal create so request A blocks there with the order id
+    // already bound. We sequence the race deterministically: wait until A is
+    // confirmed blocked at createOrder, THEN start B — so B is guaranteed to see
+    // the in-flight (bound, not-yet-PENDING) share and must conflict instead of
+    // creating a second order / PayPal order.
+    let releaseCreate!: () => void;
+    let createCalled!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseCreate = resolve; });
+    const createCalledP = new Promise<void>((resolve) => { createCalled = resolve; });
+    createOrder.mockImplementationOnce(() => {
+      createCalled(); // A has reached the PayPal create and is now blocked
+      return gate.then(() => ({
+        id: 'PP-SHARE-CONCURRENT',
+        status: 'CREATED',
+        links: [{ rel: 'approve', href: 'https://x/approve' }],
+      }));
+    });
+
+    // Force-start A (supertest is lazy: a bare Test does not hit the wire until
+    // awaited) and wait until it is blocked at the gated createOrder.
+    const aP = request(app).post(payUrl).set(joiner.headers).send().then((r) => r);
+    await createCalledP;
+
+    // Now start B while A is still blocked → B must observe the in-flight share.
+    const bP = request(app).post(payUrl).set(joiner.headers).send().then((r) => r);
+    const b = await bP;
+    expect(b.status).toBe(409); // conflict — no second order created
+
+    releaseCreate(); // let A finish
+    const a = await aP;
+    expect(a.status).toBe(201); // exactly one request creates the order
+
+    expect(createOrder).toHaveBeenCalledTimes(1); // one PayPal order total
+    // Exactly one internal order exists for this share (the /pay idempotency key).
+    const matches = OrderService.getInstance()
+      .getAll()
+      .filter((o) => o.idempotencyKey === `bill-pay-${shareId}`);
+    expect(matches).toHaveLength(1);
+  });
+
+  test('another session cannot capture the share order (no id substitution)', async () => {
+    const { groupId, shareId } = await createBillJoinPair();
+    const pay = await request(app).post(`/api/bills/${groupId}/shares/${shareId}/pay`).set(joiner.headers);
+    expect(pay.status).toBe(201);
+    captureOrder.mockResolvedValueOnce(completedCapture('3.00'));
+    // The owner's session does not own the joiner's order → indistinguishable from missing.
+    const cap = await request(app).post(`/api/orders/${pay.body.orderId}/capture`).set(owner.headers);
+    expect(cap.status).toBe(404);
+    // The joiner can still capture their own share's order afterwards.
+    const ok = await request(app).post(`/api/orders/${pay.body.orderId}/capture`).set(joiner.headers);
+    expect(ok.status).toBe(200);
+    expect(ok.body.status).toBe('PAID');
+  });
+
+  test('a participant cannot read another share\'s evidence', async () => {
+    const created = await request(app)
+      .post('/api/bills')
+      .set(owner.headers)
+      .send({ items: [{ productId: 'coffee', quantity: 2 }], participantCount: 2 });
+    const groupId = created.body.id;
+    const ownerShareId = created.body.shares[0].id; // owner occupies slot 0
+    const invite = await request(app).post(`/api/bills/${groupId}/invite`).set(owner.headers);
+    await request(app).post('/api/bills/join').set(joiner.headers).send({ token: invite.body.token });
+
+    const ev = await request(app).get(`/api/bills/${groupId}/shares/${ownerShareId}/evidence`).set(joiner.headers);
+    expect(ev.status).toBe(404);
+  });
+
+  test('per-share evidence is available to the participant/owner, not outsiders', async () => {
+    const { groupId, shareId } = await createBillJoinPair();
+    await request(app).post(`/api/bills/${groupId}/shares/${shareId}/pay`).set(joiner.headers);
+
+    const ev = await request(app).get(`/api/bills/${groupId}/shares/${shareId}/evidence`).set(joiner.headers);
+    expect(ev.status).toBe(200);
+    expect(ev.body.version).toBe('aicafe.evidence/1');
+    expect(typeof ev.body.integrity?.signature).toBe('string');
+
+    const outsiderEv = await request(app).get(`/api/bills/${groupId}/shares/${shareId}/evidence`).set(outsider.headers);
+    expect(outsiderEv.status).toBe(404);
   });
 });
