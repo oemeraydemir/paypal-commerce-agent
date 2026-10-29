@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import { env } from '../config/environment';
-import { resolveDatabaseSslOptions } from './database-ssl';
+
 import { OrderService } from '../orders/service';
 import { sessionStore } from '../session';
 import { refundService } from '../refunds/service';
