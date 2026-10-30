@@ -722,9 +722,18 @@ class PgBillRepository implements BillRepository {
   }
 }
 
+// `pickup_slots.day` is a SQL `date`; node-pg hands it back as a JS Date (local midnight).
+// Normalize to the plain YYYY-MM-DD string the API and UI use, never String(Date).
+export const toDayString = (v: any): string => {
+  if (v instanceof Date) {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return `${v.getFullYear()}-${p(v.getMonth() + 1)}-${p(v.getDate())}`;
+  }
+  return String(v).slice(0, 10);
+};
 const toSlot = (r: any): PickupSlotRow => ({
   id: r.id,
-  day: String(r.day),
+  day: toDayString(r.day),
   startTs: toDate(r.start_ts)!,
   endTs: toDate(r.end_ts)!,
   capacity: Number(r.capacity),

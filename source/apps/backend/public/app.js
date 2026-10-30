@@ -740,7 +740,7 @@
         if (!slots.length) return;
         hasAny = true;
         var grp = el('div', 'pickup-day');
-        grp.appendChild(el('div', 'pickup-day-label', fmtDate(new Date(day + 'T00:00:00'))));
+        grp.appendChild(el('div', 'pickup-day-label', (window.i18n && window.i18n.formatDay) ? window.i18n.formatDay(new Date(day + 'T00:00:00')) : new Date(day + 'T00:00:00').toLocaleDateString()));
         slots.forEach(function (slot) {
           var remaining = slot.remaining || 0;
           var btn = el('button', 'pickup-slot', '');
