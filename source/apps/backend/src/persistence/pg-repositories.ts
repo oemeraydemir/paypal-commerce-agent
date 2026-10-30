@@ -776,6 +776,11 @@ class PgPickupRepository implements PickupRepository {
     );
   }
 
+  async getSlot(slotId: string): Promise<PickupSlotRow | undefined> {
+    const { rows } = await this.db.query(`SELECT * FROM pickup_slots WHERE id = $1`, [slotId]);
+    return rows.length ? toSlot(rows[0]) : undefined;
+  }
+
   async getAvailability(day: string): Promise<PickupSlotRow[]> {
     const { rows } = await this.db.query(
       `SELECT * FROM pickup_slots WHERE day = $1 ORDER BY start_ts ASC`,

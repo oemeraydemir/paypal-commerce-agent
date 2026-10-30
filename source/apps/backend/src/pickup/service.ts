@@ -11,6 +11,44 @@ import {
 import { OrderService } from '../orders/service';
 import { OrderStatus } from '../orders/domain';
 import { pickupHeldTtlMs } from './domain';
+import { currentBusiness } from '../config/business-config';
+
+// ---- business-local time helpers (slots are wall-clock times in the café's time zone) ----
+function businessTz(): string {
+  const tz = currentBusiness.timezone || 'UTC';
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return tz;
+  } catch {
+    return 'UTC';
+  }
+}
+function zoneParts(ms: number, tz: string): { y: number; mo: number; d: number; h: number; mi: number; s: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(new Date(ms));
+  const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
+  return { y: get('year'), mo: get('month'), d: get('day'), h: get('hour'), mi: get('minute'), s: get('second') };
+}
+/** YYYY-MM-DD of the given instant in the business time zone. */
+export function businessDay(ms: number, tz = businessTz()): string {
+  const p = zoneParts(ms, tz);
+  return `${p.y}-${String(p.mo).padStart(2, '0')}-${String(p.d).padStart(2, '0')}`;
+}
+/** The UTC instant at which the wall clock in `tz` reads `day` `h:m`. */
+export function zonedWallTimeToUtc(day: string, h: number, m: number, tz = businessTz()): Date {
+  const [y, mo, d] = day.split('-').map(Number);
+  const guess = Date.UTC(y, mo - 1, d, h, m);
+  const offsetAt = (ms: number) => {
+    const p = zoneParts(ms, tz);
+    return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - Math.floor(ms / 1000) * 1000;
+  };
+  let utc = guess - offsetAt(guess);
+  utc = guess - offsetAt(utc); // second pass settles DST edges
+  return new Date(utc);
+}
+
 
 /**
  * Dev-only in-memory repository. NOT safe across instances and NOT a substitute
@@ -26,6 +64,10 @@ class MemoryPickupRepository implements PickupRepository {
 
   async createSlot(row: PickupSlotRow): Promise<void> {
     if (!this.slots.has(row.id)) this.slots.set(row.id, row);
+  }
+
+  async getSlot(slotId: string): Promise<PickupSlotRow | undefined> {
+    return this.slots.get(slotId);
   }
 
   async getAvailability(day: string): Promise<PickupSlotRow[]> {
@@ -155,6 +197,12 @@ export class PickupService {
   }
 
   async reserve(slotId: string, sessionId: string): Promise<PickupReserveOutcome> {
+    // A slot that has already started can no longer be reserved (server-side rule; the UI
+    // also hides it). Unknown ids fall through to the repository's own SLOT_NOT_FOUND.
+    const slot = await repo().getSlot(slotId);
+    if (slot && slot.startTs.getTime() <= Date.now()) {
+      return { outcome: 'SLOT_NOT_FOUND' };
+    }
     const bookingId = uuidv4();
     const expiresAt = new Date(Date.now() + pickupHeldTtlMs());
     const outcome = await repo().reserve({ slotId, sessionId, bookingId, expiresAt });
@@ -169,8 +217,11 @@ export class PickupService {
     return repo().link({ bookingId, orderId, sessionId });
   }
 
-  getAvailability(day: string) {
-    return repo().getAvailability(day);
+  /** Customer view: keeps the calendar topped up and hides slots that already started. */
+  async getAvailability(day: string) {
+    await this.ensureUpcomingSlotsThrottled();
+    const now = Date.now();
+    return (await repo().getAvailability(day)).filter((s) => s.startTs.getTime() > now);
   }
 
   getMerchantPlan() {
@@ -186,12 +237,17 @@ export class PickupService {
     return repo().reconcile();
   }
 
-  /** Boot helper: seed a few demo slots when none exist (dev/demo only). */
-  async seedDefaultSlotsIfEmpty(): Promise<number> {
-    const existing = await repo().getAvailability(new Date().toISOString().slice(0, 10));
-    const any = await this.anySlotExists();
-    if (any) return 0;
-    const days = 3;
+  private lastEnsureAt = 0;
+
+  /**
+   * Rolling calendar: makes sure the next `daysAhead` business days have the standard
+   * slots. Idempotent (slot ids are stable per day + time and createSlot never overwrites),
+   * so it is safe on every boot, on every instance, and repeatedly at runtime. Set
+   * PICKUP_AUTOSEED=false to manage slots entirely by hand (POST /api/pickup/slots).
+   */
+  async ensureUpcomingSlots(daysAhead = 7): Promise<number> {
+    if (process.env.PICKUP_AUTOSEED === 'false') return 0;
+    const tz = businessTz();
     const times = [
       { h: 9, m: 0 },
       { h: 12, m: 0 },
@@ -199,34 +255,40 @@ export class PickupService {
       { h: 18, m: 0 },
     ];
     let created = 0;
-    for (let d = 0; d < days; d++) {
-      const day = new Date(Date.now() + d * 86400000);
-      const dayStr = day.toISOString().slice(0, 10);
+    const seen = new Set<string>();
+    for (let d = 0; d < daysAhead; d++) {
+      const day = businessDay(Date.now() + d * 86400000, tz);
+      if (seen.has(day)) continue; // DST days can repeat a date at the boundary
+      seen.add(day);
       for (const t of times) {
-        const start = new Date(day);
-        start.setHours(t.h, t.m, 0, 0);
+        const start = zonedWallTimeToUtc(day, t.h, t.m, tz);
         const end = new Date(start.getTime() + 60 * 60 * 1000);
-        await this.createSlot({
-          id: `slot-${dayStr}-${t.h}${t.m}`,
-          day: dayStr,
-          startTs: start,
-          endTs: end,
-          capacity: 3,
-        });
+        await this.createSlot({ id: `slot-${day}-${t.h}${t.m}`, day, startTs: start, endTs: end, capacity: 3 });
         created++;
       }
     }
     return created;
   }
 
-  private async anySlotExists(): Promise<boolean> {
-    // getMerchantPlan lists all slots; cheap enough at boot (seeded sets are tiny).
-    const plan = await repo().getMerchantPlan();
-    return plan.length > 0;
+  private async ensureUpcomingSlotsThrottled(): Promise<void> {
+    if (Date.now() - this.lastEnsureAt < 10 * 60 * 1000) return;
+    this.lastEnsureAt = Date.now();
+    try {
+      await this.ensureUpcomingSlots();
+    } catch (err: any) {
+      this.lastEnsureAt = 0; // retry on the next request
+      console.warn(`Pickup slot top-up failed: ${err?.message ?? err}`);
+    }
+  }
+
+  /** @deprecated kept for callers/tests: now delegates to the rolling top-up. */
+  async seedDefaultSlotsIfEmpty(): Promise<number> {
+    return this.ensureUpcomingSlots();
   }
 
   /** Test isolation only. */
   reset(): void {
+    this.lastEnsureAt = 0;
     if (repo() === memoryRepo) {
       (memoryRepo as unknown as { slots: Map<string, PickupSlotRow> }).slots.clear();
       (memoryRepo as unknown as { bookings: Map<string, PickupBookingRow> }).bookings.clear();

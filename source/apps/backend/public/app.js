@@ -624,9 +624,13 @@
   var PICKUP_DAYS = 3;
 
   function pickupDayStrs() {
-    var out = [], t = new Date(), i;
+    // Local calendar dates (the café's slots are wall-clock times); toISOString() would use UTC
+    // and show the wrong day for the first hours after midnight.
+    var out = [], i, d;
+    function two(n) { return (n < 10 ? '0' : '') + n; }
     for (i = 0; i < PICKUP_DAYS; i++) {
-      out.push(new Date(t.getTime() + i * 86400000).toISOString().slice(0, 10));
+      d = new Date(); d.setDate(d.getDate() + i);
+      out.push(d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()));
     }
     return out;
   }

@@ -268,8 +268,11 @@ export class BillService {
     const repos = getRepos();
     if (repos) {
       // Persist the nonce so a restart keeps it single-use (token fails closed if lost).
-      repos.bills
-        .insertInviteNonce({ nonce, billId, status: 'PENDING', expiresAt, createdAt: new Date() })
+      // Serialized + retried like every other bill write (a lost nonce only fails closed).
+      writeQueue
+        .enqueue(`bill-nonce:${nonce}`, () =>
+          repos.bills.insertInviteNonce({ nonce, billId, status: 'PENDING', expiresAt, createdAt: new Date() })
+        )
         .catch((err: any) =>
           console.error(`BILL_NONCE_PERSIST_FAILED nonce=${nonce} error=${err?.message ?? err}`)
         );

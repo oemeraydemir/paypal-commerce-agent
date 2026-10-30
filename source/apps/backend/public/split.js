@@ -315,7 +315,7 @@
           var cb = el('button', 'primary full', busy.capture ? t('room.capturing') : t('room.capture')); cb.type = 'button'; cb.disabled = !!busy.capture;
           cb.onclick = function () { capture(pend); }; box.appendChild(cb);
         }
-        if (ms !== 'failed') {
+        if (ms !== 'failed' && !(pend && returning)) {
         var pb = el('button', ((pend && returning) ? '' : 'primary ') + 'full', busy.pay ? t('room.paying') : (mine.orderId ? t('room.payResume') : t('room.payMine')));
         pb.type = 'button'; pb.style.marginTop = '8px'; pb.disabled = !!busy.pay || !!busy.capture;
         if (busy.pay) { pb.classList.add('loading'); pb.setAttribute('aria-busy', 'true'); }

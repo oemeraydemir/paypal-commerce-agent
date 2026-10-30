@@ -232,6 +232,7 @@ export interface PickupReconcileSummary {
 export interface PickupRepository {
   createSlot(row: PickupSlotRow): Promise<void>;
   getAvailability(day: string): Promise<PickupSlotRow[]>;
+  getSlot(slotId: string): Promise<PickupSlotRow | undefined>;
   /** Merchant view: every slot with its bookings (server-owned, no client trust). */
   getMerchantPlan(): Promise<{ slot: PickupSlotRow; bookings: PickupBookingRow[] }[]>;
   /** Atomic + idempotent: reserves capacity and writes a HELD booking, or returns FULL. */

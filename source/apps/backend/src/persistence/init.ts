@@ -70,11 +70,11 @@ export async function attachPersistence(
     console.log(`BILL_HYDRATE groups=${billsLoaded} orphanClaimsCleared=${orphanClaimsCleared}`);
   }
 
-  // Pickup Planner: seed demo slots when none exist outside production, so the
-  // local/demo experience shows a calendar without manual setup.
-  if (env.NODE_ENV !== 'production') {
+  // Pickup Planner: keep a rolling 7-day calendar of slots (idempotent; PICKUP_AUTOSEED=false
+  // turns it off). A one-time seed used to expire after 3 days and leave the planner empty.
+  {
     try {
-      const seeded = await PickupService.getInstance().seedDefaultSlotsIfEmpty();
+      const seeded = await PickupService.getInstance().ensureUpcomingSlots();
       if (seeded > 0) console.log(`PICKUP_SEED slots=${seeded}`);
     } catch (err: any) {
       console.warn(`Pickup seed failed: ${err?.message ?? err}`);

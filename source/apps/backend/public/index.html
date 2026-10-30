@@ -13,7 +13,7 @@
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
 header{display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--card)}
 header h1{margin:0;font-size:20px}
-header .tag{color:var(--mut);flex:1;min-width:200px}
+header .tagline{color:var(--mut);flex:1;min-width:200px}
 .pill{font-size:12px;padding:3px 9px;border-radius:99px;border:1px solid var(--line);color:var(--mut)}
 .pill.on{color:var(--ok);border-color:var(--ok)}.pill.off{color:var(--bad);border-color:var(--bad)}
 a{color:var(--brand)}
@@ -139,7 +139,7 @@ button.loading{opacity:.7;cursor:progress}
 <body>
 <header>
   <h1>☕ AI Café</h1>
-  <span class="tag" data-i18n="tagline">Shop by intent. Review every item. Approve every payment.</span>
+  <span class="tagline" data-i18n="tagline">Shop by intent. Review every item. Approve every payment.</span>
   <span id="b-ai" class="pill">AI …</span>
   <span id="b-pp" class="pill">PayPal …</span>
   <label class="lang"><span data-i18n="lang.label">Language</span>
