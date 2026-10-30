@@ -24,6 +24,7 @@ import mandateRoutes, { wellKnownMandateKeys } from './routes/mandates';
 import evidenceRoutes from './routes/evidence';
 import discoveryRoutes from './routes/discovery';
 import billsRoutes from './routes/bills';
+import pickupRoutes from './routes/pickup';
 import { currentBusiness } from './config/business-config';
 import { rejectClientTenantOverride } from './config/tenant';
 import fs from 'fs';
@@ -124,6 +125,7 @@ export function createApp() {
   app.use('/api', mandateRoutes);
   app.use('/api', evidenceRoutes);
   app.use('/api', billsRoutes);
+  app.use('/api', pickupRoutes);
   app.use('/', wellKnownMandateKeys);
 
   app.use(errorHandler);

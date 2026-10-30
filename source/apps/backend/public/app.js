@@ -494,7 +494,13 @@
     api('/api/orders/create', { method: 'POST', headers: { 'Idempotency-Key': uuid() }, body: JSON.stringify({ items: items }) }).then(function (o) {
       if (!o.approvalUrl) throw new Error(i18nT('checkout.noLink'));
       save(PKEY, { orderId: o.orderId, paypalOrderId: o.paypalOrderId, total: o.totalFormatted });
-      window.location.assign(o.approvalUrl);
+      // Link any held pickup booking to the order the customer is about to pay.
+      // This is best-effort: if it fails we still proceed to PayPal and let the
+      // server reconciliation reconcile the booking from the authoritative order
+      // status later. Never blocks checkout.
+      linkPickupBooking(o.orderId).catch(function () {}).then(function () {
+        window.location.assign(o.approvalUrl);
+      });
     }).catch(function (e) {
       busy = false; pbtn.classList.remove('loading'); pbtn.removeAttribute('aria-busy'); renderCart();
       if (e.status === 403) { showPolicy({ policyDecision: 'BLOCK', reason: (e.body && (e.body.reason || e.body.suggestion)) || e.message }); }
@@ -522,6 +528,141 @@
       }).catch(function (e) { go.disabled = false; go.classList.remove('loading'); go.removeAttribute('aria-busy'); go.textContent = i18nT('receipt.confirm'); banner('bad', 'Capture failed: ' + e.message); });
     };
     box.appendChild(go); b.appendChild(box);
+  }
+
+  // ---- Pickup planner ------------------------------------------------------------------
+  var BKEY = 'aicafe.pickupBooking';
+  var pickup = { booking: load(BKEY), reserving: false };
+  var PICKUP_DAYS = 3;
+
+  function pickupDayStrs() {
+    var out = [], t = new Date(), i;
+    for (i = 0; i < PICKUP_DAYS; i++) {
+      out.push(new Date(t.getTime() + i * 86400000).toISOString().slice(0, 10));
+    }
+    return out;
+  }
+
+  function fmtWindow(startTs, endTs) {
+    function tf(d) { return new Date(d).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+    return tf(startTs) + ' – ' + tf(endTs);
+  }
+
+  function pickupStatusLabel(st) {
+    if (st === 'HELD') return i18nT('pickup.status.held');
+    if (st === 'CONFIRMED') return i18nT('pickup.status.confirmed');
+    if (st === 'RELEASED') return i18nT('pickup.status.released');
+    return i18nT('pickup.status.unresolved');
+  }
+
+  function pickupStatusClass(st) {
+    if (st === 'HELD') return 'held';
+    if (st === 'CONFIRMED') return 'confirmed';
+    if (st === 'RELEASED') return 'released';
+    return '';
+  }
+
+  function fetchPickupAvailability() {
+    var days = pickupDayStrs();
+    return Promise.all(days.map(function (day) {
+      return api('/api/pickup/availability?day=' + day).then(function (r) {
+        return (r && r.slots) ? r.slots : [];
+      }).catch(function () { return []; });
+    })).then(function (byDay) {
+      var map = {}, i;
+      for (i = 0; i < days.length; i++) map[days[i]] = byDay[i] || [];
+      return map;
+    });
+  }
+
+  function reservePickupSlot(slotId) {
+    if (pickup.reserving || pickup.booking) return;
+    pickup.reserving = true; renderPickup();
+    api('/api/pickup/reserve', { method: 'POST', body: JSON.stringify({ slotId: slotId }) }).then(function (r) {
+      if (r && r.bookingId) {
+        pickup.booking = { bookingId: r.bookingId, slotId: slotId, status: 'HELD' };
+        save(BKEY, pickup.booking);
+        banner('ok', i18nT('pickup.reserved'));
+      } else {
+        banner('bad', i18nT('pickup.error.reserve'));
+      }
+    }).catch(function (e) {
+      var msg = i18nT('pickup.error.reserve');
+      var body = e.body || {};
+      if (e.status === 409 && body.details && (body.details.code === 'SLOT_FULL' || body.details.code === 'SLOT_NOT_FOUND')) {
+        msg = i18nT('pickup.error.full');
+      } else if (e.status === 409 && body.details && body.details.code === 'ALREADY_HELD') {
+        msg = i18nT('pickup.error.held');
+      }
+      banner('bad', msg);
+    }).then(function () { pickup.reserving = false; renderPickup(); });
+  }
+
+  function releasePickupBooking() {
+    var b = pickup.booking;
+    if (!b || !b.bookingId || pickup.reserving) return;
+    pickup.reserving = true; renderPickup();
+    api('/api/pickup/release', { method: 'POST', body: JSON.stringify({ bookingId: b.bookingId }) }).then(function () {
+      pickup.booking = null; drop(BKEY); banner('ok', i18nT('pickup.released'));
+    }).catch(function () {
+      // Idempotent server-side: if it was already released, clear locally anyway.
+      pickup.booking = null; drop(BKEY); banner('bad', i18nT('pickup.error.release'));
+    }).then(function () { pickup.reserving = false; renderPickup(); });
+  }
+
+  function linkPickupBooking(orderId) {
+    var b = pickup.booking;
+    if (!b || !b.bookingId) return Promise.resolve();
+    return api('/api/pickup/link', { method: 'POST', body: JSON.stringify({ bookingId: b.bookingId, orderId: orderId }) })
+      .then(function (r) {
+        if (r && r.status) { b.status = r.status; pickup.booking = b; save(BKEY, b); }
+      })
+      .catch(function () { /* reconciliation is authoritative; do not block checkout */ });
+  }
+
+  function renderPickup() {
+    var box = $('pickup'); if (!box) return;
+    box.textContent = '';
+    box.appendChild(el('h3', '', i18nT('pickup.title')));
+
+    if (pickup.booking && pickup.booking.bookingId) {
+      var b = pickup.booking;
+      var statusWrap = el('div', 'pbox ' + pickupStatusClass(b.status));
+      statusWrap.appendChild(el('div', 'phead', pickupStatusLabel(b.status)));
+      if (b.status === 'HELD') {
+        var cancelBtn = el('button', '', i18nT('pickup.cancel'));
+        cancelBtn.type = 'button'; cancelBtn.disabled = pickup.reserving;
+        cancelBtn.onclick = releasePickupBooking;
+        statusWrap.appendChild(cancelBtn);
+      }
+      box.appendChild(statusWrap);
+      return; // while a booking is held, hide slot selection to keep it simple
+    }
+
+    fetchPickupAvailability().then(function (byDay) {
+      if ($('pickup') !== box) return;
+      var days = Object.keys(byDay);
+      var hasAny = false;
+      days.forEach(function (day) {
+        var slots = byDay[day];
+        if (!slots.length) return;
+        hasAny = true;
+        var grp = el('div', 'pickup-day');
+        grp.appendChild(el('div', 'pickup-day-label', fmtDate(new Date(day + 'T00:00:00'))));
+        slots.forEach(function (slot) {
+          var remaining = slot.remaining || 0;
+          var btn = el('button', 'pickup-slot', '');
+          btn.type = 'button';
+          btn.disabled = pickup.reserving || remaining <= 0;
+          btn.appendChild(el('span', 'pu-window', fmtWindow(slot.startTs, slot.endTs)));
+          btn.appendChild(el('span', 'pu-cap', remaining > 0 ? (remaining + ' left') : i18nT('pickup.full')));
+          btn.onclick = (function (sid) { return function () { reservePickupSlot(sid); }; })(slot.id);
+          grp.appendChild(btn);
+        });
+        box.appendChild(grp);
+      });
+      if (!hasAny) box.appendChild(el('p', 'mut', i18nT('pickup.none')));
+    });
   }
 
   // ---- Receipt + demo reset ------------------------------------------------------------------
@@ -827,10 +968,11 @@
   }
   function reset() {
     cart = {}; save(CKEY, cart); drop(PKEY);
+    pickup.booking = null; drop(BKEY);
     var r = $('receipt'); if (r) { r.textContent = ''; r.hidden = true; }
     var b = $('banner'); if (b) { b.hidden = true; b.textContent = ''; }
     policy = null; $('policy').textContent = ''; $('policy-note').textContent = '';
-    setCartChrome(true); renderCart();
+    setCartChrome(true); renderCart(); renderPickup();
     say('s', i18nT('reset.done'));
   }
   // Exposed for headless verification only; not used by the normal flow.
@@ -979,6 +1121,7 @@
     fetch('/api/catalog').then(function (r) { return r.json(); }).then(function (c) { renderCatalog(c.products || []); renderScenarios(); renderCart(); handleReturn(); })
       .catch(function () { banner('bad', 'Could not load the menu. Is the API running?'); });
     renderCart();
+    renderPickup();
     if (!session) ensureSession().catch(function () { /* retried on first request */ });
     initOnboarding();
   }

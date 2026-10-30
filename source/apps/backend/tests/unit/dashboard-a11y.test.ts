@@ -71,10 +71,13 @@ function buildDom() {
     'closeSide', 'sideBackdrop', 'themeToggle',
     'ordersGrid', 'eventsGrid', 'eventModal', 'sideBody', 'sideTitle',
     'ordersStatus', 'ordersError', 'eventsStatus', 'eventsError',
+    'pickupQuickFilter', 'pickupCsvBtn', 'pickupJsonBtn',
+    'pickupGrid', 'pickupStatus', 'pickupError',
   ].forEach((id) => { ids[id] = new FakeElement('div', id); });
   // AG Grid renders its real root (.ag-root) inside each container.
   ids.ordersGrid._root = new FakeElement('div');
   ids.eventsGrid._root = new FakeElement('div');
+  ids.pickupGrid._root = new FakeElement('div');
   ids.eventModal.className = 'side-panel';
   ids.eventModal.setAttribute('aria-hidden', 'true');
   ids.sideBackdrop.hidden = true;
@@ -196,9 +199,10 @@ describe('dashboard.js accessibility behavior (DOM shim)', () => {
   });
 
   test('drives loading/empty/error transitions through the v33 `loading` option', async () => {
-    // Both grids start in the loading state declared in their grid options.
+    // All grids start in the loading state declared in their grid options.
     expect(grids.ordersGrid.options.loading).toBe(true);
     expect(grids.eventsGrid.options.loading).toBe(true);
+    expect(grids.pickupGrid.options.loading).toBe(true);
 
     await flush(10);
 
@@ -206,6 +210,7 @@ describe('dashboard.js accessibility behavior (DOM shim)', () => {
     // and report the error both assertively (alert) and politely (status).
     expect(grids.ordersGrid.api.setGridOption).toHaveBeenCalledWith('loading', false);
     expect(grids.eventsGrid.api.setGridOption).toHaveBeenCalledWith('loading', false);
+    expect(grids.pickupGrid.api.setGridOption).toHaveBeenCalledWith('loading', false);
     expect(ids.ordersError.hidden).toBe(false);
     expect(ids.ordersStatus.textContent).not.toMatch(/Loading orders/i);
   });
@@ -223,11 +228,124 @@ describe('dashboard.js accessibility behavior (DOM shim)', () => {
   test('names AG Grid\'s inner root from the section heading and adds no role of its own', () => {
     expect(ids.ordersGrid._root.getAttribute('aria-labelledby')).toBe('ordersHeading');
     expect(ids.eventsGrid._root.getAttribute('aria-labelledby')).toBe('eventsHeading');
+    expect(ids.pickupGrid._root.getAttribute('aria-labelledby')).toBe('pickupHeading');
     // The container must stay role-less so AG Grid's own grid/treegrid role is the only one.
     expect(ids.ordersGrid.getAttribute('role')).toBeNull();
     expect(ids.eventsGrid.getAttribute('role')).toBeNull();
+    expect(ids.pickupGrid.getAttribute('role')).toBeNull();
     // Every heading we point at exists in the served markup.
     expect(html).toContain('id="ordersHeading"');
     expect(html).toContain('id="eventsHeading"');
+    expect(html).toContain('id="pickupHeading"');
+  });
+});
+
+describe('pickup JSON export security (allow-list projection)', () => {
+  beforeEach(() => {
+    loadDashboard();
+  });
+
+  const SENSITIVE = ['sessionid', 'sessiontoken', 'token', 'password', 'passwd', 'secret', 'credential', 'apikey', 'api_key', 'auth', 'cookie'];
+
+  function findSensitiveKey(obj: any, path = ''): string | null {
+    if (obj === null || typeof obj !== 'object') return null;
+    for (const k of Object.keys(obj)) {
+      const lower = k.toLowerCase();
+      if (SENSITIVE.some((s) => lower.includes(s))) return path + k;
+      const hit = findSensitiveKey(obj[k], path + k + '.');
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  function samplePlanSlot() {
+    return {
+      id: 'slot-1',
+      day: '2030-08-01',
+      startTs: '2030-08-01T09:00:00Z',
+      endTs: '2030-08-01T10:00:00Z',
+      capacity: 3,
+      reservedCount: 2,
+      remaining: 1,
+      bookings: [
+        {
+          id: 'bk-9',
+          orderId: 'ord_1234567890abcdef',
+          sessionId: 'sess-topsecret',
+          sessionToken: 'tok-abc',
+          status: 'HELD',
+          expiresAt: '2030-08-01T09:30:00Z',
+          invitationToken: 'inv-xyz',
+          credential: 'user:pass',
+        },
+      ],
+    };
+  }
+
+  test('projection preserves the operational fields the merchant needs', () => {
+    const fn = grids.pickupGrid.api.__jsonProjection;
+    expect(typeof fn).toBe('function');
+    const out = fn(samplePlanSlot());
+    expect(out.id).toBe('slot-1');
+    expect(out.day).toBe('2030-08-01');
+    expect(out.startTs).toBe('2030-08-01T09:00:00Z');
+    expect(out.endTs).toBe('2030-08-01T10:00:00Z');
+    expect(out.capacity).toBe(3);
+    expect(out.reservedCount).toBe(2);
+    expect(out.remaining).toBe(1);
+    expect(out.bookings).toHaveLength(1);
+    expect(out.bookings[0].id).toBe('bk-9');
+    expect(out.bookings[0].orderId).toBe('ord_1234567890abcdef');
+    expect(out.bookings[0].status).toBe('HELD');
+    expect(out.bookings[0].expiresAt).toBe('2030-08-01T09:30:00Z');
+  });
+
+  test('projection strips sessionId, tokens and credentials (allow-list)', () => {
+    const fn = grids.pickupGrid.api.__jsonProjection;
+    const source = samplePlanSlot();
+    const out = fn(source);
+    expect(findSensitiveKey(out)).toBeNull();
+    // The API contract still carries sessionId on the server; we just never export it.
+    expect(source.bookings[0].sessionId).toBe('sess-topsecret');
+    expect(out.bookings[0].sessionId).toBeUndefined();
+    expect(out.bookings[0].sessionToken).toBeUndefined();
+    expect(out.bookings[0].invitationToken).toBeUndefined();
+    expect(out.bookings[0].credential).toBeUndefined();
+  });
+
+  test('serialized exported JSON is free of sensitive keys', () => {
+    const fn = grids.pickupGrid.api.__jsonProjection;
+    const payload = [samplePlanSlot(), { ...samplePlanSlot(), id: 'slot-2' }];
+    const json = JSON.stringify(payload.map(fn));
+    expect(json).not.toMatch(/sessionId/i);
+    expect(json).not.toMatch(/sessionToken/i);
+    expect(json).not.toMatch(/token/i);
+    expect(json).not.toMatch(/password/i);
+    expect(json).not.toMatch(/credential/i);
+    expect(json).not.toMatch(/invitation/i);
+  });
+
+  test('CSV export columns expose no sensitive fields', () => {
+    const cols = grids.pickupGrid.options.columnDefs;
+    const fields = cols.map((c: any) => c.field || c.headerName).join(' ');
+    expect(fields).not.toMatch(/session|token|password|credential|apikey|api_key|invitation/i);
+  });
+
+  test('existing Orders and Policy-events grids are unchanged and non-sensitive', () => {
+    const ordersFields = grids.ordersGrid.options.columnDefs.map((c: any) => c.field).filter(Boolean).sort();
+    const eventsFields = grids.eventsGrid.options.columnDefs.map((c: any) => c.field).filter(Boolean).sort();
+    for (const f of ['id', 'createdAt', 'origin', 'status', 'itemCount', 'totalMinor', 'currency']) {
+      expect(ordersFields).toContain(f);
+    }
+    for (const f of ['timestamp', 'agent', 'cartId', 'orderId', 'decision', 'amountMinor', 'reason', 'violatedRules']) {
+      expect(eventsFields).toContain(f);
+    }
+    const all = ordersFields.concat(eventsFields).join(' ');
+    expect(all).not.toMatch(/session|token|password|credential|apikey|api_key/i);
+    // The pickup grid still exposes the same operational columns driven by the raw plan.
+    const pickupFields = grids.pickupGrid.options.columnDefs.map((c: any) => c.field);
+    for (const f of ['day', 'capacity', 'reservedCount', 'remaining', 'status', 'orderId']) {
+      expect(pickupFields).toContain(f);
+    }
   });
 });

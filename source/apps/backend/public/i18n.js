@@ -156,7 +156,22 @@
       'hint.needsApproval': 'needs your approval',
       'hint.autoAllowed': 'auto-allowed',
       'hint.blocked': 'blocked',
-      'hint.blockedRule': 'blocked by rule'
+      'hint.blockedRule': 'blocked by rule',
+      'pickup.title': 'Pickup time',
+      'pickup.loading': 'Loading pickup times…',
+      'pickup.none': 'No pickup times are available in the next few days.',
+      'pickup.full': 'Full',
+      'pickup.reserved': 'Pickup reservation held. You can release it up until you pay.',
+      'pickup.released': 'Pickup reservation released.',
+      'pickup.cancel': 'Cancel pickup',
+      'pickup.status.held': 'Held — awaiting payment',
+      'pickup.status.confirmed': 'Confirmed',
+      'pickup.status.released': 'Released',
+      'pickup.status.unresolved': 'Status unresolved',
+      'pickup.error.reserve': 'Could not reserve that pickup time. Please try another.',
+      'pickup.error.full': 'Sorry, that time just filled up. Please choose another.',
+      'pickup.error.held': 'You already have a pickup held. Release it first to change the time.',
+      'pickup.error.release': 'Could not release the pickup.'
     },
     tr: {
       'options.hint': 'Aşağıdan bir seçenek seçin veya numarasını yazın. Ödemeden önce sepeti inceleyin.',
@@ -300,7 +315,22 @@
       'hint.needsApproval': 'onayın gerekiyor',
       'hint.autoAllowed': 'otomatik izinli',
       'hint.blocked': 'engellendi',
-      'hint.blockedRule': 'kural tarafından engellendi'
+      'hint.blockedRule': 'kural tarafından engellendi',
+      'pickup.title': 'Teslim alma saati',
+      'pickup.loading': 'Teslim alma saatleri yükleniyor…',
+      'pickup.none': 'Önümüzdeki günlerde uygun teslim alma saati yok.',
+      'pickup.full': 'Dolu',
+      'pickup.reserved': 'Teslim alma rezervasyonu tutuldu. Ödeme yapana kadar iptal edebilirsiniz.',
+      'pickup.released': 'Teslim alma rezervasyonu iptal edildi.',
+      'pickup.cancel': 'Teslim almayı iptal et',
+      'pickup.status.held': 'Tutuldu — ödeme bekleniyor',
+      'pickup.status.confirmed': 'Onaylandı',
+      'pickup.status.released': 'İptal edildi',
+      'pickup.status.unresolved': 'Durum çözülemedi',
+      'pickup.error.reserve': 'Bu teslim alma saati rezerve edilemedi. Lütfen başka bir saat seçin.',
+      'pickup.error.full': 'Üzgünüz, bu saat az önce doldu. Lütfen başka bir saat seçin.',
+      'pickup.error.held': 'Zaten tutulan bir teslim alma rezervasyonunuz var. Saati değiştirmek için önce iptal edin.',
+      'pickup.error.release': 'Teslim alma iptal edilemedi.'
     }
   };
 

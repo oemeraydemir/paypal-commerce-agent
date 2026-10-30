@@ -98,19 +98,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Real-PostgreSQL atomicity smoke (P3)
-        # Scope to the P3-relevant real-PostgreSQL suites. pg-bills-atomicity
-        # covers the five closure items (concurrent claim race, join/nonce
-        # rollback+replay, abandoned-CART_READY atomic recovery, active-checkout
-        # protection, no second order); pg-migrate verifies migration 007 is
-        # idempotent on a real server. Each is gated solely on DATABASE_URL (the
-        # route test mocks PayPal internally), so they run here with no sandbox
-        # credentials. SMOKE_REQUIRE_REAL=1 makes a skipped suite fail the run,
-        # so a green job proves these tests truly executed and passed — never that
-        # they were merely skipped. The broader durability / capture-claim-route
-        # suites are pre-existing orders-path guarantees and are re-enabled
-        # separately so they cannot block the P3 closure.
-        run: npx jest -c jest.smoke.config.js --runInBand tests/smoke/pg-bills-atomicity.test.ts tests/smoke/pg-migrate.test.ts
+      - name: Real-PostgreSQL atomicity smoke (P3 + Pickup)
+        # Scope to the real-PostgreSQL suites. pg-bills-atomicity covers the five
+        # P3 closure items (concurrent claim race, join/nonce rollback+replay,
+        # abandoned-CART_READY atomic recovery, active-checkout protection, no
+        # second order); pg-pickup-atomicity covers the Order & Pickup Planner
+        # guarantees (N+k concurrent reserves → exactly N succeed via SELECT …
+        # FOR UPDATE, idempotent release, and reconciliation mapping orders.status
+        # → booking status WITHOUT touching capture); pg-migrate verifies the
+        # migrations apply idempotently on a real server. Each is gated solely on
+        # DATABASE_URL (the route tests mock PayPal internally), so they run here
+        # with no sandbox credentials. SMOKE_REQUIRE_REAL=1 makes a skipped suite
+        # fail the run, so a green job proves these tests truly executed and
+        # passed — never that they were merely skipped.
+        run: npx jest -c jest.smoke.config.js --runInBand tests/smoke/pg-bills-atomicity.test.ts tests/smoke/pg-pickup-atomicity.test.ts tests/smoke/pg-migrate.test.ts
 
   flutter:
     name: Flutter — analyze + test

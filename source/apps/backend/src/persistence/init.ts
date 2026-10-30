@@ -3,6 +3,7 @@ import { env } from '../config/environment';
 
 import { OrderService } from '../orders/service';
 import { BillService } from '../bills/service';
+import { PickupService } from '../pickup/service';
 import { sessionStore } from '../session';
 import { refundService } from '../refunds/service';
 import { policyStorage } from '../policy/storage';
@@ -67,6 +68,17 @@ export async function attachPersistence(
   const orphanClaimsCleared = await repos.bills.reconcileOrphanClaims();
   if (billsLoaded > 0 || orphanClaimsCleared > 0) {
     console.log(`BILL_HYDRATE groups=${billsLoaded} orphanClaimsCleared=${orphanClaimsCleared}`);
+  }
+
+  // Pickup Planner: seed demo slots when none exist outside production, so the
+  // local/demo experience shows a calendar without manual setup.
+  if (env.NODE_ENV !== 'production') {
+    try {
+      const seeded = await PickupService.getInstance().seedDefaultSlotsIfEmpty();
+      if (seeded > 0) console.log(`PICKUP_SEED slots=${seeded}`);
+    } catch (err: any) {
+      console.warn(`Pickup seed failed: ${err?.message ?? err}`);
+    }
   }
 
   const purge = () =>

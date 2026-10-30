@@ -205,6 +205,70 @@ export const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS bill_invite_nonces_bill_idx ON bill_invite_nonces (bill_id)`,
     ],
   },
+  {
+    // Order & Pickup Planner (no capture / Split Bill changes). Two additive
+    // tables only — the existing order lifecycle and PayPal capture flow are
+    // untouched. The booking→order link is created by a SEPARATE, non-capture
+    // endpoint, and reconciliation reads the EXISTING orders.status as the
+    // authoritative payment result.
+    id: '008_pickup_slots',
+    statements: [
+      // Pickup slots: one deliverable time window for the (single-tenant)
+      // merchant. `reserved_count` is the authoritative, server-owned occupancy.
+      // It is mutated ONLY inside a PostgreSQL transaction that also writes the
+      // booking (SELECT … FOR UPDATE + server-side capacity check). The CHECK is
+      // a backstop, NOT the concurrency guarantee.
+      `CREATE TABLE IF NOT EXISTS pickup_slots (
+         id            text PRIMARY KEY,
+         day           date NOT NULL,
+         start_ts      timestamptz NOT NULL,
+         end_ts        timestamptz NOT NULL,
+         capacity      integer NOT NULL CHECK (capacity >= 0),
+         reserved_count integer NOT NULL DEFAULT 0 CHECK (reserved_count >= 0),
+         version       integer NOT NULL DEFAULT 0,
+         created_at    timestamptz NOT NULL,
+         updated_at    timestamptz NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS pickup_slots_day_idx ON pickup_slots (day)`,
+
+      // Pickup bookings: one per customer reservation. `order_id` is NULL until
+      // the booking is linked to the order the customer actually pays (linked by
+      // a separate, non-capture endpoint that verifies same-session ownership).
+      // The booking is the durable, reliable relationship between a pickup slot
+      // and an order; reconciliation maps orders.status → booking status and
+      // NEVER trusts the client.
+      `CREATE TABLE IF NOT EXISTS pickup_bookings (
+         id           text PRIMARY KEY,
+         slot_id      text NOT NULL REFERENCES pickup_slots (id),
+         order_id     text REFERENCES orders (id),
+         session_id   text NOT NULL,
+         status       text NOT NULL,
+         created_at   timestamptz NOT NULL,
+         updated_at   timestamptz NOT NULL,
+         expires_at   timestamptz NOT NULL
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS pickup_bookings_order_uq
+         ON pickup_bookings (order_id) WHERE order_id IS NOT NULL`,
+      `CREATE INDEX IF NOT EXISTS pickup_bookings_slot_idx ON pickup_bookings (slot_id)`,
+      `CREATE INDEX IF NOT EXISTS pickup_bookings_status_idx ON pickup_bookings (status)`,
+    ],
+  },
+  {
+    id: '009_pickup_one_held_per_session',
+    statements: [
+      // Enforces EXACTLY ONE active HELD booking per session at the database
+      // level. This is what makes concurrent same-session reservations atomic:
+      // two simultaneous `reserve()` calls cannot both insert a HELD row for the
+      // same session — the second one is rejected with a unique_violation
+      // (23505) inside its own transaction and maps to ALREADY_HELD. When a
+      // booking transitions to CONFIRMED or RELEASED it stops matching the
+      // predicate, so the session may reserve again. This is a backstop for the
+      // per-session invariant; the slot's capacity guarantee remains the
+      // SELECT … FOR UPDATE + atomic counter increment.
+      `CREATE UNIQUE INDEX IF NOT EXISTS pickup_bookings_one_held_per_session_uq
+         ON pickup_bookings (session_id) WHERE status = 'HELD'`,
+    ],
+  },
 ];
 
 export interface MigrateOptions {

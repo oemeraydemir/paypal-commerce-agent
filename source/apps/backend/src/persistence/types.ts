@@ -173,6 +173,93 @@ export interface BillRepository {
   reconcileOrphanClaims(): Promise<number>;
 }
 
+export type PickupBookingStatus = 'HELD' | 'CONFIRMED' | 'RELEASED';
+
+export interface PickupSlotRow {
+  id: string;
+  /** Pickup calendar day (server-owned; never from the client). */
+  day: string;
+  startTs: Date;
+  endTs: Date;
+  /** Server-owned maximum concurrent bookings for this window. */
+  capacity: number;
+  /** Authoritative, server-owned occupancy. Only mutated inside a DB transaction. */
+  reservedCount: number;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PickupBookingRow {
+  id: string;
+  slotId: string;
+  /** NULL until linked to the order the customer pays (separate, non-capture endpoint). */
+  orderId?: string;
+  sessionId: string;
+  status: PickupBookingStatus;
+  createdAt: Date;
+  updatedAt: Date;
+  /** Definitive non-payment cutoff for an UNLINKED HELD booking (no order ever created). */
+  expiresAt: Date;
+}
+
+export interface PickupReserveInput {
+  slotId: string;
+  sessionId: string;
+  bookingId: string;
+  expiresAt: Date;
+}
+
+export interface PickupReserveOutcome {
+  outcome: 'OK' | 'FULL' | 'SLOT_NOT_FOUND' | 'ALREADY_HELD';
+  bookingId?: string;
+}
+
+export interface PickupReconcileSummary {
+  examined: number;
+  confirmed: number;
+  released: number;
+  kept: number;
+  errors: number;
+}
+
+/**
+ * Pickup capacity is the server's authoritative state. Every implementation MUST
+ * make the capacity check and the booking write atomic (a DB transaction with
+ * SELECT … FOR UPDATE in production). An in-memory implementation is dev-only and
+ * not safe across instances — never a substitute for the PostgreSQL guarantee.
+ */
+export interface PickupRepository {
+  createSlot(row: PickupSlotRow): Promise<void>;
+  getAvailability(day: string): Promise<PickupSlotRow[]>;
+  /** Merchant view: every slot with its bookings (server-owned, no client trust). */
+  getMerchantPlan(): Promise<{ slot: PickupSlotRow; bookings: PickupBookingRow[] }[]>;
+  /** Atomic + idempotent: reserves capacity and writes a HELD booking, or returns FULL. */
+  reserve(input: PickupReserveInput): Promise<'OK' | 'FULL' | 'SLOT_NOT_FOUND' | 'ALREADY_HELD'>;
+  /** Atomic + idempotent: releases a HELD booking and frees one capacity unit. Never double-decrements. */
+  release(input: { bookingId: string; sessionId: string }): Promise<
+    'RELEASED' | 'ALREADY_RELEASED' | 'NOT_FOUND' | 'FORBIDDEN' | 'CONFIRMED'
+  >;
+  /** Links a HELD booking to its (same-session, server-created) order. No capture change.
+   *  Returns 'CONFIRMED' when the linked order was already paid (booking confirmed at
+   *  link time) and 'OK' when linked but still HELD (awaiting reconciliation). */
+  link(input: { bookingId: string; orderId: string; sessionId: string }): Promise<
+    'OK' | 'CONFIRMED' | 'NOT_FOUND' | 'FORBIDDEN' | 'MISMATCH'
+  >;
+  /**
+   * Idempotent reconciliation. Reads the EXISTING orders.status (authoritative
+   * payment result) and moves HELD bookings to CONFIRMED / RELEASED / keep:
+   *   - linked booking + PAID/ORDER_CONFIRMED → CONFIRMED (capacity kept)
+   *   - linked booking + PAYMENT_FAILED/ORDER_CANCELLED → RELEASED (capacity freed)
+   *   - linked booking in any other state → KEEP (ambiguous: never fabricate)
+   *   - UNLINKED booking past expires_at → RELEASED (definitive non-payment)
+   *   - UNLINKED booking still within expires_at → KEEP
+   * Each transition is its own transaction and re-runnable, so a crash mid-sweep
+   * leaves the booking record and capacity counter consistent.
+   */
+  reconcile(): Promise<PickupReconcileSummary>;
+}
+
 export interface Repositories {
   mode: 'postgres';
   orders: OrderRepository;
@@ -185,6 +272,7 @@ export interface Repositories {
   webhookReviews: WebhookReviewRepository;
   captureClaims: CaptureClaimRepository;
   bills: BillRepository;
+  pickup: PickupRepository;
   ping(): Promise<void>;
   close(): Promise<void>;
 }

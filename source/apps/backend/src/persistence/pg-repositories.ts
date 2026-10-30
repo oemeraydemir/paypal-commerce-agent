@@ -5,6 +5,12 @@ import {
   OrderRepository,
   Queryable,
   Repositories,
+  PickupRepository,
+  PickupSlotRow,
+  PickupBookingRow,
+  PickupBookingStatus,
+  PickupReserveInput,
+  PickupReconcileSummary,
   PolicyEventRepository,
   WebhookEventRepository,
   WebhookReviewRecord,
@@ -716,6 +722,319 @@ class PgBillRepository implements BillRepository {
   }
 }
 
+const toSlot = (r: any): PickupSlotRow => ({
+  id: r.id,
+  day: String(r.day),
+  startTs: toDate(r.start_ts)!,
+  endTs: toDate(r.end_ts)!,
+  capacity: Number(r.capacity),
+  reservedCount: Number(r.reserved_count),
+  version: Number(r.version),
+  createdAt: toDate(r.created_at)!,
+  updatedAt: toDate(r.updated_at)!,
+});
+
+const toBooking = (r: any): PickupBookingRow => ({
+  id: r.id,
+  slotId: r.slot_id,
+  orderId: r.order_id ?? undefined,
+  sessionId: r.session_id,
+  status: r.status as PickupBookingStatus,
+  createdAt: toDate(r.created_at)!,
+  updatedAt: toDate(r.updated_at)!,
+  expiresAt: toDate(r.expires_at)!,
+});
+
+class PgPickupRepository implements PickupRepository {
+  constructor(private readonly db: Queryable) {}
+
+  private async withClient<T>(fn: (client: TxClient) => Promise<T>): Promise<T> {
+    const client = await (this.db as unknown as Connectable).connect();
+    try {
+      return await fn(client);
+    } finally {
+      client.release();
+    }
+  }
+
+  async createSlot(row: PickupSlotRow): Promise<void> {
+    await this.db.query(
+      `INSERT INTO pickup_slots (id, day, start_ts, end_ts, capacity, reserved_count, version, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       ON CONFLICT (id) DO NOTHING`,
+      [
+        row.id,
+        row.day,
+        row.startTs,
+        row.endTs,
+        row.capacity,
+        row.reservedCount,
+        row.version,
+        row.createdAt,
+        row.updatedAt,
+      ]
+    );
+  }
+
+  async getAvailability(day: string): Promise<PickupSlotRow[]> {
+    const { rows } = await this.db.query(
+      `SELECT * FROM pickup_slots WHERE day = $1 ORDER BY start_ts ASC`,
+      [day]
+    );
+    return rows.map(toSlot);
+  }
+
+  async getMerchantPlan(): Promise<{ slot: PickupSlotRow; bookings: PickupBookingRow[] }[]> {
+    const slots = (await this.db.query(`SELECT * FROM pickup_slots ORDER BY start_ts ASC`)).rows.map(toSlot);
+    const bookings = (await this.db.query(`SELECT * FROM pickup_bookings ORDER BY created_at ASC`)).rows.map(
+      toBooking
+    );
+    return slots.map((slot) => ({
+      slot,
+      bookings: bookings.filter((b) => b.slotId === slot.id),
+    }));
+  }
+
+  async reserve(input: PickupReserveInput): Promise<'OK' | 'FULL' | 'SLOT_NOT_FOUND' | 'ALREADY_HELD'> {
+    // The one-active-HELD-per-session invariant is enforced by the partial
+    // unique index `pickup_bookings_one_held_per_session_uq` (migration 009),
+    // NOT by a client-side read. Two concurrent reserves for the same session
+    // therefore cannot both succeed: the second INSERT raises a unique_violation
+    // (pg code 23505) inside its transaction and is mapped to ALREADY_HELD.
+    return this.withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const slot = await client.query(
+          'SELECT id, capacity, reserved_count FROM pickup_slots WHERE id = $1 FOR UPDATE',
+          [input.slotId]
+        );
+        if (slot.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return 'SLOT_NOT_FOUND' as const;
+        }
+        const { capacity, reserved_count } = slot.rows[0];
+        if (reserved_count >= capacity) {
+          await client.query('ROLLBACK');
+          return 'FULL' as const;
+        }
+        await client.query(
+          'UPDATE pickup_slots SET reserved_count = reserved_count + 1, version = version + 1, updated_at = now() WHERE id = $1',
+          [input.slotId]
+        );
+        try {
+          await client.query(
+            `INSERT INTO pickup_bookings (id, slot_id, order_id, session_id, status, created_at, updated_at, expires_at)
+             VALUES ($1,$2,NULL,$3,'HELD',now(),now(),$4)`,
+            [input.bookingId, input.slotId, input.sessionId, input.expiresAt]
+          );
+        } catch (insertErr) {
+          // unique_violation (pg code 23505): this session already holds a HELD
+          // booking → roll back (freeing the capacity increment) and report it.
+          if ((insertErr as any)?.code === '23505') {
+            await client.query('ROLLBACK').catch(() => undefined);
+            return 'ALREADY_HELD' as const;
+          }
+          throw insertErr;
+        }
+        await client.query('COMMIT');
+        return 'OK' as const;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw err;
+      }
+    });
+  }
+
+  async release(input: { bookingId: string; sessionId: string }): Promise<
+    'RELEASED' | 'ALREADY_RELEASED' | 'NOT_FOUND' | 'FORBIDDEN' | 'CONFIRMED'
+  > {
+    return this.withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const b = await client.query(
+          'SELECT id, slot_id, session_id, status FROM pickup_bookings WHERE id = $1 FOR UPDATE',
+          [input.bookingId]
+        );
+        if (b.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return 'NOT_FOUND' as const;
+        }
+        const row = b.rows[0];
+        if (row.session_id !== input.sessionId) {
+          await client.query('ROLLBACK');
+          return 'FORBIDDEN' as const;
+        }
+        if (row.status === 'RELEASED') {
+          await client.query('ROLLBACK');
+          return 'ALREADY_RELEASED' as const;
+        }
+        if (row.status === 'CONFIRMED') {
+          // A paid booking's capacity is legitimately taken; never free it.
+          await client.query('ROLLBACK');
+          return 'CONFIRMED' as const;
+        }
+        // HELD → RELEASED: free exactly one capacity unit (idempotent: a second call sees RELEASED).
+        await client.query(
+          "UPDATE pickup_bookings SET status = 'RELEASED', updated_at = now() WHERE id = $1",
+          [input.bookingId]
+        );
+        await client.query(
+          'UPDATE pickup_slots SET reserved_count = GREATEST(reserved_count - 1, 0), version = version + 1, updated_at = now() WHERE id = $1',
+          [row.slot_id]
+        );
+        await client.query('COMMIT');
+        return 'RELEASED' as const;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw err;
+      }
+    });
+  }
+
+  async link(input: { bookingId: string; orderId: string; sessionId: string }): Promise<
+    'OK' | 'CONFIRMED' | 'NOT_FOUND' | 'FORBIDDEN' | 'MISMATCH'
+  > {
+    return this.withClient(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const b = await client.query(
+          'SELECT id, session_id, status FROM pickup_bookings WHERE id = $1 FOR UPDATE',
+          [input.bookingId]
+        );
+        if (b.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return 'NOT_FOUND' as const;
+        }
+        const row = b.rows[0];
+        if (row.session_id !== input.sessionId) {
+          await client.query('ROLLBACK');
+          return 'FORBIDDEN' as const;
+        }
+        if (row.status !== 'HELD') {
+          // Already CONFIRMED (paid) or RELEASED: cannot re-link.
+          await client.query('ROLLBACK');
+          return 'MISMATCH' as const;
+        }
+        const o = await client.query('SELECT session_id, status FROM orders WHERE id = $1', [input.orderId]);
+        if (o.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return 'NOT_FOUND' as const;
+        }
+        if (o.rows[0].session_id !== input.sessionId) {
+          await client.query('ROLLBACK');
+          return 'FORBIDDEN' as const;
+        }
+        await client.query(
+          'UPDATE pickup_bookings SET order_id = $2, updated_at = now() WHERE id = $1',
+          [input.bookingId, input.orderId]
+        );
+        // If the order was already paid by the time it is linked, confirm now.
+        if (o.rows[0].status === 'PAID' || o.rows[0].status === 'ORDER_CONFIRMED') {
+          await client.query(
+            "UPDATE pickup_bookings SET status = 'CONFIRMED', updated_at = now() WHERE id = $1",
+            [input.bookingId]
+          );
+          await client.query('COMMIT');
+          return 'CONFIRMED' as const;
+        }
+        await client.query('COMMIT');
+        return 'OK' as const;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw err;
+      }
+    });
+  }
+
+  /**
+   * Idempotent reconciliation. Per candidate it locks the booking and performs a
+   * single atomic transition; a crash mid-sweep leaves the record and the
+   * capacity counter consistent (the next run re-processes it). The capacity
+   * counter is decremented ONLY on the HELD → RELEASED edge, never on CONFIRMED,
+   * so re-runs never double-decrement.
+   */
+  async reconcile(): Promise<PickupReconcileSummary> {
+    const summary: PickupReconcileSummary = {
+      examined: 0,
+      confirmed: 0,
+      released: 0,
+      kept: 0,
+      errors: 0,
+    };
+    const { rows } = await this.db.query(
+      `SELECT b.id, b.order_id, b.expires_at, o.status AS o_status
+       FROM pickup_bookings b
+       LEFT JOIN orders o ON o.id = b.order_id
+       WHERE b.status = 'HELD'`
+    );
+    const now = Date.now();
+    for (const r of rows) {
+      summary.examined++;
+      let target: PickupBookingStatus | null = null;
+      if (!r.order_id) {
+        // UNLINKED: no order was ever created → definitively nothing could be paid.
+        // This is a cleanup of a never-started checkout, NOT a payment decision.
+        if (new Date(r.expires_at).getTime() < now) target = 'RELEASED';
+      } else if (r.o_status === 'PAID' || r.o_status === 'ORDER_CONFIRMED') {
+        target = 'CONFIRMED';
+      } else if (r.o_status === 'PAYMENT_FAILED' || r.o_status === 'ORDER_CANCELLED') {
+        target = 'RELEASED';
+      } else {
+        // CART_READY / AWAITING_CONFIRMATION / PAYMENT_PENDING / unknown / NULL → ambiguous: KEEP.
+        target = null;
+      }
+      if (!target) {
+        summary.kept++;
+        continue;
+      }
+      try {
+        await this.withClient(async (client) => {
+          await client.query('BEGIN');
+          try {
+            const transitioned = await this.transition(client, r.id, target!);
+            await client.query('COMMIT');
+            if (transitioned) {
+              if (target === 'CONFIRMED') summary.confirmed++;
+              else summary.released++;
+            }
+          } catch (err) {
+            await client.query('ROLLBACK').catch(() => undefined);
+            throw err;
+          }
+        });
+      } catch {
+        summary.errors++;
+        summary.kept++;
+      }
+    }
+    return summary;
+  }
+
+  /** Locks the booking and performs HELD → target atomically. Re-runnable: returns false if already there. */
+  private async transition(client: TxClient, bookingId: string, target: PickupBookingStatus): Promise<boolean> {
+    const b = await client.query(
+      'SELECT slot_id, status FROM pickup_bookings WHERE id = $1 FOR UPDATE',
+      [bookingId]
+    );
+    if (b.rows.length === 0) return false;
+    const { slot_id, status } = b.rows[0];
+    if (status === target) return false; // already in the desired state
+    if (target === 'RELEASED' && status !== 'HELD') return false; // never free a CONFIRMED/RELEASED slot
+    if (target === 'CONFIRMED' && status !== 'HELD') return false;
+    await client.query(
+      'UPDATE pickup_bookings SET status = $2, updated_at = now() WHERE id = $1',
+      [bookingId, target]
+    );
+    if (target === 'RELEASED') {
+      await client.query(
+        'UPDATE pickup_slots SET reserved_count = GREATEST(reserved_count - 1, 0), version = version + 1, updated_at = now() WHERE id = $1',
+        [slot_id]
+      );
+    }
+    return true;
+  }
+}
+
 export function createPgRepositories(db: Queryable, close: () => Promise<void>): Repositories {
   return {
     mode: 'postgres',
@@ -729,6 +1048,7 @@ export function createPgRepositories(db: Queryable, close: () => Promise<void>):
     webhookReviews: new PgWebhookReviewRepository(db),
     captureClaims: new PgCaptureClaimRepository(db),
     bills: new PgBillRepository(db),
+    pickup: new PgPickupRepository(db),
     ping: async () => {
       await db.query('SELECT 1');
     },

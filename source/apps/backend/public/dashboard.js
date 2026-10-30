@@ -94,6 +94,14 @@
     return makeBadge('HUMAN', 'badge-human');
   }
 
+  function pickupStatusChip(params) {
+    var value = (params.value || '').toUpperCase();
+    if (value === 'HELD') return makeBadge('HELD', 'badge-held');
+    if (value === 'CONFIRMED') return makeBadge('CONFIRMED', 'badge-confirmed');
+    if (value === 'RELEASED') return makeBadge('RELEASED', 'badge-released');
+    return makeBadge(value || '—', 'badge-neutral');
+  }
+
   function shortIdRenderer(params) {
     var span = document.createElement('span');
     span.textContent = shortenId(params.value);
@@ -138,12 +146,14 @@
   // ----- Grid state with change-tracking for applyTransaction -----
   var state = {
     orders: { api: null, rows: new Map(), initial: true },
-    events: { api: null, rows: new Map(), initial: true }
+    events: { api: null, rows: new Map(), initial: true },
+    pickup: { api: null, rows: new Map(), initial: true }
   };
 
   // Priority 3: last full payloads, for the JSON export buttons.
   var lastOrdersJson = [];
   var lastEventsJson = [];
+  var lastPickupJson = [];
 
   function normalizeOrder(o) {
     return {
@@ -170,6 +180,80 @@
       reason: e.reason,
       violatedRules: e.violatedRules || []
     };
+  }
+
+  // Merchant pickup plan: one grid row per booking. The slot's capacity usage is
+  // carried on each row so the merchant sees both slots and occupancy. We never
+  // copy the customer's sessionId into a grid row (internal handle, not useful
+  // to a merchant and must not leak into CSV/JSON exports).
+  function fmtClock(value) {
+    var d = value instanceof Date ? value : new Date(value);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function normalizePickup(slot) {
+    var rows = [];
+    var windowTxt = fmtClock(slot.startTs) + ' – ' + fmtClock(slot.endTs);
+    var bookings = slot.bookings || [];
+    if (!bookings.length) {
+      // Show empty slots too so the merchant can see unused capacity windows.
+      rows.push({
+        id: slot.id,
+        day: slot.day,
+        window: windowTxt,
+        capacity: slot.capacity,
+        reservedCount: slot.reservedCount,
+        remaining: slot.remaining,
+        status: '',
+        orderId: '',
+        expiresAt: null
+      });
+      return rows;
+    }
+    bookings.forEach(function (b) {
+      rows.push({
+        id: b.id,
+        day: slot.day,
+        window: windowTxt,
+        capacity: slot.capacity,
+        reservedCount: slot.reservedCount,
+        remaining: slot.remaining,
+        status: b.status,
+        orderId: b.orderId || '',
+        expiresAt: b.expiresAt ? new Date(b.expiresAt) : null
+      });
+    });
+    return rows;
+  }
+
+  // Priority 3: allow-list projection for the JSON export. The server's
+  // /api/pickup/plan payload includes per-booking internal fields (notably
+  // sessionId). We never serialize the raw payload — we copy only the
+  // operational fields the merchant needs. Anything not listed here (session
+  // ids, tokens, credentials, etc.) is intentionally dropped.
+  function projectPickupJsonForExport(slot) {
+    var out = {
+      id: slot.id,
+      day: slot.day,
+      startTs: slot.startTs,
+      endTs: slot.endTs,
+      capacity: slot.capacity,
+      reservedCount: slot.reservedCount,
+      remaining: slot.remaining
+    };
+    var bookings = slot.bookings || [];
+    if (bookings.length) {
+      out.bookings = bookings.map(function (b) {
+        return {
+          id: b.id,
+          orderId: b.orderId ? b.orderId : null,
+          status: b.status,
+          expiresAt: b.expiresAt
+        };
+      });
+    }
+    return out;
   }
 
   function applyDiff(name, rows) {
@@ -396,6 +480,13 @@
       : value === 'BLOCK' ? 'Blocked' : (value || 'unknown');
     return 'Decision: ' + label;
   }
+  function pickupStatusLabel(params) {
+    var value = (params.value || '').toUpperCase();
+    if (value === 'HELD') return 'Pickup status: Held';
+    if (value === 'CONFIRMED') return 'Pickup status: Confirmed';
+    if (value === 'RELEASED') return 'Pickup status: Released';
+    return 'Pickup status: ' + (value || 'unknown');
+  }
 
   // Wraps a renderer so the grid cell itself carries the descriptive label.
   function withCellLabel(renderer, labelFor) {
@@ -446,6 +537,20 @@
           : 'No violations';
       }
     }
+  ];
+
+  // Pickup plan grid. `day` is an ISO date string (lexicographic sort == date
+  // order), and each booking row copies the slot's capacity usage. No session id
+  // column — a merchant must never see a customer's internal session handle.
+  var pickupColumnDefs = [
+    { headerName: 'Day', field: 'day', pinned: 'left', sort: 'asc', filter: 'agTextColumnFilter', minWidth: 120 },
+    { headerName: 'Window', field: 'window', filter: 'agTextColumnFilter', minWidth: 180 },
+    { headerName: 'Capacity', field: 'capacity', type: 'numericColumn', filter: 'agNumberColumnFilter', minWidth: 100 },
+    { headerName: 'Reserved', field: 'reservedCount', type: 'numericColumn', filter: 'agNumberColumnFilter', minWidth: 110 },
+    { headerName: 'Remaining', field: 'remaining', type: 'numericColumn', filter: 'agNumberColumnFilter', minWidth: 110 },
+    { headerName: 'Status', field: 'status', cellRenderer: withCellLabel(pickupStatusChip, pickupStatusLabel), filter: 'agTextColumnFilter', minWidth: 130 },
+    { headerName: 'Order Ref', field: 'orderId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
+    { headerName: 'Booking ID', field: 'id', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 }
   ];
 
   var defaultColDef = {
@@ -545,6 +650,29 @@
   state.events.api = eventsApi;
   labelGridRoot('eventsGrid', 'eventsHeading');
 
+  var pickupApi = agGrid.createGrid(el('pickupGrid'), {
+    columnDefs: pickupColumnDefs,
+    defaultColDef: defaultColDef,
+    getRowId: function (params) { return params.data.id; },
+    pagination: true,
+    paginationPageSize: 15,
+    paginationPageSizeSelector: [15, 50, 100],
+    tooltipShowDelay: 400,
+    theme: lightTheme,
+    rowData: [],
+    ensureDomOrder: true,
+    loading: true,
+    overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
+    overlayLoadingTemplate: LOADING_TEMPLATE
+  });
+  state.pickup.api = pickupApi;
+  labelGridRoot('pickupGrid', 'pickupHeading');
+
+  // Test-only handle so the dashboard unit suite can verify the JSON export
+  // projection drops sensitive fields (sessionId, tokens, credentials). It is
+  // not user-facing and is never rendered or serialized.
+  pickupApi.__jsonProjection = projectPickupJsonForExport;
+
   // Attach line items onto order rows for the side panel (not shown in grid).
   function attachOrderItems(orders, jsonOrders) {
     orders.forEach(function (o, i) {
@@ -578,12 +706,14 @@
     // Clear any previous error announcement at the start of each cycle.
     setGridError('orders', '');
     setGridError('events', '');
+    setGridError('pickup', '');
 
-    var oResp, oStatsResp, eResp, eStatsResp;
+    var oResp, oStatsResp, eResp, eStatsResp, pResp;
     try {
       // Show the loading overlay only on the first load (not every 5s poll).
       if (state.orders.initial) { setGridLoading(ordersApi, true); setGridStatus('orders', 'Loading orders…'); }
       if (state.events.initial) { setGridLoading(eventsApi, true); setGridStatus('events', 'Loading policy events…'); }
+      if (state.pickup.initial) { setGridLoading(pickupApi, true); setGridStatus('pickup', 'Loading pickup plan…'); }
       // When the server runs with DASHBOARD_PUBLIC=false these need the merchant key (same one the
       // refund queue uses, kept in sessionStorage for this tab only).
       var authInit = { headers: opsHeaders() };
@@ -591,6 +721,7 @@
       oStatsResp = await fetch('/api/orders/stats', authInit);
       eResp = await fetch('/api/policy-events?limit=100', authInit);
       eStatsResp = await fetch('/api/policy-events/stats', authInit);
+      pResp = await fetch('/api/pickup/plan', authInit);
     } catch (err) {
       // Non-fatal: keep previous rows; surface an accessible error message.
       // Clear the loading state so a first-load failure cannot leave the grid
@@ -598,6 +729,7 @@
       console.warn('dashboard refresh skipped:', err && err.message);
       setGridLoading(ordersApi, false);
       setGridLoading(eventsApi, false);
+      setGridLoading(pickupApi, false);
       if (state.orders.initial) {
         setGridError('orders', 'Could not load orders (connection error). Retrying automatically.');
         setGridStatus('orders', 'Orders could not be loaded.');
@@ -606,21 +738,29 @@
         setGridError('events', 'Could not load policy events (connection error). Retrying automatically.');
         setGridStatus('events', 'Policy events could not be loaded.');
       }
+      if (state.pickup.initial) {
+        setGridError('pickup', 'Could not load pickup plan (connection error). Retrying automatically.');
+        setGridStatus('pickup', 'Pickup plan could not be loaded.');
+      }
       return;
     }
 
-    if (oResp.status === 401 || eResp.status === 401) {
+    if (oResp.status === 401 || eResp.status === 401 || pResp.status === 401) {
       setGridLoading(ordersApi, false);
       setGridLoading(eventsApi, false);
-      setGridError('orders', 'This dashboard is private. Enter the merchant key in the refund queue below.');
-      setGridError('events', 'This dashboard is private. Enter the merchant key in the refund queue below.');
+      setGridLoading(pickupApi, false);
+      var privateMsg = 'This dashboard is private. Enter the merchant key in the refund queue below.';
+      setGridError('orders', privateMsg);
+      setGridError('events', privateMsg);
+      setGridError('pickup', privateMsg);
       return;
     }
 
-    if (!oResp.ok || !eResp.ok) {
+    if (!oResp.ok || !eResp.ok || !pResp.ok) {
       console.warn('dashboard refresh: upstream returned non-200');
       setGridLoading(ordersApi, false);
       setGridLoading(eventsApi, false);
+      setGridLoading(pickupApi, false);
       if (state.orders.initial) {
         setGridError('orders', 'Could not load orders (server error). Retrying automatically.');
         setGridStatus('orders', 'Orders could not be loaded.');
@@ -629,25 +769,37 @@
         setGridError('events', 'Could not load policy events (server error). Retrying automatically.');
         setGridStatus('events', 'Policy events could not be loaded.');
       }
+      if (state.pickup.initial) {
+        setGridError('pickup', 'Could not load pickup plan (server error). Retrying automatically.');
+        setGridStatus('pickup', 'Pickup plan could not be loaded.');
+      }
       return;
     }
 
     var oJson = await oResp.json();
     var eJson = await eResp.json();
+    var pJson = await pResp.json();
     lastOrdersJson = oJson.orders || [];
     lastEventsJson = eJson.events || [];
+    lastPickupJson = (pJson.slots || []).map(projectPickupJsonForExport);
     var ordersRaw = (oJson.orders || []).map(normalizeOrder);
     attachOrderItems(ordersRaw, oJson.orders || []);
     var eventsRaw = (eJson.events || []).map(normalizeEvent);
+    var pickupRaw = [];
+    (pJson.slots || []).forEach(function (slot) {
+      normalizePickup(slot).forEach(function (r) { pickupRaw.push(r); });
+    });
 
     applyDiff('orders', ordersRaw);
     applyDiff('events', eventsRaw);
+    applyDiff('pickup', pickupRaw);
 
     // Reflect empty / populated state. `loading: false` hides the loading
     // overlay; AG Grid shows its no-rows overlay on its own when there are no
     // rows, so no explicit showNoRowsOverlay()/hideOverlay() call is needed.
     setGridLoading(ordersApi, false);
     setGridLoading(eventsApi, false);
+    setGridLoading(pickupApi, false);
 
     var oStats = oStatsResp.ok ? await oStatsResp.json() : {};
     var eStats = eStatsResp.ok ? await eStatsResp.json() : {};
@@ -656,6 +808,7 @@
 
     var ordersLabel = ordersRaw.length + ' order' + (ordersRaw.length === 1 ? '' : 's');
     var eventsLabel = eventsRaw.length + ' policy event' + (eventsRaw.length === 1 ? '' : 's');
+    var pickupLabel = pickupRaw.length + ' booking' + (pickupRaw.length === 1 ? '' : 's');
     if (state.orders.initial) {
       state.orders.initial = false;
       setGridStatus('orders', ordersRaw.length ? ('Showing ' + ordersLabel + '.') : 'No orders to display yet.');
@@ -667,6 +820,12 @@
       setGridStatus('events', eventsRaw.length ? ('Showing ' + eventsLabel + '.') : 'No policy events to display yet.');
     } else {
       setGridStatus('events', 'Updated: ' + eventsLabel + '.');
+    }
+    if (state.pickup.initial) {
+      state.pickup.initial = false;
+      setGridStatus('pickup', pickupRaw.length ? ('Showing ' + pickupLabel + '.') : 'No pickup bookings to display yet.');
+    } else {
+      setGridStatus('pickup', 'Updated: ' + pickupLabel + '.');
     }
   }
 
@@ -698,6 +857,19 @@
   if (ordersJsonBtn) ordersJsonBtn.addEventListener('click', function () { downloadJson('orders.json', lastOrdersJson); });
   var eventsJsonBtn = el('eventsJsonBtn');
   if (eventsJsonBtn) eventsJsonBtn.addEventListener('click', function () { downloadJson('policy-events.json', lastEventsJson); });
+
+  var pickupQuickFilter = el('pickupQuickFilter');
+  if (pickupQuickFilter) pickupQuickFilter.addEventListener('input', function (e) {
+    pickupApi.setGridOption('quickFilterText', e.target.value);
+  });
+  var pickupCsvBtn = el('pickupCsvBtn');
+  if (pickupCsvBtn) pickupCsvBtn.addEventListener('click', function () {
+    pickupApi.exportDataAsCsv({ fileName: 'pickup-plan.csv' });
+  });
+  var pickupJsonBtn = el('pickupJsonBtn');
+  if (pickupJsonBtn) pickupJsonBtn.addEventListener('click', function () {
+    downloadJson('pickup-plan.json', lastPickupJson);
+  });
   var printBtn = el('printBtn');
   if (printBtn) printBtn.addEventListener('click', function () { window.print(); });
 
@@ -709,6 +881,7 @@
     var theme = dark ? darkTheme : lightTheme;
     ordersApi.setGridOption('theme', theme);
     eventsApi.setGridOption('theme', theme);
+    pickupApi.setGridOption('theme', theme);
     document.body.classList.toggle('dark', dark);
     el('themeToggle').textContent = dark ? 'Light mode' : 'Dark mode';
   });

@@ -2,6 +2,7 @@ import { createApp } from './app';
 import { env } from './config/environment';
 import { startReservationSweeper, reconcileAfterRestart } from './orders/payment-lifecycle';
 import { initPersistence } from './persistence/init';
+import { pickupService } from './pickup/service';
 import { assertMandateConfig, assertMandateKeyPersistence } from './mandate/mandate-service';
 import { assertPublicUrlConfig } from './config/public-url';
 
@@ -25,6 +26,11 @@ async function main(): Promise<void> {
         reconcileAfterRestart()
           .then((s) => console.log(`Restart reconcile: ${JSON.stringify(s)}`))
           .catch((err) => console.error(`Restart reconcile failed: ${err?.message ?? err}`));
+        // 3) Recover pickup bookings whose linked order was paid/failed while down.
+        pickupService
+          .reconcile()
+          .then((s) => console.log(`Pickup restart reconcile: ${JSON.stringify(s)}`))
+          .catch((err) => console.error(`Pickup reconcile failed: ${err?.message ?? err}`));
       }
     }
     console.log(`🚀 Server running on port ${env.PORT}`);

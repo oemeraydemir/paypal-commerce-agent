@@ -67,9 +67,12 @@ describe.each([['light', false], ['dark', true]] as const)('badge text contrast 
       'badge-block',
       'badge-cancelled',
       'badge-confirm',
+      'badge-confirmed',
+      'badge-held',
       'badge-human',
       'badge-neutral',
       'badge-paid',
+      'badge-released',
     ]);
   });
 

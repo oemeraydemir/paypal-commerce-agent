@@ -115,6 +115,19 @@ button.loading{opacity:.7;cursor:progress}
 .rsteps .ic{width:18px;height:18px;border-radius:50%;background:var(--ok);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex:none}
 .rlink{display:inline-block;margin-top:10px;font-weight:600}
 .qr{margin-top:10px;text-align:center}.qr img{background:#fff;border-radius:8px;max-width:100%;height:auto;image-rendering:pixelated}.mandate{margin-top:10px;font-size:13px}.mandate button{margin-bottom:6px}.mandate .okline{color:var(--ok);font-weight:600}.mandate .badline{color:var(--bad);font-weight:600}
+.pickup{margin:10px 0;padding-top:12px;border-top:1px solid var(--line)}
+.pickup h3{margin:0 0 8px;font-size:13px;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.pickup-day{margin:6px 0}
+.pickup-day-label{font-size:12.5px;color:var(--mut);margin:8px 0 4px;font-weight:600}
+.pickup-slot{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 12px;margin:4px 0;cursor:pointer}
+.pickup-slot:disabled{opacity:.55;cursor:not-allowed}
+.pickup-slot.chosen{border-color:var(--brand);background:rgba(0,112,186,.08)}
+.pickup-slot .pu-window{font-weight:600}
+.pickup-slot .pu-cap{font-size:12px;color:var(--mut);white-space:nowrap}
+.pickup .pbox.held{border-color:var(--warn)}
+.pickup .pbox.confirmed{border-color:var(--ok)}
+.pickup .pbox.released{border-color:var(--line);color:var(--mut)}
+.pickup .pbox button{display:block;margin-top:8px;width:100%}
 @media(max-width:480px){.receipt{padding:12px}.prod .emo{font-size:22px}}
 </style>
 </head>
@@ -160,6 +173,7 @@ button.loading{opacity:.7;cursor:progress}
       <div id="policy-note"></div>
       <div id="cart-explain" class="explain" hidden></div>
       <div id="allergy-note" class="allergy" hidden></div>
+      <div id="pickup" class="pickup"></div>
       <div class="total" id="cartTotal"><span>Total</span><span id="total">€0.00</span></div>
       <button class="primary full" id="pay" disabled data-i18n="pay.review">Review &amp; pay with PayPal</button>
       <button class="full" id="reset" type="button" style="margin-top:8px" data-i18n="reset">Reset demo</button>

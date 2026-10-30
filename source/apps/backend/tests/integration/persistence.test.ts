@@ -100,6 +100,8 @@ describe('migrations', () => {
       '005_capture_claims',
       '006_webhook_reviews',
       '007_bill_persistence',
+      '008_pickup_slots',
+      '009_pickup_one_held_per_session',
     ]);
     expect(await migrate(fresh as any, { advisoryLock: false })).toEqual([]);
   });

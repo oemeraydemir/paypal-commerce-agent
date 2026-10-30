@@ -7,6 +7,7 @@ import { OrderService } from './service';
 import { captureLock } from './capture-lock';
 import { retryDirtyAll } from '../persistence/registry';
 import { emitAutomationEvent } from '../automation/emitter';
+import { pickupService } from '../pickup/service';
 
 // Single place that moves an order AND its daily-spend reservation together,
 // so webhooks, the capture route, the cancel route and the reconciler can never
@@ -340,6 +341,11 @@ export function startReservationSweeper(
       const summary = await reconcileExpiredReservations();
       if (summary.examined > 0) {
         console.log(`Reservation sweep: ${JSON.stringify(summary)}`);
+      }
+      // Pickup: confirm paid / release failed / keep ambiguous HELD bookings.
+      const pickupSummary = await pickupService.reconcile();
+      if (pickupSummary.examined > 0) {
+        console.log(`Pickup reconcile: ${JSON.stringify(pickupSummary)}`);
       }
     } catch (err: any) {
       console.error(`Reservation sweep failed: ${err?.message ?? err}`);
