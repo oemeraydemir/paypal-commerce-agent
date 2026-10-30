@@ -496,6 +496,13 @@
       }
     },
 
+    formatDay: function (date) {
+      try {
+        return new Intl.DateTimeFormat(localeFor(this.lang), { weekday: 'long', day: 'numeric', month: 'long' }).format(date);
+      } catch (e) {
+        return date.toLocaleDateString();
+      }
+    },
     formatDate: function (date) {
       try {
         return new Intl.DateTimeFormat(localeFor(this.lang), { dateStyle: 'medium', timeStyle: 'short' }).format(date);

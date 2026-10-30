@@ -543,7 +543,12 @@
   // order), and each booking row copies the slot's capacity usage. No session id
   // column — a merchant must never see a customer's internal session handle.
   var pickupColumnDefs = [
-    { headerName: 'Day', field: 'day', pinned: 'left', sort: 'asc', filter: 'agTextColumnFilter', minWidth: 120 },
+    { headerName: 'Day', field: 'day', pinned: 'left', sort: 'asc', filter: 'agTextColumnFilter', minWidth: 150,
+      // Sort on the raw ISO date; show a readable weekday + date.
+      valueFormatter: function (p) {
+        if (!p.value || !/^\d{4}-\d{2}-\d{2}$/.test(p.value)) return p.value || '';
+        return new Date(p.value + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+      } },
     { headerName: 'Window', field: 'window', filter: 'agTextColumnFilter', minWidth: 180 },
     { headerName: 'Capacity', field: 'capacity', type: 'numericColumn', filter: 'agNumberColumnFilter', minWidth: 100 },
     { headerName: 'Reserved', field: 'reservedCount', type: 'numericColumn', filter: 'agNumberColumnFilter', minWidth: 110 },

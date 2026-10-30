@@ -166,6 +166,24 @@
 
       .ops { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
       .ops:empty { display: none; }
+      .ops h2 { margin: 0; font-size: 1.15rem; }
+      .ops-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+      .ops-badge { font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+      .ops-muted { color: var(--muted); font-size: 0.92rem; margin: 6px 0 12px; max-width: 80ch; line-height: 1.5; }
+      .ops-row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+      .ops input[type=text], .ops input[type=password] { flex: 1 1 260px; min-width: 0; padding: 10px 12px; font: inherit; color: inherit; background: var(--bg, transparent); border: 1px solid var(--border); border-radius: 10px; }
+      .ops input:focus-visible, .ops button:focus-visible { outline: 2px solid #0070ba; outline-offset: 2px; }
+      .ops button { font: inherit; cursor: pointer; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: inherit; }
+      .ops button:disabled { opacity: .55; cursor: not-allowed; }
+      .ops-btn { background: #0070ba !important; border-color: #0070ba !important; color: #fff !important; font-weight: 600; }
+      .ops-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+      .ops-chip { font-size: 0.86rem; border-radius: 999px !important; padding: 6px 12px !important; }
+      .ops-out { margin-top: 10px; }
+      .ops-answer { white-space: pre-wrap; line-height: 1.55; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; }
+      .ops-err { color: var(--danger, #b91c1c); padding: 10px 12px; border: 1px solid currentColor; border-radius: 10px; }
+      .ops-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+      .ops-tool { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); }
+      .ops-tool.fail, .ops-tool.rejected { color: var(--danger, #b91c1c); }
       .refund-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
       .refund-item { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
       .refund-line { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
