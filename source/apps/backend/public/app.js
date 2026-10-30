@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var SKEY = 'aicafe.session', PKEY = 'aicafe.pending', CKEY = 'aicafe.cart', AKEY = 'aicafe.allergens', OKEY = 'aicafe.onboarded';
+  var SKEY = 'aicafe.session', SPKEY = 'aicafe.split.active', PKEY = 'aicafe.pending', CKEY = 'aicafe.cart', AKEY = 'aicafe.allergens', OKEY = 'aicafe.onboarded';
   var catalog = {}, cart = {}, session = null, busy = false;
   var policy = null, pseq = 0, ptimer = null, activeCat = 'all', allProducts = [];
   var lastPrepared = null, lastHealth = null;
@@ -335,6 +335,7 @@
     var blocked = !!(policy && policy.decision === 'BLOCK' && Object.keys(cart).length);
     $('pay').disabled = busy || !Object.keys(cart).length || blocked;
     if (!busy) $('pay').textContent = blocked ? i18nT('pay.blocked') : i18nT('pay.review');
+    var so = $('split-open'); if (so) so.disabled = busy || !Object.keys(cart).length || blocked;
   }
   function showPolicy(c) {
     var box = $('policy-note'); box.textContent = '';
@@ -504,6 +505,10 @@
     }).catch(function (e) {
       busy = false; pbtn.classList.remove('loading'); pbtn.removeAttribute('aria-busy'); renderCart();
       if (e.status === 403) { showPolicy({ policyDecision: 'BLOCK', reason: (e.body && (e.body.reason || e.body.suggestion)) || e.message }); }
+      if (e.status === 409 && e.body && e.body.details && e.body.details.code === 'SPLIT_BILL_ACTIVE') {
+        if (e.body.details.billId) save(SPKEY, { billId: e.body.details.billId });
+        renderSplitActive(); banner('bad', i18nT('split.cartActive')); return;
+      }
       banner('bad', e.status === 503 ? i18nT('checkout.notConfigured') : i18nT('checkout.failed') + e.message);
     });
   }
@@ -511,6 +516,12 @@
     var q = new URLSearchParams(location.search); var st = q.get('paypal'); if (!st) return;
     history.replaceState(null, '', '/');
     var pend = load(PKEY);
+    // A Split Bill share paid in PayPal: the shopper (organiser or guest) goes back to the
+    // split room, which owns the capture step and shows everyone's status.
+    if (pend && pend.billId && (st === 'cancel' || pend.paypalOrderId === q.get('token'))) {
+      window.location.replace('/split#b=' + encodeURIComponent(pend.billId) + (st === 'success' ? '&return=1' : ''));
+      return;
+    }
     if (st === 'cancel') { drop(PKEY); banner('bad', i18nT('checkout.cancelled')); return; }
     if (!pend || pend.paypalOrderId !== q.get('token')) { banner('bad', i18nT('checkout.mismatch')); return; }
     var b = $('banner'); b.hidden = false; b.textContent = '';
@@ -528,6 +539,83 @@
       }).catch(function (e) { go.disabled = false; go.classList.remove('loading'); go.removeAttribute('aria-busy'); go.textContent = i18nT('receipt.confirm'); banner('bad', 'Capture failed: ' + e.message); });
     };
     box.appendChild(go); b.appendChild(box);
+  }
+
+  // ---- Split bill (checkout option) ------------------------------------------------------
+  // The shopper explicitly chooses "Split the bill" at checkout. The cart is sent as
+  // product ids + quantities only: the SERVER re-prices it, enforces the spending policy
+  // on the whole cart, computes every share, and decides who may pay what. The amounts
+  // previewed here are display-only and use the same deterministic rule as the server.
+  var split = { n: 2, busy: false };
+  function splitAmounts(total, n) {
+    var base = Math.floor(total / n), rem = total % n, out = [], i;
+    for (i = 0; i < n; i++) out.push(base + (i < rem ? 1 : 0));
+    return out;
+  }
+  function renderSplitPreview() {
+    var box = $('split-preview'); if (!box) return; box.textContent = '';
+    var total = cartTotal(), amounts = splitAmounts(total, split.n);
+    var t = el('div', 'kv'); t.appendChild(el('span', 'k', i18nT('split.total'))); t.appendChild(el('span', '', eur(total))); box.appendChild(t);
+    amounts.forEach(function (a, i) {
+      var r = el('div', 'kv' + (i === 0 ? ' big' : ''));
+      r.appendChild(el('span', 'k', (i === 0 ? i18nT('room.you') : i18nT('room.person') + ' ' + (i + 1))));
+      r.appendChild(el('span', '', eur(a)));
+      box.appendChild(r);
+    });
+  }
+  function renderSplitPeople() {
+    var box = $('split-people'); if (!box) return; box.textContent = '';
+    [2, 3].forEach(function (n) {
+      var b = el('button', '', n + ' ' + i18nT('split.peopleUnit')); b.type = 'button';
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(split.n === n));
+      b.onclick = function () { split.n = n; renderSplitPeople(); renderSplitPreview(); };
+      box.appendChild(b);
+    });
+  }
+  function splitErr(msg) { var e = $('split-err'); if (!e) return; e.hidden = !msg; e.textContent = msg || ''; }
+  function openSplit() {
+    if (!Object.keys(cart).length) return;
+    var active = load(SPKEY);
+    if (active && active.billId) { window.location.assign('/split#b=' + encodeURIComponent(active.billId)); return; }
+    split.n = 2; split.busy = false; splitErr('');
+    var go = $('split-go'); go.disabled = false; go.textContent = i18nT('split.confirm');
+    renderSplitPeople(); renderSplitPreview();
+    $('split-modal').hidden = false; go.focus();
+  }
+  function closeSplit() { $('split-modal').hidden = true; var o = $('split-open'); if (o) o.focus(); }
+  function createSplit() {
+    if (split.busy) return; // a double click must never create two bills
+    var items = Object.keys(cart).map(function (id) { return { productId: id, quantity: cart[id] }; });
+    if (!items.length) return;
+    split.busy = true; splitErr('');
+    var go = $('split-go'); go.disabled = true; go.textContent = i18nT('split.creating');
+    api('/api/bills', { method: 'POST', body: JSON.stringify({ items: items, participantCount: split.n }) }).then(function (b) {
+      save(SPKEY, { billId: b.id });
+      window.location.assign('/split#b=' + encodeURIComponent(b.id));
+    }).catch(function (e) {
+      split.busy = false; go.disabled = false; go.textContent = i18nT('split.confirm');
+      if (e.status === 403) { showPolicy({ policyDecision: 'BLOCK', reason: (e.body && (e.body.reason || e.body.suggestion)) || e.message }); }
+      splitErr(i18nT('split.failed') + ((e.body && (e.body.reason || e.body.suggestion)) || e.message));
+    });
+  }
+  function renderSplitActive() {
+    var box = $('split-active'); if (!box) return;
+    var a = load(SPKEY); box.textContent = '';
+    if (!a || !a.billId) { box.hidden = true; return; }
+    box.hidden = false;
+    box.appendChild(el('span', '', i18nT('split.active')));
+    var open = el('button', 'primary', i18nT('split.resume')); open.type = 'button';
+    open.onclick = function () { window.location.assign('/split#b=' + encodeURIComponent(a.billId)); };
+    box.appendChild(open);
+  }
+  function initSplit() {
+    var so = $('split-open'); if (!so) return;
+    so.addEventListener('click', openSplit);
+    $('split-cancel').addEventListener('click', closeSplit);
+    $('split-go').addEventListener('click', createSplit);
+    $('split-modal').addEventListener('click', function (e) { if (e.target === this) closeSplit(); });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !$('split-modal').hidden) closeSplit(); });
+    renderSplitActive();
   }
 
   // ---- Pickup planner ------------------------------------------------------------------
@@ -678,7 +766,7 @@
   }
   // Hide the cart chrome while a receipt is on screen (and restore it on reset).
   function setCartChrome(v) {
-    ['cart', 'policy', 'policy-note', 'cartTotal', 'pay', 'payNote'].forEach(function (id) { var n = $(id); if (n) n.hidden = !v; });
+    ['cart', 'policy', 'policy-note', 'cartTotal', 'pay', 'payNote', 'split-open', 'split-hint'].forEach(function (id) { var n = $(id); if (n) n.hidden = !v; });
   }
   // Signed Cart Mandate: the tamper-evident record of what was proposed and who held payment authority.
   function mandateBlock(orderId) {
@@ -1073,6 +1161,8 @@
     updateStatusPills();
     renderProfileStatus();
     refreshQuickReplies();
+    renderSplitActive();
+    if ($('split-modal') && !$('split-modal').hidden) { renderSplitPeople(); renderSplitPreview(); }
   }
   function initI18n() {
     if (!window.i18n) return;
@@ -1113,6 +1203,7 @@
     $('diet').addEventListener('change', onProfileChange);
     $('budget').addEventListener('input', onProfileChange);
     $('pay').addEventListener('click', pay);
+    initSplit();
     $('reset').addEventListener('click', reset);
     say('a', i18nT('agent.greeting'));
     fetch('/api/health').then(function (r) { return r.json(); }).then(function (h) {

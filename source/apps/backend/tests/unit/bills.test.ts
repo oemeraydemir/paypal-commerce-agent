@@ -172,12 +172,20 @@ describe('invite tokens — signature, single-use, abuse protection', () => {
 
   test('a full bill rejects further joiners with a fresh token', async () => {
     const group = createBill(2);
+    // Both invites are minted while one slot is still open; only the first can win it.
     const t1 = billService.mintInvite(group.id).token;
-    await billService.joinWithToken(t1, 'user-B');
     const t2 = billService.mintInvite(group.id).token;
+    await billService.joinWithToken(t1, 'user-B');
     await expect(billService.joinWithToken(t2, 'user-C')).rejects.toThrow(
       new AppError(409, 'Bill is full')
     );
+  });
+
+  test('minting an invite for an already full bill is refused up front', async () => {
+    const group = createBill(2);
+    const t1 = billService.mintInvite(group.id).token;
+    await billService.joinWithToken(t1, 'user-B');
+    expect(() => billService.mintInvite(group.id)).toThrow(new AppError(409, 'Bill is full'));
   });
 
   test('mint for an unknown bill is a 404', () => {

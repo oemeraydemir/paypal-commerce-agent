@@ -128,6 +128,11 @@ button.loading{opacity:.7;cursor:progress}
 .pickup .pbox.confirmed{border-color:var(--ok)}
 .pickup .pbox.released{border-color:var(--line);color:var(--mut)}
 .pickup .pbox button{display:block;margin-top:8px;width:100%}
+.segs{display:flex;gap:8px;margin:10px 0}.segs button{flex:1;padding:12px 8px;font-weight:600}.segs button[aria-checked=true]{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
+.splitprev{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;background:var(--bg)}
+.splitprev .kv{display:flex;justify-content:space-between;gap:12px;font-size:.95em;padding:2px 0}.splitprev .kv.big{font-weight:700;font-size:1.05em}
+.modal .row.gap{gap:8px}
+.split-active{margin:8px 0;padding:9px 12px;border-radius:10px;border:1px solid var(--warn);font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 @media(max-width:480px){.receipt{padding:12px}.prod .emo{font-size:22px}}
 </style>
 </head>
@@ -175,7 +180,10 @@ button.loading{opacity:.7;cursor:progress}
       <div id="allergy-note" class="allergy" hidden></div>
       <div id="pickup" class="pickup"></div>
       <div class="total" id="cartTotal"><span>Total</span><span id="total">€0.00</span></div>
+      <div id="split-active" class="split-active" hidden></div>
       <button class="primary full" id="pay" disabled data-i18n="pay.review">Review &amp; pay with PayPal</button>
+      <button class="full" id="split-open" type="button" disabled style="margin-top:8px" aria-haspopup="dialog" data-i18n="split.open">Split the bill</button>
+      <p class="mut" id="split-hint" style="font-size:12.5px;margin:6px 0 0" data-i18n="split.openHint">Pay together: everyone pays their own share in PayPal.</p>
       <button class="full" id="reset" type="button" style="margin-top:8px" data-i18n="reset">Reset demo</button>
       <p class="mut" id="payNote" style="font-size:12.5px;margin:8px 0 0" data-i18n="payNote">The agent can prepare a cart. Only you can authorize payment, in PayPal sandbox.</p>
     <div id="receipt" class="receipt" hidden></div>
@@ -199,6 +207,20 @@ button.loading{opacity:.7;cursor:progress}
     <p data-i18n="onboarding.explain"></p>
     <p data-i18n="onboarding.allergy"></p>
     <div class="row"><button class="primary" id="onb-ok" type="button" data-i18n="onboarding.gotit">Got it</button></div>
+  </div>
+</div>
+<div id="split-modal" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="split-title">
+  <div class="modal">
+    <h3 id="split-title" data-i18n="split.title">Split the bill</h3>
+    <p class="mut" data-i18n="split.equal">Equal split. The server calculates the final amounts.</p>
+    <div id="split-people-label" style="font-size:13.5px" data-i18n="split.people">How many people (including you)?</div>
+    <div id="split-people" class="segs" role="radiogroup" aria-labelledby="split-people-label"></div>
+    <div id="split-preview" class="splitprev" aria-live="polite"></div>
+    <div id="split-err" class="allergy" role="alert" hidden></div>
+    <div class="row gap">
+      <button id="split-cancel" type="button" data-i18n="split.cancel">Cancel</button>
+      <button id="split-go" class="primary" type="button" data-i18n="split.confirm">Create split bill</button>
+    </div>
   </div>
 </div>
 <script src="/i18n.js" defer></script>

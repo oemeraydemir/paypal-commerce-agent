@@ -107,6 +107,13 @@ export function createApp() {
   };
   app.use('/', discoveryRoutes);
   app.get(['/', '/index.html'], serveBrandedIndex);
+  // Split Bill room: `/join#t=<invite>` (what invite links/QR codes point at) and
+  // `/split#b=<billId>` both serve the same page; the fragment is read client-side
+  // and never reaches a server log.
+  app.get(['/join', '/split'], (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.sendFile(path.join(publicDir, 'split.html'), (err) => err && next());
+  });
   app.use(express.static(publicDir));
 
   app.use('/', dashboardRoutes);

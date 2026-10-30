@@ -38,6 +38,7 @@ import { buildEvaluationOrder, buildPolicyContext, buildPolicyOutcome } from '..
 import {
   BillGroup,
   BillShare,
+  BillStatus,
   MAX_PARTICIPANTS,
   MIN_PARTICIPANTS,
   ShareStatus,
@@ -124,13 +125,15 @@ async function startSharePayPalCheckout(
   return paypalOrder;
 }
 
-function serializeShare(share: BillShare, currency: string, locale: string) {
+function serializeShare(share: BillShare, currency: string, locale: string, viewerId?: string) {
   const order = share.orderId ? orderService.getById(share.orderId) : undefined;
   const isPaid = share.status === ShareStatus.PAID;
   return {
     id: share.id,
     status: share.status,
     participantBound: Boolean(share.participantUserId),
+    // True only for the caller's own share (the viewer id comes from the session, never the client).
+    mine: Boolean(viewerId && share.participantUserId === viewerId),
     // Masked so participants never expose each other's raw user ids.
     ...(share.participantUserId ? { participantHash: participantHash(share.participantUserId) } : {}),
     amountMinor: share.amountMinor,
@@ -141,12 +144,12 @@ function serializeShare(share: BillShare, currency: string, locale: string) {
   };
 }
 
-function serializeGroup(group: BillGroup) {
+function serializeGroup(group: BillGroup, viewerId?: string) {
   const locale = currentBusiness.locale;
   const shares = billService.effectiveShares(group);
   return {
     id: group.id,
-    status: deriveBillStatus(shares),
+    status: group.status === BillStatus.CANCELLED ? BillStatus.CANCELLED : deriveBillStatus(shares),
     strategy: group.strategy,
     merchantId: group.merchantId,
     currency: group.currency,
@@ -159,7 +162,8 @@ function serializeGroup(group: BillGroup) {
       unitPriceMinor: i.unitPriceMinor,
       lineTotalMinor: i.lineTotalMinor,
     })),
-    shares: shares.map((s) => serializeShare(s, group.currency, locale)),
+    isOwner: Boolean(viewerId && group.createdByUserId === viewerId),
+    shares: shares.map((s) => serializeShare(s, group.currency, locale, viewerId)),
     progress: deriveBillProgress(shares),
     createdAt: group.createdAt.toISOString(),
     updatedAt: group.updatedAt.toISOString(),
@@ -176,6 +180,31 @@ router.post('/bills', requireSession, (req, res, next) => {
     if (!Number.isInteger(participantCount) || participantCount < MIN_PARTICIPANTS || participantCount > MAX_PARTICIPANTS) {
       throw new AppError(400, `participantCount must be an integer between ${MIN_PARTICIPANTS} and ${MAX_PARTICIPANTS}`);
     }
+    // Splitting must not become a way around the spending policy: the WHOLE cart is
+    // evaluated exactly like a normal checkout (no daily-spend reservation here; each
+    // share reserves its own amount when it is paid). Only BLOCK stops creation.
+    const { sessionId } = req.session!;
+    const wholeTotal = validated.reduce((sum, i) => sum + i.lineTotalMinor, 0);
+    const policy = policyStorage.getOrCreatePolicy(userId);
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    const ordersLastHour = orderService
+      .getAll()
+      .filter((o) => o.sessionId === sessionId && o.createdAt.getTime() >= oneHourAgo).length;
+    const wholeCart = policyService.evaluatePurchase(
+      buildEvaluationOrder(sessionId, validated, wholeTotal, currentBusiness.currency, OrderOrigin.HUMAN),
+      policy,
+      buildPolicyContext(userId, currentBusiness.businessId, dailySpendTracker, { ordersLastHour })
+    );
+    if (wholeCart.decision === 'BLOCK') {
+      const outcome = buildPolicyOutcome(wholeCart);
+      return res.status(403).json({
+        error: 'Purchase blocked by policy',
+        policyDecision: outcome.decision,
+        violations: outcome.violations,
+        reason: outcome.reason,
+        suggestion: outcome.suggestion,
+      });
+    }
     const group = billService.createGroup({
       createdByUserId: userId,
       items: validated,
@@ -183,7 +212,7 @@ router.post('/bills', requireSession, (req, res, next) => {
       currency: currentBusiness.currency,
       merchantId: currentBusiness.businessId,
     });
-    res.status(201).json(serializeGroup(group));
+    res.status(201).json(serializeGroup(group, userId));
   } catch (err) {
     next(err);
   }
@@ -201,13 +230,23 @@ router.post('/bills/:id/invite', requireSession, (req, res, next) => {
   }
 });
 
+router.post('/bills/:id/cancel', requireSession, (req, res, next) => {
+  try {
+    const { userId } = req.session!;
+    const group = billService.cancel(req.params.id, userId);
+    res.json(serializeGroup(group, userId));
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/bills/join', requireSession, async (req, res, next) => {
   try {
     const { userId } = req.session!;
     const token = req.body?.token;
     if (typeof token !== 'string' || !token) throw new AppError(400, 'token is required');
     const { group, shareId } = await billService.joinWithToken(token, userId);
-    res.json({ shareId, bill: serializeGroup(group) });
+    res.json({ shareId, bill: serializeGroup(group, userId) });
   } catch (err) {
     next(err);
   }
@@ -218,7 +257,7 @@ router.get('/bills/:id', requireSession, (req, res, next) => {
     const { userId } = req.session!;
     const group = billService.getById(req.params.id);
     if (!group || !billService.isParticipant(group, userId)) throw new AppError(404, 'Bill not found');
-    res.json(serializeGroup(group));
+    res.json(serializeGroup(group, userId));
   } catch (err) {
     next(err);
   }
@@ -226,17 +265,10 @@ router.get('/bills/:id', requireSession, (req, res, next) => {
 
 // ---- P2: per-share payment -------------------------------------------------
 //
-// ⚠️  PERSISTENCE LIMITATION — P2 IS PROTOTYPE-ONLY.
-//   Group/share/invite-nonce state lives IN MEMORY, per process instance:
-//     - a restart loses all groups and invite nonces (old tokens fail closed);
-//     - across multiple instances the atomic per-share claim (set `share.orderId`
-//       synchronously before any await) and the single-use nonce reservation are
-//       ONLY process-local — they are NOT shared/atomic across instances.
-//   The per-share ORDER (after `/pay`) goes through the normal durable order
-//   pipeline, but the group/claim state does not. Do NOT treat P2 as production
-//   for multi-instance deployments until the group + nonce state is moved to a
-//   durable, atomically-reserved store (e.g. Postgres unique constraint / row
-//   lock) and that is explicitly reviewed and approved.
+// Durability: group/share/nonce state is persisted to PostgreSQL when a
+// DATABASE_URL is configured, and the share→order claim is decided by the database
+// (`claimShareForPayment`), so it is safe across restarts and multiple instances.
+// Without a database the claim is in-process only (local dev / tests).
 
 // Create the (normal) PayPal order for a share. Capture is performed via the
 // existing audited route `POST /orders/:orderId/capture`, which already handles
@@ -251,6 +283,7 @@ router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, n
     // Only the participant who owns this share may pay it.
     if (!share || share.participantUserId !== userId) throw new AppError(404, 'Share not found');
 
+    if (group.status === BillStatus.CANCELLED) throw new AppError(409, 'Bill was cancelled');
     const effective = billService.effectiveShares(group).find((s) => s.id === share.id)!;
     if (effective.status === ShareStatus.PAID) throw new AppError(409, 'Share already paid');
     if (effective.status === ShareStatus.FAILED) {

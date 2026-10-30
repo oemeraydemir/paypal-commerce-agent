@@ -223,3 +223,29 @@ describe('bill repository: CART_READY crash recovery (structural, pg-mem)', () =
     expect(share.rows[0].order_id).toBe('ord-inflight'); // still bound
   });
 });
+
+describe('bill repository: cancellation survives a restart', () => {
+  test('a CANCELLED status written by saveGroup is read back by getGroup / loadAllGroups', async () => {
+    const g = makeGroup('g-cancel', ['sc1', 'sc2']);
+    await repos.bills.saveGroup(g);
+    await repos.bills.saveGroup({ ...g, status: BillStatus.CANCELLED, updatedAt: new Date() });
+    const back = await repos.bills.getGroup('g-cancel');
+    expect(back?.status).toBe(BillStatus.CANCELLED);
+    const all = await repos.bills.loadAllGroups();
+    expect(all.find((x) => x.id === 'g-cancel')?.status).toBe(BillStatus.CANCELLED);
+  });
+
+  test('cancelling never rewrites the atomic decision columns of a share', async () => {
+    const g = makeGroup('g-cancel2', ['sd1', 'sd2']);
+    g.shares[0].participantUserId = 'u-owner';
+    await repos.bills.saveGroup(g);
+    // A stale snapshot that lost the participant binding must not clobber it.
+    await repos.bills.saveGroup({
+      ...g,
+      status: BillStatus.CANCELLED,
+      shares: g.shares.map((s) => ({ ...s, participantUserId: undefined })),
+    });
+    const back = await repos.bills.getGroup('g-cancel2');
+    expect(back?.shares.find((s) => s.id === 'sd1')?.participantUserId).toBe('u-owner');
+  });
+});

@@ -1,14 +1,13 @@
 // Split Bill service — P1 (read-only group) + P2 (per-share payment).
 //
-// ⚠️  PERSISTENCE LIMITATION — PROTOTYPE-ONLY.
-//   All state here (groups, invite nonces) is IN MEMORY and per process instance:
-//   restarts lose groups/nonces, and the single-use nonce reservation and the
-//   per-share payment claim are only atomic within one process — NOT across
-//   multiple instances. Multi-instance production requires a durable,
-//   atomically-reserved store (e.g. Postgres unique constraint / row lock) and
-//   explicit approval.
+// PERSISTENCE: groups, shares and invite nonces are written to PostgreSQL when
+// DATABASE_URL is set (see persistence/pg-repositories.ts). The database is the
+// source of truth for the atomic decisions (single-use nonce + slot binding in
+// `joinBill`, per-share payment claim in `claimShareForPayment`); this class is the
+// in-memory read model, rehydrated at boot via `hydrate()`. Without a database
+// (local dev/tests) everything is in memory and single-instance only.
 //
-// Holds the in-memory group store, computes server-authoritative shares, and
+// Holds the in-memory read model, computes server-authoritative shares, and
 // mints/verifies signed single-use invite tokens. P1 deliberately exposes no
 // payment/settlement path: shares stay PENDING until P2 reuses the existing
 // order/capture pipeline per share.
@@ -137,11 +136,10 @@ export class BillService {
   }): BillGroup {
     const totalMinor = opts.items.reduce((sum, i) => sum + i.lineTotalMinor, 0);
     const amounts = computeEqualSplit(totalMinor, opts.participantCount);
-    const id = `bill_${crypto
-      .createHash('sha256')
-      .update(`${opts.createdByUserId}:${stringify(opts.items)}:${opts.participantCount}`)
-      .digest('hex')
-      .slice(0, 16)}`;
+    // Every bill gets its own random id. A deterministic id (owner + items + count)
+    // made a double-click or retry overwrite an existing bill, wiping joined
+    // participants and share bindings.
+    const id = `bill_${crypto.randomBytes(12).toString('hex')}`;
     const now = new Date();
     const shares: BillShare[] = amounts.map((amountMinor, i) => ({
       id: `share_${crypto.createHash('sha256').update(`${id}:${i}`).digest('hex').slice(0, 16)}`,
@@ -186,6 +184,73 @@ export class BillService {
     return group.shares.some((s) => s.participantUserId === userId);
   }
 
+  /** Canonical, order-independent key of a cart: `productId:qty` pairs, sorted. */
+  static itemsKey(items: Array<{ productId: string; quantity: number }>): string {
+    return items
+      .map((i) => `${i.productId}:${i.quantity}`)
+      .sort()
+      .join('|');
+  }
+
+  /**
+   * The owner's still-running Split Bill for exactly this cart, if any. Used to
+   * stop the same cart from being paid twice (once whole via normal checkout, once
+   * as a split). A bill is "active" until it is settled or cancelled.
+   */
+  findActiveForOwnerAndItems(
+    userId: string,
+    items: Array<{ productId: string; quantity: number }>
+  ): BillGroup | undefined {
+    const key = BillService.itemsKey(items);
+    for (const g of this.groups.values()) {
+      if (g.createdByUserId !== userId) continue;
+      if (g.status === BillStatus.CANCELLED) continue;
+      if (BillService.itemsKey(g.items) !== key) continue;
+      if (deriveBillStatus(this.effectiveShares(g)) === BillStatus.SETTLED) continue;
+      return g;
+    }
+    return undefined;
+  }
+
+  /** Number of shares that still have no participant (i.e. can still be invited). */
+  openSlots(group: BillGroup): number {
+    return group.shares.filter((s) => !s.participantUserId).length;
+  }
+
+  /**
+   * Owner-initiated cancel. Refused as soon as money is involved: a share with a
+   * paid order (needs a refund, which stays a human-approved merchant action) or a
+   * live PayPal checkout (approval could still complete).
+   */
+  cancel(billId: string, userId: string): BillGroup {
+    const group = this.groups.get(billId);
+    if (!group || group.createdByUserId !== userId) throw new AppError(404, 'Bill not found');
+    if (group.status === BillStatus.CANCELLED) return group;
+    const orders = OrderService.getInstance();
+    for (const share of group.shares) {
+      const order = share.orderId ? orders.getById(share.orderId) : undefined;
+      if (!order) continue;
+      if (
+        order.status === OrderStatus.PAID ||
+        order.status === OrderStatus.ORDER_CONFIRMED ||
+        order.status === OrderStatus.PAYMENT_PENDING
+      ) {
+        throw new AppError(409, 'A payment is already in progress or completed; the bill can no longer be cancelled', {
+          code: 'BILL_HAS_PAYMENTS',
+        });
+      }
+    }
+    group.status = BillStatus.CANCELLED;
+    group.updatedAt = new Date();
+    const repos = getRepos();
+    if (repos) {
+      writeQueue
+        .enqueue(`bill-group:${group.id}`, () => repos.bills.saveGroup(group))
+        .catch((err: any) => console.error(`BILL_GROUP_PERSIST_FAILED id=${group.id} error=${err?.message ?? err}`));
+    }
+    return group;
+  }
+
   /** Snapshot of shares with effective (order-derived) status for read serialization. */
   effectiveShares(group: BillGroup): BillShare[] {
     return group.shares.map((s) => ({ ...s, status: effectiveShareStatus(s) }));
@@ -194,6 +259,8 @@ export class BillService {
   mintInvite(billId: string): { token: string; ttlSeconds: number } {
     const group = this.groups.get(billId);
     if (!group) throw new AppError(404, 'Bill not found');
+    if (group.status === BillStatus.CANCELLED) throw new AppError(409, 'Bill was cancelled');
+    if (this.openSlots(group) === 0) throw new AppError(409, 'Bill is full');
     const nonce = crypto.randomUUID();
     // Reserve before returning so a minted nonce is tracked even if the response is lost.
     this.pendingInviteNonces.add(nonce);
@@ -276,6 +343,7 @@ export class BillService {
     }
     const group = this.groups.get(billId);
     if (!group) throw new AppError(404, 'Bill not found');
+    if (group.status === BillStatus.CANCELLED) throw new AppError(409, 'Bill was cancelled');
     if (this.isParticipant(group, userId)) {
       throw new AppError(409, 'You are already a participant in this bill');
     }

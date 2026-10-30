@@ -11,6 +11,7 @@ import { Router } from 'express';
 import { paypalClient } from '../paypal/client';
 import { describeCapturedAmount, extractCapturedAmount, validateCompletedCapture } from '../paypal/capture-amount';
 import { OrderService, createRequestFingerprint } from '../orders/service';
+import { BillService } from '../bills/service';
 import { validateOrderItems } from '../orders/validation';
 import { CatalogService } from '../catalog/service';
 import { AppError } from '../middleware/error-handler';
@@ -183,6 +184,16 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
 
     // FIX #9 + #12: authoritative pricing, currency + quantity validation.
     const validatedItems = validateOrderItems(items, catalogService);
+
+    // The same cart must not be paid twice: while the owner has a running Split Bill
+    // for exactly this cart, whole-cart checkout is refused (cancel the bill first).
+    const activeBill = BillService.getInstance().findActiveForOwnerAndItems(userId, validatedItems);
+    if (activeBill) {
+      throw new AppError(409, 'This cart is already being split. Finish or cancel the Split Bill first.', {
+        code: 'SPLIT_BILL_ACTIVE',
+        billId: activeBill.id,
+      });
+    }
 
     // Input is validated first, so a malformed request is a 400 whether or not PayPal is configured.
     if (!env.isPayPalEnabled()) {
