@@ -99,6 +99,12 @@ button.loading{opacity:.7;cursor:progress}
 .explain h4{margin:0 0 6px;font-size:14px}
 .explain ul{margin:6px 0 0;padding-left:18px}
 .explain li{margin:2px 0}
+.wellbeing{margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:13px}
+.wellbeing h4{margin:0 0 6px;font-size:13.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.wellbeing .wb-badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--warn);color:var(--warn)}
+.wellbeing ul{list-style:none;margin:6px 0;padding:0}.wellbeing li{display:flex;gap:8px;justify-content:space-between;padding:2px 0}
+.wellbeing .wb-no{color:var(--warn);font-weight:600}.wellbeing .wb-yes{color:var(--mut)}
+.wellbeing p{margin:6px 0 0;color:var(--mut);font-size:12px}
 .allergy{margin:8px 0;padding:9px 12px;border-radius:10px;border:1px solid var(--bad);color:var(--bad);background:var(--card);font-size:12.5px}
 .allergen{color:var(--mut);font-size:13px}
 #allergen-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
@@ -167,6 +173,7 @@ button.loading{opacity:.7;cursor:progress}
       </select>
       <input id="budget" type="number" min="1" max="100" step="1" placeholder="max budget €" aria-label="Maximum budget in euros" data-i18n="budget.placeholder">
       <small id="profile-status" class="profile-status" role="status" aria-live="polite"></small>
+      <small id="wb-sample" class="mut" style="display:block;margin-top:2px" data-i18n="wb.sample">Diet labels are sample data, not verified by the café.</small>
       <span class="allergen" data-i18n="prefs.allergenLabel">Allergen concerns (noted locally)</span>
       <span id="allergen-chips" class="tags" aria-label="Allergen concerns"></span>
     </div>
@@ -178,6 +185,7 @@ button.loading{opacity:.7;cursor:progress}
       <div id="policy-note"></div>
       <div id="cart-explain" class="explain" hidden></div>
       <div id="allergy-note" class="allergy" hidden></div>
+      <div id="wellbeing" class="wellbeing" hidden></div>
       <div id="pickup" class="pickup"></div>
       <div class="total" id="cartTotal"><span>Total</span><span id="total">€0.00</span></div>
       <div id="split-active" class="split-active" hidden></div>

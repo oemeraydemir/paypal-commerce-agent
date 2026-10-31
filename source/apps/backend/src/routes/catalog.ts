@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { CatalogService } from '../catalog/service';
 import { AppError } from '../middleware/error-handler';
+import { DIETARY_DATA_STATUS, DIETARY_NOTICE } from '../wellbeing/service';
 
 const router = Router();
 const catalog = new CatalogService();
@@ -14,7 +15,7 @@ function parseList(value: unknown): string[] | undefined {
 
 router.get('/catalog', (_req: Request, res: Response) => {
   const products = catalog.getAll();
-  res.status(200).json({ count: products.length, products });
+  res.status(200).json({ count: products.length, products, dietaryDataStatus: DIETARY_DATA_STATUS, dietaryNotice: DIETARY_NOTICE });
 });
 
 router.get('/catalog/search', (req: Request, res: Response) => {

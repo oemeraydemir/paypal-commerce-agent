@@ -38,6 +38,7 @@ export function buildProductFeed(base: string) {
         keywords: Array.from(new Set([...p.tags, ...p.occasion])).join(', '),
         additionalProperty: [
           { '@type': 'PropertyValue', name: 'dietary', value: p.dietary },
+          { '@type': 'PropertyValue', name: 'dietaryDataStatus', value: 'SAMPLE_DATA_UNVERIFIED' },
           { '@type': 'PropertyValue', name: 'priceMinor', value: p.priceMinor },
         ],
         offers: {
