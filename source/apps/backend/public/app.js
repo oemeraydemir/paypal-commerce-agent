@@ -329,6 +329,7 @@
     $('total').textContent = eur(cartTotal());
     updatePay();
     schedulePolicy();
+    scheduleWellbeing();
   }
   // UI convenience only: the server re-evaluates policy at /api/orders/create and is the sole authority.
   function updatePay() {
@@ -445,6 +446,7 @@
     quickReplyGeneration++;
     renderProfileStatus();
     refreshQuickReplies();
+    scheduleWellbeing();
   }
   // Over-budget rule-based answer: offer a manual "add anyway" (server re-prices and policy-checks the cart).
   function addSuggestion(s) {
@@ -823,6 +825,53 @@
   // events, order, human approval) and signed with the same keyring, so a third party can
   // verify it without trusting this page. It is prepared for presentation only: nothing is
   // ever submitted to PayPal automatically.
+  // ---- Refund request (customer) ---------------------------------------------------------------
+  // Asking never moves money: it files a request that a merchant reviews. The status shown here
+  // comes from the server; nothing is refunded automatically.
+  var REFUND_REASONS = ['wrong_item', 'not_as_described', 'duplicate_charge', 'changed_mind', 'other'];
+  function refundBlock(orderId) {
+    var wrap = el('div', 'mandate');
+    wrap.appendChild(el('div', 'who-t', i18nT('refund.title')));
+    wrap.appendChild(el('div', 'mut', i18nT('refund.subtitle')));
+    var out = el('div', 'mut'); out.setAttribute('aria-live', 'polite');
+    var form = el('div', ''); form.style.marginTop = '8px';
+    var base = '/api/orders/' + encodeURIComponent(orderId);
+
+    function statusLine(r) {
+      var key = { UNDER_REVIEW: 'refund.status.review', BEING_PROCESSED: 'refund.status.processing', REFUNDED: 'refund.status.refunded', DECLINED: 'refund.status.declined' }[r.status] || 'refund.status.review';
+      return eur(r.amountMinor) + ' · ' + i18nT(key);
+    }
+    function load() {
+      return api(base + '/refund-status').then(function (d) {
+        out.textContent = ''; form.textContent = '';
+        var open = false;
+        (d.refunds || []).forEach(function (r) {
+          out.appendChild(el('div', '', statusLine(r)));
+          if (r.status === 'UNDER_REVIEW' || r.status === 'BEING_PROCESSED') open = true;
+        });
+        if (open) {
+          var chk = el('button', '', i18nT('refund.check')); chk.type = 'button'; chk.onclick = load; form.appendChild(chk);
+        } else if (d.refundableMinor > 0) {
+          var sel = el('select', ''); sel.setAttribute('aria-label', i18nT('refund.reasonLabel'));
+          REFUND_REASONS.forEach(function (c) { var o = el('option', '', i18nT('refund.reason.' + c)); o.value = c; sel.appendChild(o); });
+          var note = el('input', ''); note.type = 'text'; note.maxLength = 120; note.placeholder = i18nT('refund.note'); note.setAttribute('aria-label', i18nT('refund.note'));
+          note.style.cssText = 'width:100%;margin:6px 0';
+          var go = el('button', 'primary', i18nT('refund.request')); go.type = 'button';
+          go.onclick = function () {
+            go.disabled = true; go.textContent = i18nT('refund.sending');
+            api(base + '/refund-request', { method: 'POST', body: JSON.stringify({ reason: sel.value, note: note.value }) })
+              .then(load)
+              .catch(function (e) { go.disabled = false; go.textContent = i18nT('refund.request'); out.textContent = i18nT('refund.failed') + e.message; });
+          };
+          form.appendChild(sel); form.appendChild(note); form.appendChild(go);
+        }
+      }).catch(function () { out.textContent = i18nT('refund.unavailable'); });
+    }
+    wrap.appendChild(out); wrap.appendChild(form);
+    load();
+    return wrap;
+  }
+
   function evidenceBlock(orderId) {
     var wrap = el('div', 'mandate');
     wrap.appendChild(el('div', 'who-t', i18nT('evidence.title')));
@@ -864,7 +913,10 @@
           ORDER_CREATED: i18nT('evidence.step.created'),
           POLICY_EVALUATED: i18nT('evidence.step.policy'),
           HUMAN_APPROVAL: i18nT('evidence.step.approval'),
-          PAYMENT_CAPTURED: i18nT('evidence.step.captured')
+          PAYMENT_CAPTURED: i18nT('evidence.step.captured'),
+          REFUND_REQUESTED: i18nT('evidence.step.refundRequested'),
+          REFUND_ISSUED: i18nT('evidence.step.refundIssued'),
+          REFUND_DECLINED: i18nT('evidence.step.refundDeclined')
         };
         tl.forEach(function (s) {
           var what = labelFor[s.step] || s.step;
@@ -1054,6 +1106,8 @@
     box.appendChild(who);
     if (d.orderId) box.appendChild(mandateBlock(d.orderId));
     if (d.orderId) box.appendChild(evidenceBlock(d.orderId));
+    // The refund request is an optional extra: it must never stop the receipt from rendering.
+    if (d.orderId) { try { box.appendChild(refundBlock(d.orderId)); } catch (e) { /* receipt still shown */ } }
     var link = el('a', 'rlink', i18nT('receipt.controlCenter')); link.href = '/dashboard.html'; link.setAttribute('rel', 'noopener');
     box.appendChild(link);
     setCartChrome(false);
@@ -1135,6 +1189,48 @@
     box.appendChild(document.createTextNode(i18nT('allergy.concerns.prefix')));
     box.appendChild(el('span', '', names.join(', ')));
     box.appendChild(document.createTextNode(i18nT('allergy.concerns.local')));
+    scheduleWellbeing();
+  }
+
+  // ---- Wellbeing check (advisory) ------------------------------------------------------------
+  // The server compares the cart with the café's SAMPLE diet labels. It never says an item is
+  // safe or suitable. Allergen choices stay on this device and are only shown here, locally.
+  var wbTimer = null, wbSeq = 0;
+  function scheduleWellbeing() { clearTimeout(wbTimer); wbTimer = setTimeout(refreshWellbeing, 250); }
+  function wbDiet() { var d = $('diet'); return d && d.value ? d.value : ''; }
+  function wbLabel(d) { return i18nT('wb.diet.' + d); }
+  function refreshWellbeing() {
+    var box = $('wellbeing'); if (!box) return;
+    var ids = Object.keys(cart), diet = wbDiet(), allergens = loadAllergens();
+    if (!ids.length || (!diet && !allergens.length)) { box.hidden = true; box.textContent = ''; return; }
+    var seq = ++wbSeq;
+    var p = diet
+      ? api('/api/wellbeing/check', { method: 'POST', body: JSON.stringify({ items: ids.map(function (id) { return { productId: id, quantity: cart[id] }; }), diet: diet }) })
+      : Promise.resolve(null);
+    p.then(function (r) { if (seq === wbSeq) renderWellbeing(r, diet, allergens); })
+     .catch(function () { try { if (seq === wbSeq) renderWellbeing(null, diet, allergens, true); } catch (e) { /* page gone */ } });
+  }
+  function renderWellbeing(r, diet, allergens, failed) {
+    var box = $('wellbeing'); if (!box) return; // page already torn down
+    box.textContent = ''; box.hidden = false;
+    var h = el('h4', ''); h.appendChild(el('span', '', i18nT('wb.title'))); h.appendChild(el('span', 'wb-badge', i18nT('wb.badge'))); box.appendChild(h);
+    if (diet) {
+      if (r) {
+        var ul = el('ul', '');
+        r.items.forEach(function (it) {
+          var li = el('li', ''); li.appendChild(el('span', '', it.quantity + ' × ' + it.name));
+          var ok = it.labelStatus === 'CARRIES_LABEL';
+          li.appendChild(el('span', ok ? 'wb-yes' : 'wb-no', ok ? i18nT('wb.carries').replace('{d}', wbLabel(diet)) : i18nT('wb.nolabel').replace('{d}', wbLabel(diet))));
+          ul.appendChild(li);
+        });
+        box.appendChild(ul);
+      } else if (failed) { box.appendChild(el('p', '', i18nT('wb.unavailable'))); }
+    }
+    if (allergens.length) {
+      var names = allergens.map(function (k) { for (var i = 0; i < ALLERGENS.length; i++) { if (ALLERGENS[i].k === k) return allergenLabel(ALLERGENS[i]); } return k; });
+      box.appendChild(el('p', '', i18nT('wb.allergens').replace('{a}', names.join(', '))));
+    }
+    box.appendChild(el('p', '', i18nT('wb.notice')));
   }
 
   // ---- Onboarding + i18n wiring -------------------------------------------------------------

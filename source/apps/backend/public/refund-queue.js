@@ -32,11 +32,26 @@
     var head = el('div', 'refund-line');
     head.appendChild(el('strong', '', money(r.amountMinor, r.currency)));
     head.appendChild(el('span', 'refund-state refund-' + r.status.toLowerCase(), r.status));
-    head.appendChild(el('span', 'ops-muted', 'proposed by ' + (r.proposedBy === 'OPS_COPILOT' ? 'Ops Copilot (AI)' : 'merchant')));
+    head.appendChild(el('span', 'ops-muted', 'requested by ' + (r.proposedBy === 'OPS_COPILOT' ? 'Ops Copilot (AI)' : r.proposedBy === 'CUSTOMER' ? 'customer' : 'merchant')));
     li.appendChild(head);
     li.appendChild(el('div', 'ops-muted', 'Order ' + r.orderId.slice(0, 8) + '… · reason: ' + r.reason));
     if (r.lastError) li.appendChild(el('div', 'refund-err', r.lastError));
     if (r.paypalRefundId) li.appendChild(el('div', 'ops-muted', 'PayPal refund ' + r.paypalRefundId + (r.paypalRefundStatus ? ' (' + r.paypalRefundStatus + ')' : '')));
+    // Dispute Evidence Pack for this order (signed; includes the refund steps recorded so far).
+    var evBox = el('pre', 'ops-muted'); evBox.hidden = true; evBox.style.cssText = 'white-space:pre-wrap;max-height:280px;overflow:auto;margin:8px 0';
+    var evBtn = el('button', 'ops-chip', 'Evidence'); evBtn.type = 'button';
+    evBtn.setAttribute('aria-label', 'Show the evidence pack for this order');
+    evBtn.onclick = function () {
+      if (!evBox.hidden) { evBox.hidden = true; return; }
+      evBtn.disabled = true;
+      api('/' + encodeURIComponent(r.id) + '/evidence').then(function (res) {
+        if (!res.ok) { say((res.body && (res.body.message || res.body.error)) || ('Request failed (' + res.status + ')'), true); return; }
+        var dd = res.body.disputeDefense || {};
+        evBox.textContent = dd.narrative || JSON.stringify(res.body.timeline || [], null, 2);
+        evBox.hidden = false;
+      }).catch(function () { say('Could not reach the server.', true); }).then(function () { evBtn.disabled = false; });
+    };
+    var evRow = el('div', 'refund-actions'); evRow.appendChild(evBtn); li.appendChild(evRow); li.appendChild(evBox);
     if (r.status === 'PROPOSED') {
       var actions = el('div', 'refund-actions');
       var ok = el('button', 'ops-btn', 'Approve & refund'); ok.type = 'button';

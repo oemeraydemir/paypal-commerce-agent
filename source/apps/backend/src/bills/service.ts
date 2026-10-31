@@ -212,6 +212,14 @@ export class BillService {
     return undefined;
   }
 
+  /** The bill (if any) whose share was paid with this order. Used to enrich evidence. */
+  findGroupByOrderId(orderId: string): BillGroup | undefined {
+    for (const g of this.groups.values()) {
+      if (g.shares.some((sh) => sh.orderId === orderId)) return g;
+    }
+    return undefined;
+  }
+
   /** Number of shares that still have no participant (i.e. can still be invited). */
   openSlots(group: BillGroup): number {
     return group.shares.filter((s) => !s.participantUserId).length;

@@ -4,6 +4,7 @@ import { AppError } from '../middleware/error-handler';
 import { SlidingWindowLimiter } from '../middleware/rate-limit';
 import { env } from '../config/environment';
 import { RefundError, refundService } from '../refunds/service';
+import { buildEvidencePackage } from '../evidence/service';
 
 // Merchant refund queue. Every route needs the merchant key (the same OPS_COPILOT_KEY the dashboard's
 // Ops Copilot uses; 16+ chars). Approving is the ONLY code path that calls PayPal's refund API.
@@ -39,6 +40,21 @@ router.get('/refunds', (req, res, next) => {
   try {
     authorize(req);
     res.json({ sandbox: true, paypalEnabled: env.isPayPalEnabled(), refunds: refundService.list() });
+  } catch (err) {
+    next(translate(err));
+  }
+});
+
+// Merchant-side Dispute Evidence Pack for the order behind a refund request.
+router.get('/refunds/:id/evidence', (req, res, next) => {
+  try {
+    authorize(req);
+    const record = refundService.get(req.params.id);
+    if (!record) throw new AppError(404, 'Refund request not found.');
+    const pkg = buildEvidencePackage(record.orderId);
+    if (!pkg) throw new AppError(404, 'Order not found.');
+    res.set('Cache-Control', 'no-store');
+    res.json(pkg);
   } catch (err) {
     next(translate(err));
   }

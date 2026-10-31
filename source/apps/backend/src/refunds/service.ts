@@ -29,7 +29,7 @@ export const INTERRUPTED_PREFIX = 'Interrupted by a server restart';
 const INDETERMINATE_PREFIX = 'Refund outcome indeterminate';
 
 export type RefundStatus = 'PROPOSED' | 'PROCESSING' | 'REFUNDED' | 'REJECTED';
-export type RefundProposer = 'OPS_COPILOT' | 'MERCHANT';
+export type RefundProposer = 'OPS_COPILOT' | 'MERCHANT' | 'CUSTOMER';
 
 export interface RefundRequestRecord {
   id: string;
@@ -231,6 +231,10 @@ export class RefundService {
 
   list(): RefundRequestRecord[] {
     return Array.from(this.records.values()).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  }
+
+  listForOrder(orderId: string): RefundRequestRecord[] {
+    return this.list().filter((r) => r.orderId === orderId);
   }
 
   get(id: string): RefundRequestRecord | undefined {

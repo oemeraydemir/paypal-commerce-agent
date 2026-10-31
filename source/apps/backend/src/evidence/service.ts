@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import stringify from 'fast-json-stable-stringify';
 import { OrderService } from '../orders/service';
+import { refundService } from '../refunds/service';
+import { BillService } from '../bills/service';
 import { policyStorage } from '../policy/storage';
 import { Order, OrderStatus, OrderOrigin } from '../orders/domain';
 import {
@@ -68,7 +70,10 @@ export type EvidenceTimelineStepKind =
   | 'ORDER_CREATED'
   | 'POLICY_EVALUATED'
   | 'HUMAN_APPROVAL'
-  | 'PAYMENT_CAPTURED';
+  | 'PAYMENT_CAPTURED'
+  | 'REFUND_REQUESTED'
+  | 'REFUND_ISSUED'
+  | 'REFUND_DECLINED';
 
 /** Priority 1: one canonical, server-built timeline the UI can visualise as-is. */
 export interface EvidenceTimelineStep {
@@ -161,6 +166,30 @@ function buildTimeline(order: Order, policyEvents: EvidencePolicyEvent[]): Evide
   return steps;
 }
 
+// Only refund events that were actually recorded: a request, and (when decided) its outcome.
+function buildRefundSteps(orderId: string): EvidenceTimelineStep[] {
+  const steps: EvidenceTimelineStep[] = [];
+  const records = [...refundService.listForOrder(orderId)].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const r of records) {
+    const who = r.proposedBy === 'CUSTOMER' ? 'customer' : r.proposedBy === 'OPS_COPILOT' ? 'ops copilot (AI)' : 'merchant';
+    steps.push({
+      step: 'REFUND_REQUESTED',
+      at: r.createdAt,
+      detail: `${(r.amountMinor / 100).toFixed(2)} ${r.currency} requested by ${who}`,
+    });
+    if (r.status === 'REFUNDED') {
+      steps.push({
+        step: 'REFUND_ISSUED',
+        at: r.decidedAt ?? r.updatedAt,
+        detail: `${(r.amountMinor / 100).toFixed(2)} ${r.currency}${r.paypalRefundId ? ' · PayPal refund ' + r.paypalRefundId : ''}`,
+      });
+    } else if (r.status === 'REJECTED') {
+      steps.push({ step: 'REFUND_DECLINED', at: r.decidedAt ?? r.updatedAt, detail: 'merchant declined the request' });
+    }
+  }
+  return steps;
+}
+
 // Priority 1: an auto-generated dispute-defense template. It summarises the
 // signed facts so a merchant can paste them into a chargeback response; it never
 // asserts anything the evidence package does not already prove.
@@ -188,6 +217,21 @@ function buildDisputeDefense(
     keyFacts.push(`PayPal capture ${order.paypalCaptureId} is recorded for the approved amount.`);
   }
 
+  const refunded = refundService.refundedMinor(order.id);
+  const open = refundService.listForOrder(order.id).find((r) => r.status === 'PROPOSED' || r.status === 'PROCESSING');
+  for (const r of refundService.listForOrder(order.id).filter((x) => x.status === 'REFUNDED')) {
+    keyFacts.push(
+      `A refund of ${(r.amountMinor / 100).toFixed(2)} ${r.currency} was issued${r.paypalRefundId ? ` (PayPal refund ${r.paypalRefundId})` : ''}.`
+    );
+  }
+  if (open) keyFacts.push('A refund request for this order is open and awaiting merchant review.');
+  const billGroup = BillService.getInstance().findGroupByOrderId(order.id);
+  if (billGroup) {
+    keyFacts.push(
+      `This order is one share of a split bill between ${billGroup.shares.length} people; each participant approved and paid only their own share at PayPal.`
+    );
+  }
+
   const evidencePointers = [
     { label: 'Signed Cart Mandate', pointer: 'mandate (EdDSA signature over the proposed cart)' },
     { label: 'Policy decisions', pointer: 'policyEvents[] (decision, rule, expected vs actual)' },
@@ -197,7 +241,11 @@ function buildDisputeDefense(
   ];
 
   const recommendedResponse =
-    approval === 'approved'
+    refunded >= order.totalMinor
+      ? 'The buyer has already been refunded in full. Tell the reviewer the charge was refunded (see the refund steps in the timeline) and do not contest the dispute.'
+      : refunded > 0
+        ? `The buyer has already received a partial refund of ${(refunded / 100).toFixed(2)} ${order.currency}; ${((order.totalMinor - refunded) / 100).toFixed(2)} ${order.currency} remains. Mention the partial refund when responding.`
+        : approval === 'approved'
       ? 'This is an authorized, server-priced checkout. The signed mandate and the PayPal buyer approval together show the buyer approved the exact amount captured. Recommend representing the charge as authorized.'
       : 'Do not represent this as a completed charge: no buyer approval or capture is recorded. Provide the timeline as evidence of the current order state.';
 
@@ -278,7 +326,7 @@ export function buildEvidencePackage(orderId: string): EvidencePackage | null {
   if (order.paypalCaptureId) summary.paypalCaptureId = order.paypalCaptureId;
   if (order.paypalStatus) summary.paypalStatus = order.paypalStatus;
 
-  const timeline = buildTimeline(order, policyEvents);
+  const timeline = [...buildTimeline(order, policyEvents), ...buildRefundSteps(order.id)];
   const disputeDefense = buildDisputeDefense(order, policyEvents, timeline);
 
   const payload: EvidencePackagePayload = {
