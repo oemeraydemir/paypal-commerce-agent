@@ -284,6 +284,8 @@
     sum.appendChild(el('h2', '', t('room.items'))); sum.appendChild(items);
     root.appendChild(sum);
 
+    var man = el('p', 'mut', t('room.mandate')); man.style.cssText = 'font-size:12.5px;margin:0 4px'; root.appendChild(man);
+
     // Shares: "joined" and "paid" are separate states on purpose.
     var sh = el('section'); sh.appendChild(el('h2', '', t('room.shares')));
     bill.shares.forEach(function (s, idx) {

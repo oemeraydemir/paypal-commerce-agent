@@ -144,7 +144,7 @@ describe('web Split Bill (jsdom + real server)', () => {
     expect(createOrder).toHaveBeenCalledTimes(1);
     const guest1Store = { 'aicafe.session': ls(g1, 'aicafe.session')!, 'aicafe.pending': pend, 'aicafe.split.active': ls(g1, 'aicafe.split.active')! };
     const back = await open(`/split#b=${billId}&return=1`, guest1Store);
-    const confirm = await waitFor(() => qa(back, 'button').find((b) => /Confirm my payment/.test(b.textContent || '')), 'confirm button');
+    const confirm = await waitFor(() => qa(back, 'button').find((b) => /Confirm and pay now/.test(b.textContent || '')), 'confirm button');
     confirm.click();
     await waitFor(() => q(back, '.share.mine .chip.paid'), 'guest 1 paid');
     expect(ls(back, 'aicafe.pending')).toBeNull();
@@ -159,7 +159,7 @@ describe('web Split Bill (jsdom + real server)', () => {
     (await waitFor(() => qa(g2, 'button').find((b) => /Pay my share/.test(b.textContent || '')), 'pay 2')).click();
     const pend2 = await waitFor(() => ls(g2, 'aicafe.pending'), 'pending 2');
     const back2 = await open(`/split#b=${billId}&return=1`, { 'aicafe.session': ls(g2, 'aicafe.session')!, 'aicafe.pending': pend2, 'aicafe.split.active': ls(g2, 'aicafe.split.active')! });
-    (await waitFor(() => qa(back2, 'button').find((b) => /Confirm my payment/.test(b.textContent || '')), 'confirm 2')).click();
+    (await waitFor(() => qa(back2, 'button').find((b) => /Confirm and pay now/.test(b.textContent || '')), 'confirm 2')).click();
     await waitFor(() => q(back2, '.share.mine .chip.paid'), 'guest 2 paid');
 
     // 8) Organiser pays the last share → the bill settles and the cart is cleared.
@@ -167,7 +167,7 @@ describe('web Split Bill (jsdom + real server)', () => {
     (await waitFor(() => qa(own, 'button').find((b) => /Pay my share/.test(b.textContent || '')), 'owner pay')).click();
     const pend3 = await waitFor(() => ls(own, 'aicafe.pending'), 'pending owner');
     const done = await open(`/split#b=${billId}&return=1`, { ...ownerStore, 'aicafe.pending': pend3 });
-    (await waitFor(() => qa(done, 'button').find((b) => /Confirm my payment/.test(b.textContent || '')), 'confirm owner')).click();
+    (await waitFor(() => qa(done, 'button').find((b) => /Confirm and pay now/.test(b.textContent || '')), 'confirm owner')).click();
     await waitFor(() => q(done, '.success'), 'settled banner');
     expect(qa(done, '.chip.paid')).toHaveLength(3);
     expect(JSON.parse(ls(done, 'aicafe.cart') || 'null')).toBeNull();

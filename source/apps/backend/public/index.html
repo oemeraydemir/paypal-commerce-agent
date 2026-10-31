@@ -99,6 +99,10 @@ button.loading{opacity:.7;cursor:progress}
 .explain h4{margin:0 0 6px;font-size:14px}
 .explain ul{margin:6px 0 0;padding-left:18px}
 .explain li{margin:2px 0}
+.mandate-list{list-style:none;margin:8px 0 0;padding:0;font-size:13px}.mandate-list li{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+.mandate-list .k{color:var(--mut)}.mandate-list .v{font-weight:600;text-align:right}
+.mandate-rules{margin:8px 0 0;padding-left:18px;font-size:12px;color:var(--mut)}
+.how{margin:10px 0 0;font-size:12.5px;color:var(--mut)}.how summary{cursor:pointer;font-weight:600;color:var(--ink)}.how ul{margin:6px 0 0;padding-left:18px}
 .wellbeing{margin:8px 0;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:var(--card);font-size:13px}
 .wellbeing h4{margin:0 0 6px;font-size:13.5px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .wellbeing .wb-badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;border:1px solid var(--warn);color:var(--warn)}
@@ -192,6 +196,12 @@ button.loading{opacity:.7;cursor:progress}
       <button class="primary full" id="pay" disabled data-i18n="pay.review">Review &amp; pay with PayPal</button>
       <button class="full" id="split-open" type="button" disabled style="margin-top:8px" aria-haspopup="dialog" data-i18n="split.open">Split the bill</button>
       <p class="mut" id="split-hint" style="font-size:12.5px;margin:6px 0 0" data-i18n="split.openHint">Pay together: everyone pays their own share in PayPal.</p>
+      <details class="how" id="how"><summary data-i18n="how.title">How this order works</summary>
+        <ul><li data-i18n="how.1">An AI assistant may suggest a cart. It cannot approve or make a payment.</li>
+        <li data-i18n="how.2">Prices and totals are calculated by the server, not by the AI or this page.</li>
+        <li data-i18n="how.3">You pay only after you approve in PayPal and confirm here. This is a PayPal sandbox demo: no real money is charged.</li>
+        <li data-i18n="how.4">After payment you can ask the café for a refund from the receipt. A person at the café reviews every request.</li>
+        <li data-i18n="how.5">Diet labels are sample data and are not verified by the café. For allergies, ask the café before you order.</li></ul></details>
       <button class="full" id="reset" type="button" style="margin-top:8px" data-i18n="reset">Reset demo</button>
       <p class="mut" id="payNote" style="font-size:12.5px;margin:8px 0 0" data-i18n="payNote">The agent can prepare a cart. Only you can authorize payment, in PayPal sandbox.</p>
     <div id="receipt" class="receipt" hidden></div>
@@ -224,6 +234,7 @@ button.loading{opacity:.7;cursor:progress}
     <div id="split-people-label" style="font-size:13.5px" data-i18n="split.people">How many people (including you)?</div>
     <div id="split-people" class="segs" role="radiogroup" aria-labelledby="split-people-label"></div>
     <div id="split-preview" class="splitprev" aria-live="polite"></div>
+    <p id="split-mandate" class="mut" style="font-size:12.5px;margin:0 0 8px"></p>
     <div id="split-err" class="allergy" role="alert" hidden></div>
     <div class="row gap">
       <button id="split-cancel" type="button" data-i18n="split.cancel">Cancel</button>

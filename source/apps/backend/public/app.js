@@ -352,15 +352,19 @@
     api('/api/policy/preview', { method: 'POST', body: JSON.stringify({ items: items }) }).then(function (p) {
       if (seq !== pseq) return; // a newer cart state is already in flight
       policy = p; renderPolicy(p); updatePay();
-    }).catch(function () { if (seq === pseq) { policy = null; $('policy').textContent = ''; updatePay(); } });
+    }).catch(function () {
+      // The page may already be gone (tab closed, test teardown): a failed preview must never throw again.
+      try { if (seq === pseq) { policy = null; $('policy').textContent = ''; updatePay(); } } catch (e) { /* page torn down */ }
+    });
   }
   function renderPolicy(p) {
     var box = $('policy'); box.textContent = '';
     var L = p.limits; var max = L.maxPerPurchaseMinor; var wrap = el('div', 'pbox' + (p.decision ? ' ' + p.decision : ''));
     var head = el('div', 'phead');
-    head.appendChild(el('b', '', p.decision ? decShort(p.decision) : i18nT('policy.limits')));
+    head.appendChild(el('b', '', i18nT('mandate.title') + (p.decision ? ' · ' + decShort(p.decision) : '')));
     head.appendChild(el('span', 'pill', i18nT('policy.enforced')));
     wrap.appendChild(head);
+    wrap.appendChild(el('div', 'mut', i18nT('mandate.subtitle')));
     var meter = el('div', 'meter'); meter.setAttribute('role', 'img');
     var total = p.empty ? 0 : p.totalMinor;
     meter.setAttribute('aria-label', 'Cart ' + eur(total) + ' of ' + eur(max) + ' maximum; ' + i18nT('policy.approvalAbove') + ' ' + eur(L.confirmationThresholdMinor));
@@ -370,6 +374,20 @@
     var scale = el('div', 'scale'); scale.appendChild(el('span', '', eur(0)));
     var thr = el('span', '', i18nT('policy.approvalAbove') + ' ' + eur(L.confirmationThresholdMinor)); scale.appendChild(thr);
     scale.appendChild(el('span', '', i18nT('policy.max') + ' ' + eur(max))); wrap.appendChild(scale);
+    // Mandate summary: limit, scope, current cart, remaining allowance and a plain status line.
+    var cartMinor = p.empty ? 0 : p.totalMinor, left = max - cartMinor;
+    var st = !p.empty && (p.decision === 'BLOCK' || cartMinor > max) ? 'exceeded' : (!p.empty && p.decision === 'REQUIRE_CONFIRMATION') ? 'reconfirm' : 'valid';
+    var rows = el('ul', 'mandate-list');
+    function mrow(k, v) { var li = el('li', ''); li.appendChild(el('span', 'k', k)); li.appendChild(el('span', 'v', v)); rows.appendChild(li); }
+    mrow(i18nT('mandate.limit'), eur(max));
+    mrow(i18nT('mandate.scope'), i18nT('mandate.scopeValue'));
+    mrow(i18nT('mandate.cart'), eur(cartMinor));
+    mrow(i18nT('mandate.remaining'), left >= 0 ? eur(left) : i18nT('mandate.over') + ' ' + eur(-left));
+    mrow(i18nT('mandate.status'), i18nT('mandate.' + st));
+    wrap.appendChild(rows);
+    var rules = el('ul', 'mandate-rules');
+    ['mandate.rule1', 'mandate.rule2', 'mandate.rule3'].forEach(function (k) { rules.appendChild(el('li', '', i18nT(k))); });
+    wrap.appendChild(rules);
     if (p.decision) {
       wrap.appendChild(el('div', 'mut', p.decision === 'BLOCK' && p.reason ? p.reason + '. ' + decLong('BLOCK') : decLong(p.decision)));
       var ul = el('ul', 'checks');
@@ -557,6 +575,11 @@
   function renderSplitPreview() {
     var box = $('split-preview'); if (!box) return; box.textContent = '';
     var total = cartTotal(), amounts = splitAmounts(total, split.n);
+    var sm = $('split-mandate');
+    if (sm) {
+      var lim = policy && policy.limits ? eur(policy.limits.maxPerPurchaseMinor) : '—';
+      sm.textContent = i18nT('split.mandate').replace('{l}', lim).replace('{t}', eur(total));
+    }
     var t = el('div', 'kv'); t.appendChild(el('span', 'k', i18nT('split.total'))); t.appendChild(el('span', '', eur(total))); box.appendChild(t);
     amounts.forEach(function (a, i) {
       var r = el('div', 'kv' + (i === 0 ? ' big' : ''));
