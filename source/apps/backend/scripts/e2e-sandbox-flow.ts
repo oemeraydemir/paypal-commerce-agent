@@ -61,6 +61,14 @@ async function post(path: string, body: unknown, extraHeaders: Record<string, st
   });
   return { status: res.status, json: await res.json().catch(() => null) };
 }
+async function put(path: string, body: unknown, extraHeaders: Record<string, string> = {}) {
+  const res = await fetch(`${base}${path}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json', ...AUTH, ...extraHeaders },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, json: await res.json().catch(() => null) };
+}
 async function get(path: string) {
   const res = await fetch(`${base}${path}`, { headers: { ...AUTH } });
   return { status: res.status, json: await res.json().catch(() => null) };
@@ -82,6 +90,11 @@ async function establishSession(): Promise<void> {
   }
   AUTH = { 'x-session-id': sid, authorization: `Bearer ${token}` };
   log(`[auth] session established (id issued by backend; token NOT logged)`);
+  // The current backend requires a wellbeing profile before any checkout
+  // (Wellbeing Guard). Save an empty profile so subsequent order-create calls
+  // are not rejected with 428 WELLBEING_PROFILE_REQUIRED.
+  const wb = await put('/api/wellbeing/preferences', { preferences: { dietary: [], allergens: [] } });
+  log(`[auth] wellbeing preferences saved (status=${wb.status})`);
 }
 
 /**
@@ -232,7 +245,7 @@ log(`[1] spent BEFORE: ${statsBefore.json?.spentFormatted} (requests=${statsBefo
   );
   log(`    POST /api/orders/create -> ${create.status}`);
   log(`    ${JSON.stringify(create.json)?.slice(0, 300)}`);
-  if (create.status !== 200 || !create.json?.orderId) {
+  if (![200, 201].includes(create.status) || !create.json?.orderId) {
     // Ambiguous/failed create: never auto-retry and never create a second order.
     log('ORDER CREATE FAILED or ambiguous (no orderId). Stopping — no order to capture.');
     log('      Manual reconciliation required before re-running.');

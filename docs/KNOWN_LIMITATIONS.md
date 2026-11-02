@@ -11,7 +11,7 @@
 | Real PostgreSQL smoke | Migrations, atomic claims, mandate / bills / pickup atomicity, durability on a **real server** | 6 suites / 39 tests passed on a disposable local database (not Render) | CI job `smoke-real-pg`, or locally with `DATABASE_URL` |
 | Real browser (AG Grid) | Dashboard renders in headless Chrome | 5 tests passed locally; skipped (= not verified) unless `CHROME_PATH` is set | `npm run test:browser`, CI job `dashboard-browser` (informational) |
 | Flutter | Widget / unit logic of the mobile app | `flutter analyze`: **no issues (re-verified)**; Android debug APK **builds** and the app **launches on an Android emulator**. `flutter test` could not run in the sandbox: `flutter_tester` WebSocket is blocked there (environment, not code); 218-test claim remains author-machine-verified only. | `flutter analyze && flutter test` |
-| **PayPal Sandbox, live** | The real integration | One full payment run on 27 Oct 2026 (`docs/PAYMENT_E2E.md`). Refund, partial refund, webhook replay and Split Bill settlement against live PayPal are **not yet evidenced**. | `npm run e2e:sandbox -- <url>` (needs sandbox credentials) |
+| **PayPal Sandbox, live** | The real integration | Buyer-approval + **capture verified against live Sandbox on 2 Nov 2026** (`docs/PAYMENT_E2E.md`: €13.00 order → APPROVED → 200 PAID, over-limit BLOCK 403). Refund, partial refund, webhook replay and Split Bill settlement against live PayPal are **not yet evidenced**. | `npm run e2e:sandbox -- <url>` (needs sandbox credentials) |
 
 A skipped suite is reported as **BLOCKED — not verified**, never as a pass.
 

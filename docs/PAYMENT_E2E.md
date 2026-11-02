@@ -1,9 +1,34 @@
 # Repeatable PayPal Sandbox payment check
 
-**Status: BLOCKED / NOT RUN.** Nobody has executed this sequence end to end with a real Sandbox buyer login. Until
-someone does and records the result in [PLATFORM_STATUS.md](./PLATFORM_STATUS.md), do not describe the buyer-approval,
-capture, webhook-replay or refund steps as verified. The unit and integration tests cover the logic with mocked PayPal;
-this procedure is the only thing that proves the real integration.
+**Status: PARTIALLY VERIFIED (as of 2 November 2026).** The buyer-approval + capture step (Procedure §2) was executed
+end-to-end against **real PayPal Sandbox** and **PASSED** (see "Verified run" below). The webhook-replay (§3) and
+refund / partial-refund (§4) steps are **still NOT RUN** and must not be described as verified. The unit and integration
+tests cover the logic with mocked PayPal; this procedure is the only thing that proves the real integration.
+
+## Verified run — buyer approval + capture (2 Nov 2026)
+
+Driver: `scripts/e2e-sandbox-flow.ts` (with `E2E_SKIP_AI=1`) against a locally running backend
+(`DATABASE_URL= node dist/src/server.js`, port 3000, Sandbox credentials from `.env`).
+
+| Step | Result |
+|---|---|
+| `/api/health` guard | `paypal.enabled=true`, `environment=sandbox` |
+| Session + wellbeing profile | 201 / 200 (Wellbeing Guard requires a profile before checkout) |
+| Over-limit `premium_cake` (€45 > €20) → `POST /api/orders/create` | **403 BLOCK**, decision=BLOCK — no PayPal order created |
+| €13.00 order (veg_breakfast + coffee) → `POST /api/orders/create` | **201**, `paypalOrderId=70G68487XG483091V`, `approvalUrl` returned |
+| Total invariant before approval | `totalMinor=1300` (€13.00) |
+| Buyer approves in Sandbox → `POST /api/orders/:id/capture` | **200 PAID** (real Sandbox `capture` returned 201) |
+| `/api/policy-events/stats` AFTER | spent=€13.00, spentMinor=1300, requests=8, blocked=4 |
+
+- Order IDs: `orderId=6ee717c4-c8ef-430a-83b2-94ceb2ec9683`, `paypalOrderId=70G68487XG483091V`.
+- Backend logs show the real Sandbox round-trip (`POST …/70G68487XG483091V/capture → 201`) and the buyer's
+  `GET /api/checkout/return?…&PayerID=…` redirect after Approve.
+- Driver final line: `SUCCESS: order PAID; /policy-events/stats spent increased by exactly €13.00 (1300 minor).`
+
+> Note: the sandbox driver refuses to run unless `/api/health` reports `paypal.enabled === true` and
+> `paypal.environment === "sandbox"`. A live-money run is impossible by construction (SDK hard-wired to Sandbox).
+
+Still open: **refund**, **partial refund**, **Split Bill settlement**, and **webhook**-driven PAID against live PayPal.
 
 ## Safety rules
 
