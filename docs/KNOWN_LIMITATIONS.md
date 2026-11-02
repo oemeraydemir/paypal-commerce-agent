@@ -7,10 +7,10 @@
 
 | Layer | What it proves | Result | Where it runs |
 |---|---|---|---|
-| Backend unit + integration | Business logic, policy, state machines. **PayPal and AI are mocked, PostgreSQL is emulated (pg-mem).** | 114 suites / 1157 tests passed (author's machine, 2 Nov 2026) | `npm test` |
+| Backend unit + integration | Business logic, policy, state machines. **PayPal and AI are mocked, PostgreSQL is emulated (pg-mem).** | **114 suites / 1158 tests passed** (re-verified 2 Nov 2026 in pg-mem/memory mode) | `npm test` |
 | Real PostgreSQL smoke | Migrations, atomic claims, mandate / bills / pickup atomicity, durability on a **real server** | 6 suites / 39 tests passed on a disposable local database (not Render) | CI job `smoke-real-pg`, or locally with `DATABASE_URL` |
 | Real browser (AG Grid) | Dashboard renders in headless Chrome | 5 tests passed locally; skipped (= not verified) unless `CHROME_PATH` is set | `npm run test:browser`, CI job `dashboard-browser` (informational) |
-| Flutter | Widget / unit logic of the mobile app | `flutter analyze`: no issues; 218 tests passed (author's machine) | `flutter test` |
+| Flutter | Widget / unit logic of the mobile app | `flutter analyze`: **no issues (re-verified)**; Android debug APK **builds** and the app **launches on an Android emulator**. `flutter test` could not run in the sandbox: `flutter_tester` WebSocket is blocked there (environment, not code); 218-test claim remains author-machine-verified only. | `flutter analyze && flutter test` |
 | **PayPal Sandbox, live** | The real integration | One full payment run on 27 Oct 2026 (`docs/PAYMENT_E2E.md`). Refund, partial refund, webhook replay and Split Bill settlement against live PayPal are **not yet evidenced**. | `npm run e2e:sandbox -- <url>` (needs sandbox credentials) |
 
 A skipped suite is reported as **BLOCKED — not verified**, never as a pass.
@@ -27,6 +27,7 @@ A skipped suite is reported as **BLOCKED — not verified**, never as a pass.
 ## 3. Engineering trade-offs
 
 1. **Storage.** Local development can run in memory. The Render deployment uses PostgreSQL with forward-only migrations (`REQUIRE_PERSISTENCE=true` refuses to start without it).
+   - **Repro note (verified 2 Nov 2026):** `src/config/environment.ts` loads `.env` automatically. If a local `.env` contains a `DATABASE_URL` pointing at a *not-reachable* server, `npm test` switches persistence to Postgres and one browser-UI integration test (`web-refund-request.test.ts`) times out (`error=db down`) — 1157/1158. With `DATABASE_URL` unset (or reachable), the full suite is green (**114 suites / 1158 tests**).
 2. **Dependency advisories.** `npm audit` reports advisories in transitive production dependencies (mainly `@paypal/agent-toolkit`, `openai`). No non-breaking fix exists today. They are availability concerns, not payment-integrity concerns: bodies are capped at 100 kB and prices, totals and payment authority are decided on the server. CI prints the audit (informational). See `docs/security-note-ai-sdk-vulns.md`.
 3. **Hosting.** The free Render tier sleeps when idle; the first request can take about 50 seconds. Wake it with `GET /api/health` before recording or judging.
 4. **Single-instance design.** Rate limits, sessions and the event queue are per process. Horizontal scaling would need a shared store.
