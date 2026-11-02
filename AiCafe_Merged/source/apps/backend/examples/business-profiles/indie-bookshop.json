@@ -1,0 +1,110 @@
+{
+  "business": {
+    "businessId": "indie-bookshop",
+    "name": "Paper & Ink Books",
+    "currency": "USD",
+    "locale": "en-US",
+    "timezone": "America/New_York",
+    "maxOrderValueMinor": 25000,
+    "minOrderValueMinor": 300,
+    "aiPurchaseRequiresConfirmation": true,
+    "allowAutonomousPurchase": false
+  },
+  "products": [
+    {
+      "id": "novel-hardcover",
+      "name": "Contemporary Novel (Hardcover)",
+      "description": "Staff-pick literary fiction, hardcover.",
+      "priceMinor": 2800,
+      "category": "fiction",
+      "tags": [
+        "staff-pick",
+        "hardcover"
+      ],
+      "occasion": [
+        "gift"
+      ]
+    },
+    {
+      "id": "mystery-paperback",
+      "name": "Mystery Paperback",
+      "description": "Cosy mystery, paperback.",
+      "priceMinor": 1599,
+      "category": "fiction",
+      "tags": [
+        "paperback",
+        "cosy"
+      ],
+      "occasion": [
+        "travel"
+      ]
+    },
+    {
+      "id": "sci-fi-anthology",
+      "name": "Science Fiction Anthology",
+      "description": "Short stories from new voices.",
+      "priceMinor": 1899,
+      "category": "fiction",
+      "tags": [
+        "paperback"
+      ],
+      "occasion": [
+        "travel"
+      ]
+    },
+    {
+      "id": "cookbook",
+      "name": "Seasonal Cookbook",
+      "description": "Vegetable-forward recipes for every month.",
+      "priceMinor": 3500,
+      "category": "non-fiction",
+      "tags": [
+        "cooking",
+        "hardcover"
+      ],
+      "occasion": [
+        "gift"
+      ]
+    },
+    {
+      "id": "history-of-maps",
+      "name": "A History of Maps",
+      "description": "Illustrated history of cartography.",
+      "priceMinor": 3200,
+      "category": "non-fiction",
+      "tags": [
+        "illustrated"
+      ],
+      "occasion": [
+        "gift"
+      ]
+    },
+    {
+      "id": "picture-book",
+      "name": "Picture Book for Ages 3+",
+      "description": "Illustrated bedtime story.",
+      "priceMinor": 1299,
+      "category": "children",
+      "tags": [
+        "illustrated"
+      ],
+      "occasion": [
+        "gift",
+        "family"
+      ]
+    },
+    {
+      "id": "bookmark-set",
+      "name": "Letterpress Bookmark Set",
+      "description": "Set of three printed bookmarks.",
+      "priceMinor": 899,
+      "category": "stationery",
+      "tags": [
+        "gift"
+      ],
+      "occasion": [
+        "gift"
+      ]
+    }
+  ]
+}
