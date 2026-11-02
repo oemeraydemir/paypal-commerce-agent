@@ -21,7 +21,7 @@ databases:
 
 services:
   - type: web
-    name: paypal-commerce-agent-backend
+    name: paypal-commerce-agent-parallel
     env: node
     plan: free
     rootDir: source/apps/backend
@@ -51,12 +51,11 @@ services:
       # silently falls back to volatile in-memory storage.
       - key: REQUIRE_PERSISTENCE
         value: true
-      # Must match the live service host. Evidence in
-      # docs/archive/evidence/p3-deploy/REPORT_step4_5.md records the live host as
-      # `paypal-commerce-agent.onrender.com` (without `-backend`). The storefront is
-      # served same-origin, so CORS only affects an external cross-origin client.
+      # Must match the live service host. This is the PARALLEL (parallel-dev) deployment,
+      # so the host is paypal-commerce-agent-parallel.onrender.com. If you name the
+      # Render service differently, update this value to match.
       - key: CORS_ORIGIN
-        value: https://paypal-commerce-agent.onrender.com
+        value: https://paypal-commerce-agent-parallel.onrender.com
       - key: PAYPAL_ENABLED
         value: true
       - key: PAYPAL_ENV
