@@ -24,28 +24,28 @@ async function waitFor<T>(fn: () => T | null | undefined | false, what: string, 
 }
 
 describe('web wellbeing card', () => {
-  test('shows sample-data labelling, local-only allergens, and never a safety claim', async () => {
+  test('shows server evaluation, unknown ingredient data and non-medical notice', async () => {
     const dom = await open({ 'aicafe.onboarded': 'true', 'aicafe.cart': JSON.stringify({ coffee: 1 }), 'aicafe.allergens': JSON.stringify(['gluten']) });
     const diet = dom.window.document.getElementById('diet') as HTMLSelectElement;
     diet.value = 'vegan'; diet.dispatchEvent(new dom.window.Event('change'));
     const box = await waitFor(() => { const b = dom.window.document.getElementById('wellbeing'); return b && !b.hidden && b.querySelector('li') && b; }, 'wellbeing card');
     const text = box.textContent || '';
-    expect(text).toMatch(/Sample data/i);
-    expect(text).toMatch(/not verified/i);
-    expect(text).toMatch(/kept on this device/i);
-    expect(text).toMatch(/ask the café/i);
-    expect(text.toLowerCase()).not.toMatch(/\bsafe\b|suitable|guarantee/);
-    expect(dom.window.document.getElementById('wb-sample')!.textContent).toMatch(/not verified/i);
+    expect(text).toMatch(/UNKNOWN/i);
+    expect(text).toMatch(/Missing information/i);
+    expect(text).toMatch(/not medical advice/i);
+    expect(text.toLowerCase()).not.toMatch(/\bsafe\b|suitable/);
+    expect(dom.window.document.getElementById('wb-sample')!.textContent).toMatch(/unknown information blocks checkout/i);
   });
 
-  test('allergens are never sent to the server', async () => {
+  test('allergen concerns are sent only through the authenticated wellbeing profile contract', async () => {
     const dom = await open({ 'aicafe.onboarded': 'true', 'aicafe.cart': JSON.stringify({ coffee: 1 }), 'aicafe.allergens': JSON.stringify(['peanuts']) });
     const sent: string[] = [];
     const orig = (dom.window as any).fetch;
     (dom.window as any).fetch = (u: string, o?: any) => { if (String(u).includes('wellbeing')) sent.push(String(o?.body || '')); return orig(u, o); };
     const diet = dom.window.document.getElementById('diet') as HTMLSelectElement;
     diet.value = 'vegetarian'; diet.dispatchEvent(new dom.window.Event('change'));
-    await waitFor(() => sent.length > 0, 'wellbeing request');
-    sent.forEach((b) => { expect(b).not.toMatch(/peanut|allerg/i); });
+    await waitFor(() => sent.some((b) => b.includes('preferences')), 'wellbeing preferences');
+    expect(sent.some((b) => b.includes('peanut'))).toBe(true);
+    expect(sent.every((b) => !b.includes('diagnosis') && !b.includes('medical'))).toBe(true);
   });
 });

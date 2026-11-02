@@ -389,6 +389,7 @@ async function handleMessage(msg: any, req: Request, res: Response): Promise<any
         throw err;
       }
       const record = sessionStore.verify(issued.sessionId, issued.sessionToken);
+      await sessionStore.setWellbeingPreferences(issued.sessionId, { dietary: [], allergens: [] });
       const mcpSessionId = `mcp_${randomBytes(24).toString('base64url')}`;
       mcpSessions.set(mcpSessionId, {
         sessionId: issued.sessionId,

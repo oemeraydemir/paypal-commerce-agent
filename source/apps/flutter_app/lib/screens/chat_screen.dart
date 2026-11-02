@@ -22,6 +22,8 @@ import 'package:flutter_app/services/voice_controller.dart';
 import 'package:flutter_app/utils/markdown_tables.dart';
 import 'package:flutter_app/widgets/evidence_package_section.dart';
 import 'package:flutter_app/widgets/paid_receipt_card.dart';
+import 'package:flutter_app/widgets/refund_section.dart';
+import 'package:flutter_app/widgets/pickup_planner.dart';
 import 'package:flutter_app/widgets/barista_avatar.dart';
 import 'package:flutter_app/widgets/assistant_quick_replies.dart';
 import 'package:flutter_app/widgets/typing_indicator.dart';
@@ -650,6 +652,25 @@ class _ChatScreenState extends State<ChatScreen> {
                             listen: false,
                           ).languageCode,
                         ),
+                        refundSection: RefundSection(
+                          api: checkout.api,
+                          orderId: checkout.receipt!.orderId,
+                          lang: Provider.of<LocaleProvider>(
+                            ctx,
+                            listen: false,
+                          ).languageCode,
+                        ),
+                        pickupSection: checkout.pickupBooking != null
+                            ? PickupLinkSection(
+                                api: checkout.api,
+                                orderId: checkout.receipt!.orderId,
+                                lang: Provider.of<LocaleProvider>(
+                                  ctx,
+                                  listen: false,
+                                ).languageCode,
+                                booking: checkout.pickupBooking!,
+                              )
+                            : null,
                       ),
                     ),
                   ),
@@ -1568,6 +1589,23 @@ class _CartSheet extends StatelessWidget {
 
   const _CartSheet({required this.catalog});
 
+  /// Opens the pickup reservation planner (parity with the Web storefront).
+  /// The booking is held on the checkout provider until it is linked to the
+  /// order at payment (see [PickupLinkSection] on the receipt).
+  void _openPickupPlanner(BuildContext ctx, CheckoutProvider checkout) {
+    final lang = Provider.of<LocaleProvider>(ctx, listen: false).languageCode;
+    showModalBottomSheet<void>(
+      context: ctx,
+      isScrollControlled: true,
+      builder: (sheetCtx) => PickupPlannerSheet(
+        api: checkout.api,
+        lang: lang,
+        initialBooking: checkout.pickupBooking,
+        onBookingChanged: (booking) => checkout.setPickupBooking(booking),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Listen (not just read) so an open cart sheet re-localises if the shopper
@@ -1668,9 +1706,45 @@ class _CartSheet extends StatelessWidget {
                     key: const Key('cart-allowance-status'),
                     style: const TextStyle(fontSize: 12),
                   ),
+                  if (checkout.requiresMandateRenewal) ...[
+                    const SizedBox(height: 6),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: OutlinedButton(
+                        key: const Key('renew-spending-mandate'),
+                        onPressed: checkout.busy ? null : checkout.renewMandateForCurrentCart,
+                        child: Text(t(context, 'policy.renewMandate').replaceAll(
+                          '%s',
+                          AppStrings.formatMoney(lang, checkout.cartMandate?.totalMinor ?? 0, catalog.isEmpty ? 'EUR' : catalog.first.currency),
+                        )),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(t(context, 'policy.renewScope'), style: const TextStyle(fontSize: 11)),
+                    ),
+                  ],
                 ],
               ],
               const SizedBox(height: 8),
+              if (entries.isNotEmpty) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    key: const Key('plan-pickup'),
+                    icon: const Icon(Icons.event_available, size: 18),
+                    label: Text(
+                      checkout.pickupBooking != null
+                          ? t(context, 'pickup.planned')
+                          : t(context, 'pickup.plan'),
+                    ),
+                    onPressed: checkout.busy || checkout.hasPendingOrder
+                        ? null
+                        : () => _openPickupPlanner(ctx, checkout),
+                  ),
+                ),
+                const SizedBox(height: 4),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -1692,7 +1766,12 @@ class _CartSheet extends StatelessWidget {
                           ? null
                           : () {
                               Navigator.of(ctx).pop();
-                              checkout.startCheckout();
+                              checkout.startCheckout(
+                                wellbeingPreferences: context
+                                    .read<ShopperProfileProvider>()
+                                    .preferences
+                                    .toWellbeingJson(),
+                              );
                             },
                     ),
                   ),
@@ -1735,15 +1814,24 @@ class _CartSheet extends StatelessWidget {
     final remaining = AppStrings.formatMoney(lang, a.remainingTodayMinor, currency);
     final daily = AppStrings.formatMoney(lang, a.dailySpendLimitMinor, currency);
     final perPurchase = AppStrings.formatMoney(lang, a.maxPerPurchaseMinor, currency);
+    final cartTotal = c.cartMandate?.totalMinor;
+    final cartRemaining = c.cartMandate?.remainingPerPurchaseMinor;
     final parts = <String>[
       t(context, 'policy.allowanceRemaining').replaceAll('%s', '$remaining / $daily'),
       t(context, 'policy.allowancePerPurchase').replaceAll('%s', perPurchase),
+      if (cartTotal != null) t(context, 'policy.cartMandate').replaceAll('%s', AppStrings.formatMoney(lang, cartTotal, currency)),
+      if (cartRemaining != null) t(context, 'policy.cartRemaining').replaceAll('%s', AppStrings.formatMoney(lang, cartRemaining, currency)),
     ];
     if (!a.enabled) {
       parts.add(t(context, 'policy.allowanceDisabled'));
     } else if (a.validUntil != null) {
       parts.add(t(context, 'policy.allowanceExpires').replaceAll('%s', a.validUntil!));
     }
+    if (a.allowedMerchantIds.isNotEmpty) {
+      parts.add(t(context, 'policy.merchantScope').replaceAll('%s', a.allowedMerchantIds.join(', ')));
+    }
+    if (a.updatedAt != null) parts.add(t(context, 'policy.lastAuthorization').replaceAll('%s', a.updatedAt!));
+    parts.add(t(context, 'policy.paymentSeparate'));
     return parts.join(' · ');
   }
 

@@ -14,7 +14,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var SKEY = 'aicafe.session', SPKEY = 'aicafe.split.active', PKEY = 'aicafe.pending', CKEY = 'aicafe.cart';
+  var SKEY = 'aicafe.session', SPKEY = 'aicafe.split.active', PKEY = 'aicafe.pending', CKEY = 'aicafe.cart', AKEY = 'aicafe.allergens', DKEY = 'aicafe.dietary';
   var POLL_MS = 4000, POLL_ERR_MS = 8000, INVITE_MAX_AGE_MS = 50 * 60 * 1000;
 
   var session = null, sessionPromise = null;
@@ -210,7 +210,11 @@
   function payMine() {
     var s = mineShare(); if (!s || busy.pay) return;
     busy.pay = true; status('', t('room.paying')); render();
-    api('/api/bills/' + encodeURIComponent(billId) + '/shares/' + encodeURIComponent(s.id) + '/pay', { method: 'POST', body: '{}' }).then(function (r) {
+    var aliases = { nuts: 'tree-nut', peanuts: 'peanut' };
+    var preferences = { dietary: load(DKEY) || [], allergens: (load(AKEY) || []).map(function (a) { return aliases[a] || a; }) };
+    api('/api/wellbeing/preferences', { method: 'PUT', body: JSON.stringify({ preferences: preferences }) }).then(function () {
+      return api('/api/bills/' + encodeURIComponent(billId) + '/shares/' + encodeURIComponent(s.id) + '/pay', { method: 'POST', body: '{}' });
+    }).then(function (r) {
       if (!r.approvalUrl) throw new Error('PayPal approval link unavailable, please retry shortly.');
       save(PKEY, { orderId: r.orderId, paypalOrderId: r.paypalOrderId, total: money(r.totalMinor, r.currency), billId: billId, shareId: s.id });
       window.location.assign(r.approvalUrl);

@@ -14,6 +14,8 @@ jest.mock('../../src/paypal/client', () => ({
     refundCapture: jest.fn(),
     getRefund: jest.fn(),
     getCapture: jest.fn(),
+    getDispute: jest.fn(),
+    provideDisputeEvidence: jest.fn(),
   },
 }));
 const mockRefund = paypalClient.refundCapture as jest.Mock;
@@ -42,6 +44,10 @@ beforeEach(() => {
   mockRefund.mockReset();
   mockGetRefund.mockReset();
   mockGetCapture.mockReset();
+  mockGetCapture.mockImplementation(async (captureId: string) => {
+    const order = orders.getById(captureId.replace(/^CAP-/, ''))!;
+    return { id: captureId, status: 'COMPLETED', amount: { currencyCode: order.currency, value: (order.totalMinor / 100).toFixed(2) } };
+  });
   mockRefund.mockResolvedValue({ id: 'REFUND-1', status: 'COMPLETED' });
 });
 
@@ -98,6 +104,21 @@ describe('Refund queue API', () => {
     const res = await request(app).post('/api/refunds/propose').set('X-Ops-Key', KEY).send({ orderId: unpaid.id, reason: 'nope' });
     expect(res.status).toBe(409);
     expect(unpaid.status).not.toBe(OrderStatus.PAID);
+  });
+
+  test('PayPal current refunded amount is included before a refund can move money', async () => {
+    const order = paidOrder(1000);
+    const { body } = await request(app).post('/api/refunds/propose').set('X-Ops-Key', KEY)
+      .send({ orderId: order.id, amountMinor: 600, reason: 'partial' });
+    mockGetCapture.mockResolvedValueOnce({
+      status: 'PARTIALLY_REFUNDED',
+      amount: { currencyCode: 'EUR', value: '10.00' },
+      sellerPayableBreakdown: { totalRefundedAmount: { currencyCode: 'EUR', value: '5.00' } },
+    });
+    const result = await request(app).post(`/api/refunds/${body.id}/approve`).set('X-Ops-Key', KEY);
+    expect(result.status).toBe(422);
+    expect(mockRefund).not.toHaveBeenCalled();
+    expect(refundService.get(body.id)?.status).toBe('PROPOSED');
   });
 
   test('an ambiguous PayPal failure requires capture reconciliation before retry', async () => {
@@ -207,8 +228,20 @@ describe('Refund queue API', () => {
 
     const result = await request(app).post(`/api/refunds/${body.id}/approve`).set('X-Ops-Key', KEY);
     expect(result.status).toBe(409);
-    expect(refundService.get(body.id)?.status).toBe('PROPOSED');
+    expect(refundService.get(body.id)?.status).toBe('PROCESSING');
     expect(mockRefund).not.toHaveBeenCalled();
+  });
+
+  test('merchant reconciliation confirms a pending refund without sending another PayPal request', async () => {
+    const order = paidOrder(500);
+    const { body } = await request(app).post('/api/refunds/propose').set('X-Ops-Key', KEY).send({ orderId: order.id, reason: 'pending' });
+    mockRefund.mockResolvedValueOnce({ id: 'REFUND-PENDING', status: 'PENDING' });
+    expect((await request(app).post(`/api/refunds/${body.id}/approve`).set('X-Ops-Key', KEY)).status).toBe(202);
+    mockGetRefund.mockResolvedValueOnce({ id: 'REFUND-PENDING', status: 'COMPLETED' });
+    const reconciled = await request(app).post(`/api/refunds/${body.id}/reconcile`).set('X-Ops-Key', KEY);
+    expect(reconciled.status).toBe(200);
+    expect(reconciled.body.status).toBe('REFUNDED');
+    expect(mockRefund).toHaveBeenCalledTimes(1);
   });
 
   test('reject ends the request without calling PayPal', async () => {

@@ -1,11 +1,13 @@
 import { CatalogService } from '../catalog/service';
 import { Order } from '../orders/domain';
 import {
+  PolicyDecision,
   PolicyEvaluation,
   PolicyEvaluationContext,
   PolicyViolation,
   PurchasePolicy,
 } from './domain';
+import * as crypto from 'crypto';
 
 export class PolicyService {
   constructor(private readonly catalogService: CatalogService) {}
@@ -234,6 +236,22 @@ export class PolicyService {
       (violation) => violation.type !== 'CONFIRMATION_THRESHOLD_EXCEEDED'
     );
 
+    // Compute a deterministic hash of the policy-relevant menu data that will be
+    // persisted in the policy event (guardDataVersion). This lets us prove later
+    // which exact product/label versions were in force when a decision was made.
+    const policyItems = order.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+    }));
+    const hashInput = JSON.stringify({
+      policyId: policy.id,
+      userId: policy.userId,
+      orderItems: policyItems,
+      totalMinor: order.totalMinor,
+      currency: order.currency,
+    });
+    const guardDataVersion = crypto.createHash('sha256').update(hashInput).digest('hex').slice(0, 16);
+
     return {
       decision: hasBlockingViolation
         ? 'BLOCK'
@@ -241,6 +259,7 @@ export class PolicyService {
           ? 'REQUIRE_CONFIRMATION'
           : 'AUTO_ALLOW',
       violations,
+      guardDataVersion,
     };
   }
 }

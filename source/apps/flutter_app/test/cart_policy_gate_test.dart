@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_app/providers/chat_provider.dart';
 import 'package:flutter_app/providers/checkout_provider.dart';
+import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/services/api_service.dart';
 import 'package:flutter_app/services/session_service.dart';
 import 'package:http/http.dart' as http;
@@ -88,6 +89,28 @@ CheckoutProvider _providerWithOrders(
 Future<void> _settle() => Future<void>.delayed(const Duration(milliseconds: 20));
 
 void main() {
+  test('Flutter reads the same server mandate fields as Web preview', () {
+    final mandate = PolicyPreview.fromJson({
+      'empty': false,
+      'decision': 'AUTO_ALLOW',
+      'totalMinor': 1850,
+      'remainingPerPurchaseMinor': 150,
+      'violations': <Object>[],
+      'limits': {
+        'currency': 'EUR',
+        'maxPerPurchaseMinor': 2000,
+        'validUntil': '2030-01-01T00:00:00.000Z',
+        'updatedAt': '2029-12-01T10:00:00.000Z',
+        'allowedMerchantIds': ['cafe-one'],
+      },
+    });
+    expect(mandate.totalMinor, 1850);
+    expect(mandate.maxPerPurchaseMinor, 2000);
+    expect(mandate.remainingPerPurchaseMinor, 150);
+    expect(mandate.validUntil, '2030-01-01T00:00:00.000Z');
+    expect(mandate.updatedAt, '2029-12-01T10:00:00.000Z');
+  });
+
   group('cart policy gate (D-04)', () {
     test('sends productId and the new quantity on every change', () async {
       final bodies = <Map<String, dynamic>>[];

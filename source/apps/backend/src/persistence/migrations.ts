@@ -269,6 +269,124 @@ export const MIGRATIONS: Migration[] = [
          ON pickup_bookings (session_id) WHERE status = 'HELD'`,
     ],
   },
+  {
+    id: '010_session_wellbeing_preferences',
+    statements: [
+      `ALTER TABLE sessions ADD COLUMN IF NOT EXISTS wellbeing_preferences jsonb`,
+    ],
+  },
+  {
+    id: '011_persistent_spending_mandates',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS spending_mandates (
+         user_id    text PRIMARY KEY,
+         revision   bigint NOT NULL CHECK (revision > 0),
+         policy     jsonb NOT NULL,
+         created_at timestamptz NOT NULL,
+         updated_at timestamptz NOT NULL
+       )`,
+      `CREATE TABLE IF NOT EXISTS spending_mandate_events (
+         id               text PRIMARY KEY,
+         user_id          text NOT NULL,
+         session_id       text,
+         event_type       text NOT NULL,
+         revision         bigint NOT NULL,
+         amount_minor     integer,
+         currency         text,
+         subject_id       text,
+         before_snapshot  jsonb,
+         after_snapshot   jsonb NOT NULL,
+         occurred_at      timestamptz NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS spending_mandate_events_user_time_idx
+         ON spending_mandate_events (user_id, occurred_at DESC)`,
+      `CREATE TABLE IF NOT EXISTS bill_mandate_reservations (
+         id                text PRIMARY KEY,
+         bill_id           text NOT NULL REFERENCES bill_groups (id),
+         owner_user_id     text NOT NULL,
+         amount_minor      integer NOT NULL CHECK (amount_minor > 0),
+         currency          text NOT NULL,
+         merchant_id       text NOT NULL,
+         mandate_revision  bigint NOT NULL,
+         policy_snapshot   jsonb NOT NULL,
+         status            text NOT NULL CHECK (status IN ('ACTIVE','SETTLED','CANCELLED','EXPIRED','REPLACED')),
+         expires_at        timestamptz,
+         created_at        timestamptz NOT NULL,
+         closed_at         timestamptz,
+         close_reason      text
+       )`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS bill_mandate_reservations_one_active_uq
+         ON bill_mandate_reservations (bill_id) WHERE status = 'ACTIVE'`,
+      `CREATE INDEX IF NOT EXISTS bill_mandate_reservations_owner_state_idx
+         ON bill_mandate_reservations (owner_user_id, status, expires_at)`,
+      `ALTER TABLE spend_reservations
+         ADD COLUMN IF NOT EXISTS mandate_revision bigint`,
+      `ALTER TABLE spend_reservations
+         ADD COLUMN IF NOT EXISTS bill_mandate_reservation_id text`,
+      `CREATE INDEX IF NOT EXISTS spend_reservations_user_settled_idx
+         ON spend_reservations (user_id, settled_at)`,
+    ],
+  },
+  {
+    id: '012_refund_audit_and_disputes',
+    statements: [
+      `ALTER TABLE refund_requests ADD COLUMN IF NOT EXISTS ai_recommendation jsonb`,
+      `ALTER TABLE refund_requests ADD COLUMN IF NOT EXISTS merchant_approved_at timestamptz`,
+      `ALTER TABLE refund_requests ADD COLUMN IF NOT EXISTS merchant_approved_by text`,
+      `ALTER TABLE refund_requests ADD COLUMN IF NOT EXISTS idempotency_key_hash text`,
+      `ALTER TABLE refund_requests ADD COLUMN IF NOT EXISTS idempotency_fingerprint text`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS refund_requests_idempotency_hash_uq
+         ON refund_requests (idempotency_key_hash) WHERE idempotency_key_hash IS NOT NULL`,
+      `CREATE TABLE IF NOT EXISTS refund_audit_events (
+         id text PRIMARY KEY,
+         refund_id text NOT NULL,
+         order_id text NOT NULL,
+         event_type text NOT NULL,
+         actor text NOT NULL,
+         details jsonb NOT NULL,
+         occurred_at timestamptz NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS refund_audit_events_order_time_idx
+         ON refund_audit_events (order_id, occurred_at, id)`,
+      `CREATE TABLE IF NOT EXISTS dispute_cases (
+         id text PRIMARY KEY,
+         order_id text NOT NULL REFERENCES orders (id),
+         paypal_dispute_id text NOT NULL UNIQUE,
+         status text NOT NULL CHECK (status IN (
+           'OPEN','EVIDENCE_READY','SUBMISSION_PENDING','SUBMISSION_UNCERTAIN',
+           'SUBMITTED','RESOLVED','WITHDRAWN','EXPIRED','FAILED'
+         )),
+         paypal_status text,
+         lifecycle_stage text,
+         requested_evidence_type text,
+         seller_response_due_at timestamptz,
+         evidence_type text,
+         evidence_notes text,
+         evidence_snapshot jsonb,
+         evidence_digest text,
+         last_error text,
+         created_by text NOT NULL,
+         created_at timestamptz NOT NULL,
+         updated_at timestamptz NOT NULL,
+         submitted_at timestamptz,
+         resolved_at timestamptz
+       )`,
+      `CREATE INDEX IF NOT EXISTS dispute_cases_status_due_idx
+         ON dispute_cases (status, seller_response_due_at)`,
+      `CREATE INDEX IF NOT EXISTS dispute_cases_order_time_idx
+         ON dispute_cases (order_id, created_at DESC)`,
+      `CREATE TABLE IF NOT EXISTS dispute_audit_events (
+         id text PRIMARY KEY,
+         dispute_case_id text NOT NULL REFERENCES dispute_cases (id),
+         event_type text NOT NULL,
+         actor text NOT NULL,
+         details jsonb NOT NULL,
+         occurred_at timestamptz NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS dispute_audit_events_case_time_idx
+         ON dispute_audit_events (dispute_case_id, occurred_at, id)`,
+    ],
+  },
 ];
 
 export interface MigrateOptions {

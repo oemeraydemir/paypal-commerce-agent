@@ -64,7 +64,19 @@ suite('capture claim at the route level (real PostgreSQL, mocked PayPal)', () =>
     captureOrder.mockResolvedValue({
       id: 'PP-CLAIM',
       status: 'COMPLETED',
-      purchaseUnits: [{ payments: { captures: [{ id: 'CAP-CLAIM', status: 'COMPLETED' }] } }],
+      purchaseUnits: [
+        {
+          payments: {
+            captures: [
+              {
+                id: 'CAP-CLAIM',
+                status: 'COMPLETED',
+                amount: { value: '3.00', currency_code: 'EUR' },
+              },
+            ],
+          },
+        },
+      ],
     });
 
     const created = await request(app)

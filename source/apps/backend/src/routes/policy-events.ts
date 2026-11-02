@@ -71,6 +71,7 @@ function serializeEvent(event: any) {
     violatedRules: event.violatedRules ?? [],
     reason: event.reason,
     policySnapshot: event.policySnapshot,
+    ...(event.wellbeingDecision ? { wellbeingDecision: event.wellbeingDecision } : {}),
   };
 }
 

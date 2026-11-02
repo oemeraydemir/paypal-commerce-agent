@@ -1,87 +1,59 @@
-import { CatalogService } from '../catalog/service';
+import { createHash } from 'crypto';
+import { CatalogService, Product } from '../catalog/service';
 
-/**
- * Wellbeing Guard: an honest, advisory diet-label check for a cart.
- *
- * What it is NOT: an allergy-safety or dietary-compliance check. The catalog's diet
- * labels are SAMPLE DATA that the café has not verified, and the café publishes no
- * allergen data at all. So this module
- *   - never returns "safe", "suitable" or "compliant" for anything,
- *   - only reports whether an item CARRIES a label in the sample data,
- *   - always attaches the data status and a "check with the café" notice,
- *   - never receives allergens (they stay on the shopper's device by design), and
- *   - never stores or logs the shopper's preference (stateless, request-scoped).
- */
+export const WELLBEING_DIETS = ['vegetarian', 'vegan', 'gluten-free'] as const;
+export const WELLBEING_ALLERGENS = ['gluten', 'dairy', 'tree-nut', 'peanut', 'soy', 'egg', 'fish', 'shellfish'] as const;
+export type WellbeingPreferences = { dietary: string[]; allergens: string[] };
+export type WellbeingStatus = 'CONFIRMED_CONFLICT' | 'NO_KNOWN_CONFLICT' | 'UNKNOWN';
+export type WellbeingItem = { productId: string; name: string; quantity: number; status: WellbeingStatus; conflicts: Array<{ restriction: string; ingredients: string[] }>; missing: string[]; productDataVersion: string };
+export type WellbeingDecision = { status: WellbeingStatus; allowed: boolean; items: WellbeingItem[]; alternatives: Array<{ productId: string; name: string; productDataVersion: string }>; productDataVersion: string; notice: string };
 
-export const DIETARY_DATA_STATUS = 'SAMPLE_DATA_UNVERIFIED' as const;
-export const SUPPORTED_DIETS = ['vegetarian', 'vegan', 'gluten-free'] as const;
-export type SupportedDiet = (typeof SUPPORTED_DIETS)[number];
+export const WELLBEING_NOTICE = 'Decisions are based on merchant-provided product information. This is not medical advice. This check does not assess cross-contamination.';
+export const DIETARY_DATA_STATUS = 'MERCHANT_DATA_REQUIRED' as const;
+export const DIETARY_NOTICE = 'Dietary and allergen decisions require verified merchant-provided product information. Unknown information is not treated as safe.';
 
-export const DIETARY_NOTICE =
-  'Diet labels are sample data and have not been verified by the café. This is not an allergy-safety or dietary-compliance check. Ask the café before you order.';
-
-export type ItemLabelStatus = 'NO_PREFERENCE' | 'CARRIES_LABEL' | 'NO_LABEL';
-export type OverallLabelStatus = 'NO_PREFERENCE' | 'ALL_ITEMS_CARRY_LABEL' | 'SOME_ITEMS_LACK_LABEL';
-
-export interface WellbeingItemResult {
-  productId: string;
-  name: string;
-  quantity: number;
-  /** Labels exactly as they appear in the sample catalog (informational only). */
-  dietaryLabels: string[];
-  labelStatus: ItemLabelStatus;
-}
-
-export interface WellbeingResult {
-  dataStatus: typeof DIETARY_DATA_STATUS;
-  notice: string;
-  diet: SupportedDiet | null;
-  overall: OverallLabelStatus;
-  /** Always true: the guard never replaces the shopper's own check with the café. */
-  confirmWithCafe: true;
-  allergens: { status: 'NO_DATA'; message: string };
-  items: WellbeingItemResult[];
-}
-
-// A vegan label also satisfies a vegetarian preference; nothing else is inferred.
-const ACCEPTED_LABELS: Record<SupportedDiet, string[]> = {
-  vegetarian: ['vegetarian', 'vegan'],
-  vegan: ['vegan'],
-  'gluten-free': ['gluten-free'],
-};
-
-export function parseDiet(raw: unknown): SupportedDiet | null {
-  if (raw === undefined || raw === null || raw === '') return null;
-  if (typeof raw === 'string' && (SUPPORTED_DIETS as readonly string[]).includes(raw)) {
-    return raw as SupportedDiet;
-  }
-  throw new RangeError('unsupported diet');
-}
-
-export function evaluateWellbeing(
-  items: Array<{ productId: string; quantity: number }>,
-  diet: SupportedDiet | null,
-  catalog: CatalogService
-): WellbeingResult {
-  const results: WellbeingItemResult[] = items.map((i) => {
-    const p = catalog.getById(i.productId);
-    const labels = p ? p.dietary : [];
-    let status: ItemLabelStatus = 'NO_PREFERENCE';
-    if (diet) status = labels.some((l) => ACCEPTED_LABELS[diet].includes(l)) ? 'CARRIES_LABEL' : 'NO_LABEL';
-    return { productId: i.productId, name: p ? p.name : i.productId, quantity: i.quantity, dietaryLabels: labels, labelStatus: status };
-  });
-  let overall: OverallLabelStatus = 'NO_PREFERENCE';
-  if (diet) overall = results.every((r) => r.labelStatus === 'CARRIES_LABEL') ? 'ALL_ITEMS_CARRY_LABEL' : 'SOME_ITEMS_LACK_LABEL';
-  return {
-    dataStatus: DIETARY_DATA_STATUS,
-    notice: DIETARY_NOTICE,
-    diet,
-    overall,
-    confirmWithCafe: true,
-    allergens: {
-      status: 'NO_DATA',
-      message: 'The café publishes no allergen data, so no item can be confirmed allergen-free. Ask the café about any allergy.',
-    },
-    items: results,
+export function parseWellbeingPreferences(raw: any): WellbeingPreferences {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(raw.dietary) || !Array.isArray(raw.allergens)) throw new RangeError('dietary and allergens arrays are required');
+  const clean = (values: unknown[], allowed: readonly string[], name: string) => {
+    if (values.length > allowed.length || values.some(v => typeof v !== 'string' || !allowed.includes(v))) throw new RangeError(`unsupported ${name} preference`);
+    return [...new Set(values as string[])].sort();
   };
+  return { dietary: clean(raw.dietary, WELLBEING_DIETS, 'dietary'), allergens: clean(raw.allergens, WELLBEING_ALLERGENS, 'allergen') };
+}
+
+function versionFor(product: Product): string {
+  return createHash('sha256').update(JSON.stringify({ declaredVersion: product.wellbeing?.dataVersion ?? null, wellbeing: product.wellbeing ?? null, dietary: product.dietary })).digest('hex');
+}
+
+export function evaluateWellbeing(items: Array<{ productId: string; quantity: number }>, preferences: WellbeingPreferences, catalog: CatalogService): WellbeingDecision {
+  const evaluated = items.map((item): WellbeingItem => {
+    const product = catalog.getById(item.productId);
+    if (!product) throw new RangeError('Product unavailable');
+    const conflicts: WellbeingItem['conflicts'] = [];
+    const missing: string[] = [];
+    for (const restriction of preferences.dietary) {
+      const fact = product.wellbeing?.dietary?.[restriction];
+      if (!fact || fact.status === 'UNKNOWN') missing.push(`dietary:${restriction}`);
+      else if (fact.status === 'CONFLICT') conflicts.push({ restriction: `dietary:${restriction}`, ingredients: fact.ingredients ?? [] });
+    }
+    for (const restriction of preferences.allergens) {
+      const fact = product.wellbeing?.allergens?.[restriction];
+      if (!fact || fact.status === 'UNKNOWN') missing.push(`allergen:${restriction}`);
+      else if (fact.status === 'CONFLICT') conflicts.push({ restriction: `allergen:${restriction}`, ingredients: fact.ingredients ?? [] });
+    }
+    const status: WellbeingStatus = conflicts.length ? 'CONFIRMED_CONFLICT' : missing.length ? 'UNKNOWN' : 'NO_KNOWN_CONFLICT';
+    return { productId: product.id, name: product.name, quantity: item.quantity, status, conflicts, missing, productDataVersion: versionFor(product) };
+  });
+  const status: WellbeingStatus = evaluated.some(i => i.status === 'CONFIRMED_CONFLICT') ? 'CONFIRMED_CONFLICT' : evaluated.some(i => i.status === 'UNKNOWN') ? 'UNKNOWN' : 'NO_KNOWN_CONFLICT';
+  const productDataVersion = createHash('sha256').update(evaluated.map(i => `${i.productId}:${i.productDataVersion}`).sort().join('|')).digest('hex');
+  const currentIds = new Set(items.map(i => i.productId));
+  const alternatives = status === 'NO_KNOWN_CONFLICT' ? [] : catalog.getAll().filter(product => {
+    if (currentIds.has(product.id)) return false;
+    const restrictions: Array<[string, any]> = [
+      ...preferences.dietary.map(key => [`dietary:${key}`, product.wellbeing?.dietary?.[key]] as [string, any]),
+      ...preferences.allergens.map(key => [`allergen:${key}`, product.wellbeing?.allergens?.[key]] as [string, any]),
+    ];
+    return restrictions.every(([, fact]) => fact?.status === 'NO_CONFLICT');
+  }).map(product => ({ productId: product.id, name: product.name, productDataVersion: versionFor(product) }));
+  return { status, allowed: status === 'NO_KNOWN_CONFLICT', items: evaluated, alternatives, productDataVersion, notice: WELLBEING_NOTICE };
 }

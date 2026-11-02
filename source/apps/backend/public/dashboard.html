@@ -416,6 +416,69 @@
       <section id="opsCopilot" class="ops" aria-label="Ops Copilot"></section>
       <section id="refundQueue" class="ops" aria-label="Refund queue"></section>
 
+      <!-- Agent Control Center: operational status panels -->
+      <section id="acsPanels" class="ops" aria-label="Agent Control Center operational status">
+        <div class="ops-head">
+          <h2>Operational Status</h2>
+          <span class="ops-badge" id="acsBadge">loading…</span>
+        </div>
+        <p class="ops-muted" id="acsMuted">Fetching operational data from the backend…</p>
+
+        <!-- KPI strip: agent actions, policy decisions, money movement -->
+        <div class="stats" id="acsKpiStrip" style="margin-bottom:12px">
+          <div class="stat-card" style="min-height:auto;padding:12px 14px">
+            <div class="stat-label">AI agent orders</div>
+            <p class="stat-value" id="acsAiAgentOrders" style="font-size:1.4rem">—</p>
+            <div class="stat-sub" id="acsAiAgentSub">AI agent / assisted</div>
+          </div>
+          <div class="stat-card" style="min-height:auto;padding:12px 14px">
+            <div class="stat-label">Policy decisions</div>
+            <p class="stat-value" id="acsPolicyDecisions" style="font-size:1.4rem">—</p>
+            <div class="stat-sub" id="acsPolicySub">allowed / blocked</div>
+          </div>
+          <div class="stat-card" style="min-height:auto;padding:12px 14px">
+            <div class="stat-label">Money moved</div>
+            <p class="stat-value" id="acsMoneyMoved" style="font-size:1.4rem">—</p>
+            <div class="stat-sub" id="acsMoneySub">captured · refunded · net</div>
+          </div>
+        </div>
+
+        <!-- Agent timeline: who did what, newest first (real data only) -->
+        <div class="detail-group-title">Agent timeline</div>
+        <div id="acsTimeline" class="ops-muted" aria-live="polite">Loading…</div>
+
+        <!-- Spending Mandate -->
+        <div class="detail-group-title">Spending Mandate (per-session policies)</div>
+        <div id="acsMandate" class="ops-muted">Loading…</div>
+
+        <!-- Split Bill status -->
+        <div class="detail-group-title">Split Bill status</div>
+        <div id="acsBills" class="ops-muted">Loading…</div>
+
+        <!-- Dispute cases -->
+        <div class="detail-group-title">Dispute cases</div>
+        <div id="acsDisputes" class="ops-muted">Loading…</div>
+
+        <!-- Wellbeing decisions -->
+        <div class="detail-group-title">Wellbeing decisions</div>
+        <div id="acsWellbeing" class="ops-muted">Loading…</div>
+
+        <!-- Refund queue summary -->
+        <div class="detail-group-title">Refund queue</div>
+        <div id="acsRefunds" class="ops-muted">Loading…</div>
+      </section>
+
+      <!-- Evidence export (role-controlled, redacted) -->
+      <section id="evidenceExport" class="ops" aria-label="Evidence export">
+        <div class="ops-head">
+          <h2>Evidence Export</h2>
+          <span class="ops-badge">role-controlled · redacted</span>
+        </div>
+        <p class="ops-muted">Dispute evidence packages are signed and PII-minimized. Enter the merchant key above to load dispute cases.</p>
+        <p class="ops-muted" id="evidenceStatus">No disputes loaded.</p>
+        <ul class="refund-list" id="evidenceList"></ul>
+      </section>
+
       <section class="grid-section" role="region" aria-label="Orders data grid">
         <h2 id="ordersHeading">Orders</h2>
         <div class="grid-toolbar">
@@ -448,7 +511,7 @@
           <input type="text" id="pickupQuickFilter" placeholder="Quick filter pickup…" aria-label="Quick filter pickup" />
           <button type="button" id="pickupCsvBtn">Export CSV</button>
           <button type="button" id="pickupJsonBtn">Export JSON</button>
-          <span class="hint">filter by date / window / status</span>
+          <span class="hint">filter by date / window / status · slots are generated as a rolling 7-day schedule (not a real shop calendar) unless set by hand</span>
         </div>
         <p class="grid-status" id="pickupStatus" role="status" aria-live="polite"></p>
         <p class="grid-error" id="pickupError" role="alert" hidden></p>
@@ -467,6 +530,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.0.0/dist/ag-grid-community.min.js"></script>
     <script src="/dashboard.js"></script>
+    <script src="/acs-panels.js" defer></script>
     <script src="/ops-copilot.js" defer></script>
     <script src="/refund-queue.js" defer></script>
   </body>

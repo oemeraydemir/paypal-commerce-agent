@@ -22,7 +22,7 @@ function keyMatches(provided: unknown, expected: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-function authorize(req: Request): void {
+export function authorizeRefundMerchant(req: Request): void {
   const expected = process.env.OPS_COPILOT_KEY;
   if (!expected || expected.length < 16) {
     throw new AppError(503, 'Refund queue is disabled: set OPS_COPILOT_KEY (16+ characters).');
@@ -38,7 +38,7 @@ function translate(err: unknown): unknown {
 
 router.get('/refunds', (req, res, next) => {
   try {
-    authorize(req);
+    authorizeRefundMerchant(req);
     res.json({ sandbox: true, paypalEnabled: env.isPayPalEnabled(), refunds: refundService.list() });
   } catch (err) {
     next(translate(err));
@@ -48,7 +48,7 @@ router.get('/refunds', (req, res, next) => {
 // Merchant-side Dispute Evidence Pack for the order behind a refund request.
 router.get('/refunds/:id/evidence', (req, res, next) => {
   try {
-    authorize(req);
+    authorizeRefundMerchant(req);
     const record = refundService.get(req.params.id);
     if (!record) throw new AppError(404, 'Refund request not found.');
     const pkg = buildEvidencePackage(record.orderId);
@@ -62,7 +62,7 @@ router.get('/refunds/:id/evidence', (req, res, next) => {
 
 router.post('/refunds/propose', async (req, res, next) => {
   try {
-    authorize(req);
+    authorizeRefundMerchant(req);
     const { orderId, amountMinor, reason } = req.body ?? {};
     if (typeof orderId !== 'string' || !orderId) throw new AppError(400, 'orderId is required.');
     const record = refundService.propose({
@@ -86,7 +86,7 @@ router.post('/refunds/propose', async (req, res, next) => {
 
 router.post('/refunds/:id/approve', async (req, res, next) => {
   try {
-    authorize(req);
+    authorizeRefundMerchant(req);
     if (!env.isPayPalEnabled()) throw new AppError(503, 'PayPal sandbox is not configured.');
     const record = await refundService.approve(req.params.id);
     res.status(record.status === 'REFUNDED' ? 200 : record.status === 'PROCESSING' ? 202 : 502).json(record);
@@ -97,9 +97,20 @@ router.post('/refunds/:id/approve', async (req, res, next) => {
 
 router.post('/refunds/:id/reject', async (req, res, next) => {
   try {
-    authorize(req);
+    authorizeRefundMerchant(req);
     const rejected = await refundService.reject(req.params.id);
     res.json(rejected);
+  } catch (err) {
+    next(translate(err));
+  }
+});
+
+router.post('/refunds/:id/reconcile', async (req, res, next) => {
+  try {
+    authorizeRefundMerchant(req);
+    if (!env.isPayPalEnabled()) throw new AppError(503, 'PayPal is not configured.');
+    const record = await refundService.reconcile(req.params.id);
+    res.status(record.status === 'PROCESSING' ? 202 : 200).json(record);
   } catch (err) {
     next(translate(err));
   }

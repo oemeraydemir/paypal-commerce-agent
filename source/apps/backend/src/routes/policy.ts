@@ -5,6 +5,7 @@ import { policyStorage } from '../policy/storage';
 import { dailySpendTracker } from '../policy/daily-spend-tracker';
 import { currentBusiness } from '../config/business-config';
 import { PurchasePolicy } from '../policy/domain';
+import { getRepos } from '../persistence/registry';
 
 // Scoped AI Allowance (Stage 2): a shopper can inspect and update THEIR OWN
 // session-scoped allowance (limits + optional expiry). Ownership is the
@@ -43,18 +44,42 @@ function toStringArray(v: unknown, field: string): string[] | undefined {
 }
 
 /** Sanitized view of the caller's own policy; never leaks other users. */
-function policyView(userId: string): Record<string, unknown> {
-  const policy = policyStorage.getOrCreatePolicy(userId);
-  const spent = dailySpendTracker.getSpentToday(userId);
-  const pending = dailySpendTracker.getPendingReservations(userId);
+async function policyView(userId: string): Promise<Record<string, unknown>> {
+  const policy = await policyStorage.getAuthoritativePolicy(userId);
+  const repos = getRepos();
+  let spent = dailySpendTracker.getSpentToday(userId);
+  let pending = dailySpendTracker.getPendingReservations(userId);
+  let billReserved = 0;
+  if (repos) {
+    const now = new Date();
+    const usage = await repos.reservations.getDailyUsage(
+      userId, new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()))
+    );
+    spent = usage.spentMinor;
+    pending = usage.pendingMinor;
+    billReserved = usage.billReservedMinor;
+  }
   const remaining = Math.max(
     0,
-    policy.dailySpendLimitMinor - spent - pending
+    policy.dailySpendLimitMinor - spent - pending - billReserved
   );
+  const lastEvent = await policyStorage.getLastMandateEvent(userId);
   return {
     enabled: policy.enabled,
     currency: policy.currency,
     validUntil: policy.validUntil ? policy.validUntil.toISOString() : null,
+    // The PATCH is the shopper's explicit mandate change/renewal event.
+    updatedAt: policy.updatedAt.toISOString(),
+    mandateRevision: policyStorage.getRevision(userId),
+    lastAuthorizationEvent: lastEvent ? {
+      id: lastEvent.id,
+      type: lastEvent.eventType,
+      revision: lastEvent.revision,
+      occurredAt: lastEvent.occurredAt.toISOString(),
+      amountMinor: lastEvent.amountMinor ?? null,
+      currency: lastEvent.currency ?? null,
+      subjectId: lastEvent.subjectId ?? null,
+    } : null,
     limits: {
       maxPerPurchaseMinor: policy.maxPerPurchaseMinor,
       dailySpendLimitMinor: policy.dailySpendLimitMinor,
@@ -67,6 +92,7 @@ function policyView(userId: string): Record<string, unknown> {
     usage: {
       spentTodayMinor: spent,
       pendingMinor: pending,
+      billReservedMinor: billReserved,
       remainingTodayMinor: remaining,
     },
     // Priority 4: optional risk-style rules (empty/null when not configured).
@@ -79,14 +105,14 @@ function policyView(userId: string): Record<string, unknown> {
   };
 }
 
-router.get('/policy', requireSession, (_req, res) => {
-  res.json(policyView(_req.session!.userId));
+router.get('/policy', requireSession, async (_req, res, next) => {
+  try { res.json(await policyView(_req.session!.userId)); } catch (err) { next(err); }
 });
 
-router.patch('/policy', requireSession, (req, res, next) => {
+router.patch('/policy', requireSession, async (req, res, next) => {
   try {
     const userId = req.session!.userId;
-    const policy = policyStorage.getOrCreatePolicy(userId);
+    const policy = await policyStorage.getAuthoritativePolicy(userId);
     const body = (req.body ?? {}) as Record<string, unknown>;
 
     // Only whitelisted fields are accepted; anything else is ignored (never truth).
@@ -218,8 +244,9 @@ router.patch('/policy', requireSession, (req, res, next) => {
     }
 
     const merged: PurchasePolicy = { ...policy, ...updates, updatedAt: new Date() };
-    policyStorage.setPolicy(merged);
-    res.json(policyView(userId));
+    const saved = await policyStorage.updateMandate(merged, req.session!.sessionId);
+    if (!saved) throw new AppError(409, 'Spending permission changed in another request; reload and confirm again.', { code: 'MANDATE_CHANGED' });
+    res.json(await policyView(userId));
   } catch (err) {
     next(err);
   }

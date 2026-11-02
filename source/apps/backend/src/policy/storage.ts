@@ -1,17 +1,21 @@
 import {
   PolicyEvent,
   PolicyEvaluation,
+  PolicyViolation,
   PolicyStats,
   PurchasePolicy,
   policyBlockReason,
 } from './domain';
 import { defaultPolicy } from './default-policy';
 import { getRepos, writeQueue } from '../persistence/registry';
+import { SpendingMandateEvent } from '../persistence/types';
 
 const POLICY_EVENT_HISTORY_LIMIT = 2000;
 
 export class PolicyStorage {
   private readonly policies = new Map<string, PurchasePolicy>();
+  private readonly revisions = new Map<string, number>();
+  private readonly memoryMandateEvents = new Map<string, SpendingMandateEvent>();
   private readonly events: PolicyEvent[] = [];
   private eventSequence = 0;
   private readonly dirtyEvents = new Map<string, PolicyEvent>();
@@ -50,6 +54,8 @@ export class PolicyStorage {
   async hydrate(): Promise<number> {
     const repos = getRepos();
     if (!repos) return 0;
+    const mandates = await repos.mandates.loadAll();
+    for (const mandate of mandates) this.setPolicy(mandate.policy, mandate.revision);
     const loaded: PolicyEvent[] = await repos.policyEvents.loadRecent(POLICY_EVENT_HISTORY_LIMIT);
     this.events.length = 0;
     for (const event of loaded) {
@@ -60,8 +66,53 @@ export class PolicyStorage {
     return loaded.length;
   }
 
-  setPolicy(policy: PurchasePolicy): void {
+  setPolicy(policy: PurchasePolicy, revision?: number): void {
     this.policies.set(policy.userId, policy);
+    this.revisions.set(policy.userId, revision ?? ((this.revisions.get(policy.userId) ?? 0) + 1));
+  }
+
+  getRevision(userId: string): number {
+    return this.revisions.get(userId) ?? 1;
+  }
+
+  async getAuthoritativePolicy(userId: string): Promise<PurchasePolicy> {
+    const current = this.getOrCreatePolicy(userId);
+    const repos = getRepos();
+    if (!repos) return current;
+    const stored = await repos.mandates.getOrCreate(current);
+    this.setPolicy(stored.policy, stored.revision);
+    return stored.policy;
+  }
+
+  async updateMandate(policy: PurchasePolicy, sessionId: string): Promise<PurchasePolicy | undefined> {
+    const expectedRevision = this.getRevision(policy.userId);
+    const eventId = `${policy.userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const repos = getRepos();
+    if (repos) {
+      const stored = await repos.mandates.update({
+        policy, expectedRevision, sessionId, eventId, eventType: 'UPDATED',
+      });
+      if (!stored) return undefined;
+      this.setPolicy(stored.policy, stored.revision);
+      return stored.policy;
+    }
+    const nextRevision = expectedRevision + 1;
+    const next = { ...policy, updatedAt: new Date() };
+    this.setPolicy(next, nextRevision);
+    this.memoryMandateEvents.set(policy.userId, {
+      id: eventId, userId: policy.userId, sessionId, eventType: 'UPDATED',
+      revision: nextRevision, beforeSnapshot: undefined,
+      afterSnapshot: { maxPerPurchaseMinor: next.maxPerPurchaseMinor, dailySpendLimitMinor: next.dailySpendLimitMinor,
+        currency: next.currency, allowedMerchantIds: [...next.allowedMerchantIds],
+        validUntil: next.validUntil?.toISOString() ?? null },
+      occurredAt: next.updatedAt,
+    });
+    return next;
+  }
+
+  async getLastMandateEvent(userId: string): Promise<SpendingMandateEvent | undefined> {
+    const repos = getRepos();
+    return repos ? repos.mandates.getLastEvent(userId) : this.memoryMandateEvents.get(userId);
   }
 
   getPolicy(userId: string): PurchasePolicy | undefined {
@@ -85,12 +136,32 @@ export class PolicyStorage {
       createdAt: now,
       updatedAt: now,
     };
-    this.policies.set(userId, created);
+    this.setPolicy(created, 1);
     return created;
   }
 
   deletePolicy(userId: string): void {
     this.policies.delete(userId);
+  }
+
+  /**
+   * Read-only aggregate over the per-session policies that actually exist right now.
+   * It never creates a policy (unlike getOrCreatePolicy), so looking at the dashboard
+   * cannot fabricate state. `customized` = policies whose limits differ from the template.
+   */
+  sessionPolicyStats(): { active: number; customized: number } {
+    let customized = 0;
+    for (const p of this.policies.values()) {
+      if (
+        p.maxPerPurchaseMinor !== defaultPolicy.maxPerPurchaseMinor ||
+        p.dailySpendLimitMinor !== defaultPolicy.dailySpendLimitMinor ||
+        p.confirmationThresholdMinor !== defaultPolicy.confirmationThresholdMinor ||
+        p.enabled !== defaultPolicy.enabled
+      ) {
+        customized++;
+      }
+    }
+    return { active: this.policies.size, customized };
   }
 
   addEvent(event: PolicyEvent): void {
@@ -111,7 +182,8 @@ export class PolicyStorage {
     evaluation: PolicyEvaluation;
     policy: PurchasePolicy;
   }): PolicyEvent {
-    const violationTypes = params.evaluation.violations.map((v) => v.type);
+    const violationTypes = params.evaluation.violations.map((v: PolicyViolation) => v.type);
+    const guardDataVersion = params.evaluation.guardDataVersion;
     const event: PolicyEvent = {
       id: `${params.userId}-${params.cartId}-${this.eventSequence++}`,
       timestamp: new Date().toISOString(),
@@ -130,6 +202,8 @@ export class PolicyStorage {
         dailySpendLimitMinor: params.policy.dailySpendLimitMinor,
         confirmationThresholdMinor: params.policy.confirmationThresholdMinor,
       },
+      guardDataVersion,
+      wellbeingDecision: params.evaluation.wellbeingDecision,
     };
     this.events.push(event);
     this.persistEvent(event);
@@ -163,6 +237,8 @@ export class PolicyStorage {
   reset(): void {
     this.policies.clear();
     this.events.length = 0;
+    this.revisions.clear();
+    this.memoryMandateEvents.clear();
     this.eventSequence = 0;
     this.dirtyEvents.clear();
     this.setPolicy(defaultPolicy);

@@ -7,6 +7,7 @@ import { paypalClient } from '../paypal/client';
 import { redactSecrets } from '../utils/redact';
 import { formatError } from '../utils/error';
 import { getRepos, writeQueue } from '../persistence/registry';
+import type { RefundRecommendation } from './domain';
 
 // Human-approved refunds.
 //
@@ -45,6 +46,11 @@ export interface RefundRequestRecord {
   createdAt: string;
   updatedAt: string;
   decidedAt?: string;
+  aiRecommendation?: RefundRecommendation;
+  merchantApprovedAt?: string;
+  merchantApprovedBy?: string;
+  idempotencyKeyHash?: string;
+  idempotencyFingerprint?: string;
 }
 
 export class RefundError extends Error {
@@ -62,6 +68,14 @@ export class RefundService {
   private static instance: RefundService;
   private readonly records = new Map<string, RefundRequestRecord>();
   private readonly dirty = new Set<string>();
+  private readonly auditEvents = new Map<string, { id: string; refundId: string; orderId: string; eventType: string; actor: string; details: Record<string, unknown>; occurredAt: string }>();
+
+  private async audit(record: RefundRequestRecord, eventType: string, actor: string, details: Record<string, unknown> = {}): Promise<void> {
+    const event = { id: uuidv4(), refundId: record.id, orderId: record.orderId, eventType, actor, details, occurredAt: new Date().toISOString() };
+    this.auditEvents.set(event.id, event);
+    const repos = getRepos();
+    if (repos) await repos.refunds.appendAudit(event);
+  }
 
   // ---- durability (write-through; a no-op without a repository) ----------------
   private async saveRow(id: string): Promise<void> {
@@ -91,6 +105,28 @@ export class RefundService {
       await writeQueue.enqueue(`refund-retry:${id}`, () => this.saveRow(id), { retries: 0 });
     }
     return ids.length;
+  }
+
+  /** Read-only PayPal reconciliation. This method never issues a refund request. */
+  async reconcile(id: string): Promise<RefundRequestRecord> {
+    const record = this.records.get(id);
+    if (!record) throw new RefundError(404, 'Refund request not found.');
+    if (record.paypalRefundId) {
+      try { await this.reconcileRefundStatus(id, record); }
+      catch (err) { await this.saveNow(id).catch(() => undefined); throw err; }
+    } else if (record.lastError?.startsWith(INTERRUPTED_PREFIX) || record.lastError?.startsWith(INDETERMINATE_PREFIX)) {
+      const order = this.requireRefundableOrder(record.orderId);
+      const verdict = await this.verifyRefundViaCapture(record, order.paypalCaptureId!, order.paypalOrderId);
+      if (verdict === 'ISSUED') {
+        record.status = 'REFUNDED';
+        record.decidedAt = new Date().toISOString();
+        record.lastError = 'PayPal capture reconciled as refunded; no refund request was sent during reconciliation.';
+      } else { record.status = 'PROPOSED'; record.lastError = undefined; }
+    } else throw new RefundError(409, 'This refund has no uncertain PayPal outcome to reconcile.');
+    record.updatedAt = new Date().toISOString();
+    await this.saveNow(id).catch(() => { throw new RefundError(503, 'Storage unavailable; reconciliation was not saved.'); });
+    await this.audit(record, 'PAYPAL_RECONCILED', 'MERCHANT_API', { status: record.paypalRefundStatus ?? record.status }).catch(() => undefined);
+    return record;
   }
 
   /**
@@ -187,7 +223,7 @@ export class RefundService {
         return false;
       }
       // PENDING or unknown: ambiguous; block approval until PayPal confirms a final state.
-      record.status = 'PROPOSED';
+      record.status = 'PROCESSING';
       record.lastError =
         `Indeterminate refund status "${paypalStatus}" from PayPal for ${record.paypalRefundId}. ` +
         'Check the PayPal dashboard before retrying.';
@@ -199,9 +235,9 @@ export class RefundService {
       );
     } catch (err: any) {
       if (err instanceof RefundError) throw err;
-      record.status = 'PROPOSED';
+      record.status = 'PROCESSING';
       record.lastError =
-        `Could not verify refund ${record.paypalRefundId} at PayPal: ${err?.message ?? err}. ` +
+        `Could not verify refund ${record.paypalRefundId} at PayPal: ${redactSecrets(err?.message ?? err)}. ` +
         'Check the PayPal dashboard before retrying.';
       record.updatedAt = new Date().toISOString();
       this.records.set(id, record);
@@ -227,6 +263,7 @@ export class RefundService {
   reset(): void {
     this.records.clear();
     this.dirty.clear();
+    this.auditEvents.clear();
   }
 
   list(): RefundRequestRecord[] {
@@ -239,6 +276,22 @@ export class RefundService {
 
   get(id: string): RefundRequestRecord | undefined {
     return this.records.get(id);
+  }
+
+  async getByIdempotencyKeyHash(hash: string): Promise<RefundRequestRecord | undefined> {
+    const local = this.list().find((r) => r.idempotencyKeyHash === hash);
+    if (local) return local;
+    const row = await getRepos()?.refunds.getByIdempotencyHash(hash);
+    if (!row) return undefined;
+    const record = { ...row } as RefundRequestRecord;
+    this.records.set(record.id, record);
+    return record;
+  }
+
+  async auditForOrder(orderId: string): Promise<any[]> {
+    const persisted = await getRepos()?.refunds.loadAuditForOrder(orderId);
+    if (persisted) return persisted;
+    return [...this.auditEvents.values()].filter((e) => e.orderId === orderId).sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
   }
 
   refundedMinor(orderId: string): number {
@@ -263,8 +316,26 @@ export class RefundService {
     return order;
   }
 
+  private async verifyRefundableCapture(record: RefundRequestRecord, order: Order): Promise<void> {
+    let capture: any;
+    try { capture = await paypalClient.getCapture(order.paypalCaptureId!); }
+    catch { throw new RefundError(503, 'PayPal could not verify the captured payment; the refund was not attempted.'); }
+    const amount = capture?.amount;
+    const currency = amount?.currencyCode ?? amount?.currency_code;
+    const capturedMinor = typeof amount?.value === 'string' ? Math.round(Number(amount.value) * 100) : NaN;
+    if (!Number.isSafeInteger(capturedMinor) || capturedMinor !== order.totalMinor || currency !== order.currency ||
+        !['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'].includes(String(capture?.status ?? '').toUpperCase())) {
+      throw new RefundError(503, 'PayPal capture details do not establish a matching refundable payment; the refund was not attempted.');
+    }
+    const alreadyAtPayPal = await resolveRefundedMinor(capture, order.currency, order.paypalOrderId);
+    if (alreadyAtPayPal === null) throw new RefundError(503, 'PayPal could not establish the already-refunded amount; the refund was not attempted.');
+    if (alreadyAtPayPal + record.amountMinor > capturedMinor) {
+      throw new RefundError(422, 'Refund exceeds the currently refundable captured amount. Refresh the refund request.');
+    }
+  }
+
   /** Creates a PROPOSED refund. Moves no money. `amountMinor` defaults to the full remaining amount. */
-  propose(input: { orderId: string; amountMinor?: number; reason: string; proposedBy: RefundProposer }): RefundRequestRecord {
+  propose(input: { orderId: string; amountMinor?: number; reason: string; proposedBy: RefundProposer; aiRecommendation?: RefundRecommendation; idempotencyKeyHash?: string; idempotencyFingerprint?: string }): RefundRequestRecord {
     const reason = (input.reason ?? '').trim();
     if (reason.length < 3 || reason.length > 200) {
       throw new RefundError(400, 'reason must be 3 to 200 characters.');
@@ -296,9 +367,13 @@ export class RefundService {
       status: 'PROPOSED',
       createdAt: now,
       updatedAt: now,
+      aiRecommendation: input.aiRecommendation,
+      idempotencyKeyHash: input.idempotencyKeyHash,
+      idempotencyFingerprint: input.idempotencyFingerprint,
     };
     this.records.set(record.id, record);
     this.persist(record.id);
+    void this.audit(record, 'REQUESTED', input.proposedBy).catch(() => console.error(`REFUND_AUDIT_FAILED id=${record.id} event=REQUESTED`));
     return record;
   }
 
@@ -315,7 +390,7 @@ export class RefundService {
     paypalOrderId?: string
   ): Promise<'ISSUED' | 'NOT_ISSUED'> {
     const block = (status: number, message: string): never => {
-      record.status = 'PROPOSED';
+      record.status = record.paypalRefundId ? 'PROCESSING' : 'PROPOSED';
       record.lastError = `${INTERRUPTED_PREFIX}: ${message}`;
       record.updatedAt = new Date().toISOString();
       this.persist(record.id);
@@ -373,9 +448,31 @@ export class RefundService {
       (record.lastError?.startsWith(INTERRUPTED_PREFIX) === true ||
         record.lastError?.startsWith(INDETERMINATE_PREFIX) === true);
     const previousError = record.lastError;
+    const repos = getRepos();
+    const approvedAt = new Date().toISOString();
+    if (repos) {
+      // This conditional DB claim is the cross-instance serialization point. It and its audit
+      // record are one SQL statement; no PayPal call occurs when another instance won.
+      let claimed = false;
+      try {
+        claimed = await repos.refunds.claimForProcessing({
+          id: record.id, orderId: record.orderId, approvedAt, approvedBy: 'MERCHANT_API', auditId: uuidv4(),
+        });
+      } catch {
+        throw new RefundError(503, 'Storage unavailable; the refund was not attempted. Please retry.');
+      }
+      if (!claimed) throw new RefundError(409, 'Refund request is no longer available for approval. Refresh the queue.');
+      record.merchantApprovedAt = approvedAt;
+      record.merchantApprovedBy = 'MERCHANT_API';
+    }
     record.status = 'PROCESSING';
     record.lastError = undefined;
     record.updatedAt = new Date().toISOString();
+    if (!repos) {
+      record.merchantApprovedAt = approvedAt;
+      record.merchantApprovedBy = 'MERCHANT_API';
+      await this.audit(record, 'MERCHANT_APPROVED', 'MERCHANT_API');
+    }
 
     try {
       // A refund interrupted by a crash has no refund id to look up. Before anything is sent again,
@@ -416,16 +513,19 @@ export class RefundService {
         record.updatedAt = new Date().toISOString();
       }
 
+      if (!interrupted) await this.verifyRefundableCapture(record, order);
+
       // WRITE-AHEAD: PROCESSING must be durable BEFORE PayPal is contacted. If storage is
       // down nothing was sent to PayPal and the request goes back to PROPOSED.
       await this.saveNow(record.id);
     } catch (err: any) {
       // Reconciliation could not prove the prior refund's state (503), or the
       // write-ahead save failed. Nothing was sent to PayPal in either case.
-      record.status = 'PROPOSED';
+      record.status = record.paypalRefundId ? 'PROCESSING' : 'PROPOSED';
       record.updatedAt = new Date().toISOString();
       if (err instanceof RefundError) {
         record.lastError = record.lastError ?? previousError;
+        await this.saveNow(record.id).catch(() => undefined);
         throw err;
       }
       console.error(`REFUND_PERSIST_FAILED id=${record.id} error=${err?.message ?? err}`);
@@ -480,6 +580,11 @@ export class RefundService {
     } catch (err: any) {
       console.error(`REFUND_PERSIST_FAILED_AFTER_PAYPAL id=${record.id} error=${err?.message ?? err}`);
     }
+    await this.audit(record, record.status === 'REFUNDED' ? 'REFUND_CONFIRMED' : 'PAYPAL_REFUND_RESULT', 'PAYPAL', {
+      status: record.paypalRefundStatus ?? record.status,
+      amountMinor: record.amountMinor,
+      currency: record.currency,
+    }).catch(() => undefined);
     return record;
   }
 

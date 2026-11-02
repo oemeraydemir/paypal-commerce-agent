@@ -55,6 +55,16 @@ describe('DailySpendTracker - idempotent lifecycle', () => {
     expect(t.tryReserve('u', 5000, 10000)).not.toBeNull();
   });
 
+  test('concurrent reservations cannot exceed the shared allowance', async () => {
+    const t = new DailySpendTracker();
+    const results = await Promise.all([
+      Promise.resolve().then(() => t.tryReserve('u', 6000, 10000)),
+      Promise.resolve().then(() => t.tryReserve('u', 6000, 10000)),
+    ]);
+    expect(results.filter(Boolean)).toHaveLength(1);
+    expect(t.getPendingReservations('u')).toBe(6000);
+  });
+
   test('unknown reservation ids still throw (programming error)', () => {
     const t = new DailySpendTracker();
     expect(() => t.confirmReservation('nope')).toThrow(/does not exist/);

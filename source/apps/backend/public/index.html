@@ -172,13 +172,13 @@ button.loading{opacity:.7;cursor:progress}
     </form>
     <div class="prefs">
       <span data-i18n="profile.label">Shopper profile:</span>
-      <select id="diet" aria-label="Dietary preference">
+      <select id="diet" multiple aria-label="Dietary preferences">
         <option value="" data-i18n-option="diet.any">any diet</option><option value="vegetarian" data-i18n-option="diet.vegetarian">vegetarian</option><option value="vegan" data-i18n-option="diet.vegan">vegan</option><option value="gluten-free" data-i18n-option="diet.gluten-free">gluten-free</option>
       </select>
       <input id="budget" type="number" min="1" max="100" step="1" placeholder="max budget €" aria-label="Maximum budget in euros" data-i18n="budget.placeholder">
       <small id="profile-status" class="profile-status" role="status" aria-live="polite"></small>
-      <small id="wb-sample" class="mut" style="display:block;margin-top:2px" data-i18n="wb.sample">Diet labels are sample data, not verified by the café.</small>
-      <span class="allergen" data-i18n="prefs.allergenLabel">Allergen concerns (noted locally)</span>
+      <small id="wb-sample" class="mut" style="display:block;margin-top:2px">Diet and allergen decisions use merchant-provided information; unknown information blocks checkout.</small>
+      <span class="allergen" data-i18n="prefs.allergenLabel">Allergen concerns</span>
       <span id="allergen-chips" class="tags" aria-label="Allergen concerns"></span>
     </div>
   </section>

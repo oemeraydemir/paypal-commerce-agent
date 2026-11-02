@@ -65,6 +65,7 @@ class _FakeApi extends ApiService {
   Future<OrderCreateResult> createOrder({
     required List<OrderItem> items,
     String? idempotencyKey,
+    Map<String, dynamic>? wellbeingPreferences,
   }) async => OrderCreateResult(
     orderId: 'order-1',
     paypalOrderId: 'paypal-1',

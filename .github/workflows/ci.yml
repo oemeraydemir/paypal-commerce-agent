@@ -39,6 +39,9 @@ jobs:
       - name: Unit + integration tests
         run: npm test
 
+      - name: Dependency advisories (informational, never blocks)
+        run: npm audit --omit=dev --audit-level=high || true
+
       - name: Production build
         run: npm run build
 
@@ -111,7 +114,27 @@ jobs:
         # with no sandbox credentials. SMOKE_REQUIRE_REAL=1 makes a skipped suite
         # fail the run, so a green job proves these tests truly executed and
         # passed — never that they were merely skipped.
-        run: npx jest -c jest.smoke.config.js --runInBand tests/smoke/pg-bills-atomicity.test.ts tests/smoke/pg-pickup-atomicity.test.ts tests/smoke/pg-migrate.test.ts
+        run: npx jest -c jest.smoke.config.js --runInBand tests/smoke/pg-bills-atomicity.test.ts tests/smoke/pg-pickup-atomicity.test.ts tests/smoke/pg-migrate.test.ts tests/smoke/pg-mandate-atomicity.test.ts tests/smoke/pg-capture-claim-route.test.ts tests/smoke/pg-durability.test.ts
+
+  # Real headless Chrome + AG Grid check of the dashboard. Informational: it needs a
+  # CDN reachable from the runner, so a failure is reported but does not block merges.
+  dashboard-browser:
+    name: Dashboard — real Chrome (informational)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: source/apps/backend/package-lock.json
+      - run: npm ci
+      - run: npm install --no-save playwright-core
+      - name: Browser dashboard tests
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+        run: npm run test:browser
 
   flutter:
     name: Flutter — analyze + test

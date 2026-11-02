@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kReleaseMode;
@@ -10,6 +11,8 @@ import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/chat_message.dart';
 import 'package:flutter_app/models/evidence_package.dart';
+import 'package:flutter_app/models/pickup.dart';
+import 'package:flutter_app/models/refund.dart';
 import 'package:flutter_app/services/error_body.dart';
 import 'package:flutter_app/services/session_service.dart';
 
@@ -254,16 +257,39 @@ class ApiService {
       return request(headers);
     }
 
-    var response = await attempt().timeout(_requestTimeout);
+    var response = await _transportGuard(attempt().timeout(_requestTimeout));
     if (response.statusCode == 401) {
       await _storage.clear();
       // Force a fresh session on the retry rather than reusing the invalidated
       // one. This also prevents a stale concurrent request from clearing a newer
       // valid session (F5).
       _sessionCreation = null;
-      response = await attempt().timeout(_requestTimeout);
+      response = await _transportGuard(attempt().timeout(_requestTimeout));
     }
     return response;
+  }
+
+  /// Converts low-level transport failures into a controlled [ApiException] so
+  /// a raw `SocketException` / `ClientException` / `TimeoutException` never leaks
+  /// to the UI as an unhandled error. The backend is unreachable or wedged; the
+  /// message is user-safe and the operation is flagged retryable (the app never
+  /// auto-retries, but the caller may offer a manual retry).
+  Future<http.Response> _transportGuard(Future<http.Response> future) async {
+    try {
+      return await future;
+    } on http.ClientException catch (e) {
+      throw ApiException(
+        0,
+        'Could not reach the server (${e.message}). Check your connection and try again.',
+        retryable: true,
+      );
+    } on TimeoutException {
+      throw ApiException(
+        0,
+        'The request timed out. Check your connection and try again.',
+        retryable: true,
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -271,9 +297,9 @@ class ApiService {
   // ---------------------------------------------------------------------------
 
   Future<List<Product>> getCatalog() async {
-    final res = await _client
-        .get(_url('/api/catalog'))
-        .timeout(_requestTimeout);
+    final res = await _transportGuard(
+      _client.get(_url('/api/catalog')).timeout(_requestTimeout),
+    );
     _ensureOk(res, 'getCatalog');
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     final products = (body['products'] as List? ?? const <dynamic>[]);
@@ -287,7 +313,9 @@ class ApiService {
   }
 
   Future<HealthStatus> getHealth() async {
-    final res = await _client.get(_url('/api/health')).timeout(_requestTimeout);
+    final res = await _transportGuard(
+      _client.get(_url('/api/health')).timeout(_requestTimeout),
+    );
     _ensureOk(res, 'getHealth');
     final body = jsonDecode(res.body) as Map<String, dynamic>;
     return HealthStatus.fromJson(body);
@@ -410,7 +438,38 @@ class ApiService {
   Future<OrderCreateResult> createOrder({
     required List<OrderItem> items,
     String? idempotencyKey,
+    Map<String, dynamic>? wellbeingPreferences,
   }) async {
+    if (wellbeingPreferences != null) {
+      final profile = await _executeWithAuth((headers) => _client.put(
+        _url('/api/wellbeing/preferences'),
+        headers: headers,
+        body: jsonEncode({'preferences': wellbeingPreferences}),
+      ));
+      _ensureOk(profile, 'saveWellbeingPreferences');
+      final check = await _executeWithAuth((headers) => _client.post(
+        _url('/api/wellbeing/check'),
+        headers: headers,
+        body: jsonEncode({'items': items.map((e) => e.toJson()).toList()}),
+      ));
+      _ensureOk(check, 'checkWellbeing');
+      final decision = jsonDecode(check.body) as Map<String, dynamic>;
+      if (decision['allowed'] != true) {
+        final lines = (decision['items'] as List? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map((item) => '${item['name']}: ${item['status']} ${((item['conflicts'] as List?) ?? const []).map((c) => (c as Map)['ingredients']).join(', ')} ${((item['missing'] as List?) ?? const []).join(', ')}')
+            .join('; ');
+        final alternatives = (decision['alternatives'] as List? ?? const [])
+            .whereType<Map<String, dynamic>>()
+            .map((item) => item['name'])
+            .whereType<String>()
+            .join(', ');
+        final suggestion = alternatives.isEmpty
+            ? ''
+            : ' Alternatives with no known conflict: $alternatives.';
+        throw ApiException(403, '$lines.$suggestion ${decision['notice'] ?? ''}', code: 'WELLBEING_GUARD_BLOCKED');
+      }
+    }
     final res = await _executeWithAuth((headers) async {
       if (idempotencyKey != null) {
         headers['Idempotency-Key'] = idempotencyKey;
@@ -491,13 +550,15 @@ class ApiService {
   /// package is self-contained and signed, so anyone may verify it; the request
   /// carries no session.
   Future<EvidenceVerification> verifyEvidence(EvidencePackage pkg) async {
-    final res = await _client
-        .post(
-          _url('/api/evidence/verify'),
-          headers: const <String, String>{'Content-Type': 'application/json'},
-          body: pkg.encode(),
-        )
-        .timeout(_requestTimeout);
+    final res = await _transportGuard(
+      _client
+          .post(
+            _url('/api/evidence/verify'),
+            headers: const <String, String>{'Content-Type': 'application/json'},
+            body: pkg.encode(),
+          )
+          .timeout(_requestTimeout),
+    );
     _ensureOk(res, 'verifyEvidence');
     final decoded = jsonDecode(res.body);
     if (decoded is! Map) {
@@ -521,6 +582,111 @@ class ApiService {
     return OrderCancelResult.fromJson(
       jsonDecode(res.body) as Map<String, dynamic>,
     );
+  }
+
+  /// Customer-safe refund status for an order (`GET /api/orders/:id/refund-status`).
+  Future<RefundStatusView> fetchRefundStatus(String orderId) async {
+    final res = await _executeWithAuth(
+      (headers) => _client.get(
+        _url('/api/orders/$orderId/refund-status'),
+        headers: headers,
+      ),
+    );
+    _ensureOk(res, 'fetchRefundStatus');
+    return RefundStatusView.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// Submits a customer refund request (`POST /api/orders/:id/refund-request`).
+  ///
+  /// Moving no money: it only creates a PROPOSED refund that a merchant must
+  /// approve. [reason] must be one of [kRefundReasons]; [note] is optional,
+  /// trimmed to 120 characters server-side.
+  Future<RefundView> requestRefund({
+    required String orderId,
+    required String reason,
+    String? note,
+  }) async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.post(
+        _url('/api/orders/$orderId/refund-request'),
+        headers: headers,
+        body: jsonEncode({
+          'reason': reason,
+          if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+        }),
+      );
+    });
+    _ensureOk(res, 'requestRefund');
+    return RefundView.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// Pickup slots for a day (`GET /api/pickup/availability?day=YYYY-MM-DD`).
+  /// When [day] is omitted the server defaults to today.
+  Future<List<PickupSlot>> fetchPickupAvailability({String? day}) async {
+    final query =
+        (day == null || day.isEmpty) ? '' : '?day=$day';
+    final res = await _executeWithAuth(
+      (headers) => _client.get(
+        _url('/api/pickup/availability$query'),
+        headers: headers,
+      ),
+    );
+    _ensureOk(res, 'fetchPickupAvailability');
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    return (body['slots'] as List? ?? const <dynamic>[])
+        .whereType<Map<String, dynamic>>()
+        .map(PickupSlot.fromJson)
+        .toList();
+  }
+
+  /// Reserves a pickup slot (`POST /api/pickup/reserve`). Returns a HELD booking.
+  Future<PickupBooking> reservePickupSlot(String slotId) async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.post(
+        _url('/api/pickup/reserve'),
+        headers: headers,
+        body: jsonEncode({'slotId': slotId}),
+      );
+    });
+    _ensureOk(res, 'reservePickupSlot');
+    return PickupBooking.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// Links a HELD booking to the order being paid (`POST /api/pickup/link`).
+  /// The server verifies same-session ownership of both before confirming.
+  Future<PickupBooking> linkPickupBooking({
+    required String bookingId,
+    required String orderId,
+  }) async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.post(
+        _url('/api/pickup/link'),
+        headers: headers,
+        body: jsonEncode({'bookingId': bookingId, 'orderId': orderId}),
+      );
+    });
+    _ensureOk(res, 'linkPickupBooking');
+    return PickupBooking.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// Releases a held pickup reservation, freeing capacity (`POST /api/pickup/release`).
+  Future<void> releasePickupBooking(String bookingId) async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.post(
+        _url('/api/pickup/release'),
+        headers: headers,
+        body: jsonEncode({'bookingId': bookingId}),
+      );
+    });
+    _ensureOk(res, 'releasePickupBooking');
   }
 
   void _ensureOk(http.Response res, String op) {

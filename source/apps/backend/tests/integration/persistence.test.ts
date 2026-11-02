@@ -102,6 +102,9 @@ describe('migrations', () => {
       '007_bill_persistence',
       '008_pickup_slots',
       '009_pickup_one_held_per_session',
+      '010_session_wellbeing_preferences',
+      '011_persistent_spending_mandates',
+      '012_refund_audit_and_disputes',
     ]);
     expect(await migrate(fresh as any, { advisoryLock: false })).toEqual([]);
   });

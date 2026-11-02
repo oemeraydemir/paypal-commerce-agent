@@ -52,7 +52,7 @@ function harness() {
     setTimeout: () => 0, clearTimeout: () => {},
   };
   const original = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
-  const instrumented = original.replace(/\n  boot\(\);\n\}\)\(\);\s*$/, `
+  const instrumented = original.replace(/\r?\n  boot\(\);\r?\n\}\)\(\);\s*$/, `
   globalThis.testApp = { extractQuickReplies: extractQuickReplies, say: say, ask: ask,
     refreshQuickReplies: refreshQuickReplies, setApi: function (fn) { api = fn; } };
 })();`);

@@ -127,12 +127,18 @@ export class BillService {
     return BillService.instance;
   }
 
+  /** Read-only access to all bill groups (for dashboard summary). */
+  listGroups(): BillGroup[] {
+    return Array.from(this.groups.values());
+  }
+
   createGroup(opts: {
     createdByUserId: string;
     items: BillItem[];
     participantCount: number;
     currency: string;
     merchantId: string;
+    persist?: boolean;
   }): BillGroup {
     const totalMinor = opts.items.reduce((sum, i) => sum + i.lineTotalMinor, 0);
     const amounts = computeEqualSplit(totalMinor, opts.participantCount);
@@ -165,7 +171,7 @@ export class BillService {
     // Convergent snapshot to the durable store (retryable, serialized) — the DB
     // is the source of truth for atomic decisions; this only heals the read model.
     const repos = getRepos();
-    if (repos) {
+    if (repos && opts.persist !== false) {
       writeQueue
         .enqueue(`bill-group:${id}`, () => repos.bills.saveGroup(group))
         .catch((err: any) =>
@@ -173,6 +179,11 @@ export class BillService {
         );
     }
     return group;
+  }
+
+  /** Removes a not-yet-committed in-memory bill after its DB transaction failed. */
+  forgetUncommittedGroup(groupId: string): void {
+    this.groups.delete(groupId);
   }
 
   getById(id: string): BillGroup | undefined {
@@ -256,6 +267,15 @@ export class BillService {
         .enqueue(`bill-group:${group.id}`, () => repos.bills.saveGroup(group))
         .catch((err: any) => console.error(`BILL_GROUP_PERSIST_FAILED id=${group.id} error=${err?.message ?? err}`));
     }
+    return group;
+  }
+
+  /** Updates the local read model after the repository atomically cancelled a bill. */
+  applyPersistedCancellation(billId: string, userId: string): BillGroup {
+    const group = this.groups.get(billId);
+    if (!group || group.createdByUserId !== userId) throw new AppError(404, 'Bill not found');
+    group.status = BillStatus.CANCELLED;
+    group.updatedAt = new Date();
     return group;
   }
 

@@ -22,6 +22,14 @@ class PaidReceiptCard extends StatelessWidget {
   /// The parent owns it so the receipt card stays free of network access.
   final Widget? evidenceSection;
 
+  /// Optional customer refund section. The parent owns it so the receipt card
+  /// stays free of network access.
+  final Widget? refundSection;
+
+  /// Optional pickup reservation-link section. The parent owns it so the receipt
+  /// card stays free of network access.
+  final Widget? pickupSection;
+
   const PaidReceiptCard({
     super.key,
     required this.receipt,
@@ -29,6 +37,8 @@ class PaidReceiptCard extends StatelessWidget {
     this.catalogNames = const <String, String>{},
     this.onClose,
     this.evidenceSection,
+    this.refundSection,
+    this.pickupSection,
   });
 
   String _s(String key) => AppStrings.get(lang, key);
@@ -115,6 +125,14 @@ class PaidReceiptCard extends StatelessWidget {
             if (evidenceSection != null) ...[
               const SizedBox(height: 10),
               evidenceSection!,
+            ],
+            if (refundSection != null) ...[
+              const SizedBox(height: 10),
+              refundSection!,
+            ],
+            if (pickupSection != null) ...[
+              const SizedBox(height: 10),
+              pickupSection!,
             ],
           ],
         ),

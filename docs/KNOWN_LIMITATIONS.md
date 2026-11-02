@@ -1,39 +1,48 @@
-# AI Café: Engineering Trade-offs and Scope
+# AI Café: Verification Status, Trade-offs and Scope
 
-**Status date:** 27 October 2026
-**Scope:** a PayPal Sandbox prototype built for the PayPal AI Hackathon. This page states what is verified, what is deliberately limited, and what is not built. It is not a production-readiness claim.
+**Status date:** 2 November 2026
+**Scope:** a PayPal **Sandbox** prototype built for the PayPal AI Hackathon. This page separates what was *run for real*, what is *proven only with mocks*, and what is *not evidenced*. It is not a production-readiness claim.
 
-## Verified
+## 1. Verification matrix (kept deliberately separate)
 
-| Area | Result | Evidence |
-|---|---|---|
-| Backend | 928 Jest tests / 83 suites pass on commit `364824d` (PayPal and AI mocked, PostgreSQL emulated); one storefront regression test was added afterwards (934 / 85) | `npm test`, 2026-10-27 |
-| Flutter app | 163 tests pass, `flutter analyze`: no issues | `flutter test`, 2026-10-27, commit 75fc8c7 plus later changes |
-| Automated total | 1101 tests (938 backend Jest + 163 Flutter) | measured on commit 75fc8c7 plus later changes; tests added later are not in this figure |
-| Live Sandbox payment | AI-prepared cart → server policy decision → buyer approval at PayPal → capture → PAID → signed Cart Mandate verified → dashboard shows PAID | deployed app, 2026-10-27; `docs/PAYMENT_E2E.md` |
-| Payment authority | The AI has no payment tool. The mandate states "Agent may authorize payment: no" and the server enforces the policy decision | `docs/EVIDENCE.md` |
+| Layer | What it proves | Result | Where it runs |
+|---|---|---|---|
+| Backend unit + integration | Business logic, policy, state machines. **PayPal and AI are mocked, PostgreSQL is emulated (pg-mem).** | 114 suites / 1157 tests passed (author's machine, 2 Nov 2026) | `npm test` |
+| Real PostgreSQL smoke | Migrations, atomic claims, mandate / bills / pickup atomicity, durability on a **real server** | 6 suites / 39 tests passed on a disposable local database (not Render) | CI job `smoke-real-pg`, or locally with `DATABASE_URL` |
+| Real browser (AG Grid) | Dashboard renders in headless Chrome | 5 tests passed locally; skipped (= not verified) unless `CHROME_PATH` is set | `npm run test:browser`, CI job `dashboard-browser` (informational) |
+| Flutter | Widget / unit logic of the mobile app | `flutter analyze`: no issues; 218 tests passed (author's machine) | `flutter test` |
+| **PayPal Sandbox, live** | The real integration | One full payment run on 27 Oct 2026 (`docs/PAYMENT_E2E.md`). Refund, partial refund, webhook replay and Split Bill settlement against live PayPal are **not yet evidenced**. | `npm run e2e:sandbox -- <url>` (needs sandbox credentials) |
 
-## Engineering trade-offs
+A skipped suite is reported as **BLOCKED — not verified**, never as a pass.
 
-1. **Storage.** Local development can use in-memory storage for fast iteration. The Render deployment runs PostgreSQL with migrations (set `REQUIRE_PERSISTENCE=true` to refuse to start without it).
-2. **Dependency advisories.** `npm audit` reports advisories in transitive production dependencies, mainly through `@paypal/agent-toolkit` and `openai` (`zod` memory exhaustion on oversized collections, `uuid` buffer bounds for a call form this code does not use, `langsmith`/`@langchain/core`). None has a non-breaking fix today. They are availability concerns, not payment-integrity concerns: request bodies are capped at 100 kB, and prices, totals and payment authority are decided on the server. They will be addressed with the next major upgrades after the hackathon; see `docs/DEPENDENCY_ADVISORIES.md` and `docs/EVIDENCE.md` row E16.
-3. **Allergens.** The 25-item catalog has no verified allergen metadata. Allergen choices are stored on the device only, the UI labels them as unverified, and a missing label is never treated as "allergen-free". This is not an allergy-safety feature.
-4. **Hosting.** The free Render tier sleeps when idle; the first request can take about 50 seconds.
-5. **Single-instance design.** Rate limits and the event queue are per process. Horizontal scaling would need a shared store.
+## 2. Identity and "demo" data: what is real
 
-## Not yet evidenced
+- **Sessions are real and isolated.** Every browser or app run gets a server-issued session with its **own opaque `userId`**, its own spending policy and its own wellbeing guard. One shopper cannot see or spend another shopper's policy. Split Bill joiners are authenticated by their own session.
+- **There are no user accounts or logins.** A session is anonymous and expires. This is a deliberate prototype scope, not a bug; real accounts would be a separate design.
+- `demo-user-001` is only a last-resort fallback id inside two internal code paths when no session is supplied. The dashboard no longer reads it: the *Spending Mandate* panel shows the **template** new sessions start from plus real counts of active sessions and customised policies. Reading the dashboard never creates a policy.
+- The 25-item menu, its prices and its dietary/allergen labels are **sample data authored by the project**. The UI marks the labels "sample data · not verified" and a missing label is never treated as "allergen-free". This is not an allergy-safety feature.
+- Pickup slots are generated as a rolling 7-day schedule (`PICKUP_AUTOSEED=false` turns this off). It is not a real shop calendar, and the dashboard says so.
+- Without an AI key the chat uses a rule-based planner and labels itself "Rule-based planner (no AI)". Without PayPal credentials checkout answers `503 PayPal not configured`; no success screen is ever fabricated.
 
-- Webhook delivery, replay and the unsigned-request rejection against live PayPal (`docs/PAYMENT_E2E.md`, step 3).
-- Merchant refund approval and partial refund against live PayPal (step 4).
-- Voice input with a real microphone; unit and widget tests exist, recognition quality is unverified.
-- Real-browser AG Grid test is skipped unless `playwright-core` and `CHROME_PATH` are set.
+## 3. Engineering trade-offs
 
-## Not built, on purpose
+1. **Storage.** Local development can run in memory. The Render deployment uses PostgreSQL with forward-only migrations (`REQUIRE_PERSISTENCE=true` refuses to start without it).
+2. **Dependency advisories.** `npm audit` reports advisories in transitive production dependencies (mainly `@paypal/agent-toolkit`, `openai`). No non-breaking fix exists today. They are availability concerns, not payment-integrity concerns: bodies are capped at 100 kB and prices, totals and payment authority are decided on the server. CI prints the audit (informational). See `docs/security-note-ai-sdk-vulns.md`.
+3. **Hosting.** The free Render tier sleeps when idle; the first request can take about 50 seconds. Wake it with `GET /api/health` before recording or judging.
+4. **Single-instance design.** Rate limits, sessions and the event queue are per process. Horizontal scaling would need a shared store.
+5. **Disputes.** PayPal does not let a merchant open disputes in production; the app prepares a signed evidence package and records the merchant's own submission. It never auto-submits and never invents a PayPal outcome.
 
-- E-invoicing (a jurisdiction-specific tax document; see `docs/INVOICING_ASSESSMENT.md`).
-- PayPal Vault / Pay Later: no eligibility or implementation yet.
-- Multi-tenant isolation: the prototype serves one merchant profile.
-- Production PayPal (live) mode: Sandbox only.
+## 4. Not yet evidenced
+
+- Live-PayPal refund, partial refund, webhook delivery/replay and Split Bill settlement (run `npm run e2e:sandbox`; results belong in `docs/PAYMENT_E2E.md`).
+- Voice input with a real microphone (unit/widget tests exist; recognition quality is unverified).
+- Behaviour on Render with real PostgreSQL beyond the smoke suites above.
+
+## 5. Not built, on purpose
+
+- User accounts / login; multi-tenant isolation (one deployment = one merchant profile).
+- E-invoicing, PayPal Vault / Pay Later.
+- Production (live-money) PayPal: the environment is hard-wired to Sandbox.
 
 ## How to reproduce
 

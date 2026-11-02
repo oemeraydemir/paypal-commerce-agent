@@ -1,6 +1,8 @@
 import { Order } from '../orders/domain';
 import { BillGroup } from '../bills/domain';
 import { BillShare } from '../bills/domain';
+import { PurchasePolicy } from '../policy/domain';
+import type { RefundRecommendation } from '../refunds/domain';
 
 export type ReservationRowState = 'PENDING' | 'CONFIRMED' | 'CANCELLED' | 'EXPIRED';
 
@@ -11,7 +13,69 @@ export interface ReservationRow {
   state: ReservationRowState;
   createdAt: Date;
   settledAt?: Date;
+  mandateRevision?: number;
+  billMandateReservationId?: string;
 }
+
+export interface StoredSpendingMandate {
+  policy: PurchasePolicy;
+  revision: number;
+}
+
+export interface SpendingMandateEvent {
+  id: string;
+  userId: string;
+  sessionId?: string;
+  eventType: 'CREATED' | 'UPDATED' | 'BILL_AUTHORIZED' | 'BILL_REAUTHORIZED' | 'BILL_CLOSED';
+  revision: number;
+  amountMinor?: number;
+  currency?: string;
+  subjectId?: string;
+  beforeSnapshot?: Record<string, unknown>;
+  afterSnapshot: Record<string, unknown>;
+  occurredAt: Date;
+}
+
+export type MandateBlockReason = 'ALLOWANCE_EXPIRED' | 'MAX_PURCHASE_EXCEEDED' |
+  'DAILY_LIMIT_EXCEEDED' | 'MERCHANT_NOT_ALLOWED' | 'CURRENCY_MISMATCH' |
+  'MANDATE_CHANGED' | 'MANDATE_DISABLED' | 'BILL_MANDATE_RENEWAL_REQUIRED';
+
+export type ReservationResult =
+  | { ok: true; reservation: ReservationRow }
+  | { ok: false; reason: MandateBlockReason };
+
+export interface SpendingMandateRepository {
+  getOrCreate(policy: PurchasePolicy): Promise<StoredSpendingMandate>;
+  loadAll(): Promise<StoredSpendingMandate[]>;
+  getLastEvent(userId: string): Promise<SpendingMandateEvent | undefined>;
+  update(input: {
+    policy: PurchasePolicy;
+    expectedRevision: number;
+    sessionId: string;
+    eventId: string;
+    eventType: 'UPDATED' | 'BILL_REAUTHORIZED';
+  }): Promise<StoredSpendingMandate | undefined>;
+}
+
+export interface BillMandateReservationRow {
+  id: string;
+  billId: string;
+  ownerUserId: string;
+  amountMinor: number;
+  currency: string;
+  merchantId: string;
+  mandateRevision: number;
+  policySnapshot: Record<string, unknown>;
+  status: 'ACTIVE' | 'SETTLED' | 'CANCELLED' | 'EXPIRED' | 'REPLACED';
+  expiresAt?: Date;
+  createdAt: Date;
+  closedAt?: Date;
+  closeReason?: string;
+}
+
+export type BillMandateResult =
+  | { ok: true; reservation: BillMandateReservationRow }
+  | { ok: false; reason: MandateBlockReason };
 
 export interface IdempotencyRow {
   key: string;
@@ -28,6 +92,7 @@ export interface SessionRow {
   tokenHash: string;
   createdAt: Date;
   lastSeenAt: Date;
+  wellbeingPreferences?: { dietary: string[]; allergens: string[] };
 }
 
 export interface SessionRepository {
@@ -46,15 +111,79 @@ export interface RefundRow {
   status: string;
   paypalRefundId?: string;
   paypalRefundStatus?: string;
+  aiRecommendation?: RefundRecommendation;
+  merchantApprovedAt?: string;
+  merchantApprovedBy?: string;
+  idempotencyKeyHash?: string;
+  idempotencyFingerprint?: string;
   lastError?: string;
   createdAt: string;
   updatedAt: string;
   decidedAt?: string;
 }
 
+export interface RefundAuditRow {
+  id: string;
+  refundId: string;
+  orderId: string;
+  eventType: string;
+  actor: string;
+  details: Record<string, unknown>;
+  occurredAt: string;
+}
+
 export interface RefundRepository {
   loadAll(): Promise<RefundRow[]>;
+  getByIdempotencyHash(hash: string): Promise<RefundRow | undefined>;
   save(row: RefundRow): Promise<void>;
+  /** Atomically claims merchant approval across processes before any PayPal call. */
+  claimForProcessing(input: { id: string; orderId: string; approvedAt: string; approvedBy: string; auditId: string }): Promise<boolean>;
+  appendAudit(event: RefundAuditRow): Promise<void>;
+  loadAuditForOrder(orderId: string): Promise<RefundAuditRow[]>;
+}
+
+export type DisputeCaseStatus = 'OPEN' | 'EVIDENCE_READY' | 'SUBMISSION_PENDING' |
+  'SUBMISSION_UNCERTAIN' | 'SUBMITTED' | 'RESOLVED' | 'WITHDRAWN' | 'EXPIRED' | 'FAILED';
+
+export interface DisputeCaseRow {
+  id: string;
+  orderId: string;
+  paypalDisputeId: string;
+  status: DisputeCaseStatus;
+  paypalStatus?: string;
+  lifecycleStage?: string;
+  requestedEvidenceType?: string;
+  sellerResponseDueAt?: string;
+  evidenceType?: string;
+  evidenceNotes?: string;
+  evidenceSnapshot?: Record<string, unknown>;
+  evidenceDigest?: string;
+  lastError?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  submittedAt?: string;
+  resolvedAt?: string;
+}
+
+export interface DisputeAuditRow {
+  id: string;
+  disputeCaseId: string;
+  eventType: string;
+  actor: string;
+  details: Record<string, unknown>;
+  occurredAt: string;
+}
+
+export interface DisputeRepository {
+  loadAll(): Promise<DisputeCaseRow[]>;
+  get(id: string): Promise<DisputeCaseRow | undefined>;
+  create(row: DisputeCaseRow): Promise<boolean>;
+  save(row: DisputeCaseRow): Promise<void>;
+  /** Conditional state transition; prevents concurrent submissions across instances. */
+  transition(row: DisputeCaseRow, expected: DisputeCaseStatus[]): Promise<boolean>;
+  appendAudit(event: DisputeAuditRow): Promise<void>;
+  loadAudit(caseId: string): Promise<DisputeAuditRow[]>;
 }
 
 export interface PolicyEventRepository {
@@ -73,6 +202,17 @@ export interface ReservationRepository {
   /** All PENDING reservations plus settled ones newer than `retentionMs`. */
   loadActive(retentionMs: number): Promise<ReservationRow[]>;
   save(row: ReservationRow): Promise<void>;
+  reserveWithinMandate(input: {
+    id: string;
+    userId: string;
+    amountMinor: number;
+    currency: string;
+    merchantId: string;
+    mandateRevision: number;
+    billMandateReservationId?: string;
+    createdAt: Date;
+  }): Promise<ReservationResult>;
+  getDailyUsage(userId: string, dayStart: Date): Promise<{ spentMinor: number; pendingMinor: number; billReservedMinor: number }>;
 }
 
 export interface IdempotencyRepository {
@@ -144,6 +284,32 @@ export interface BillRepository {
   loadAllNonces(): Promise<InviteNonceRow[]>;
   /** Upserts a group and all of its shares (convergent snapshot). */
   saveGroup(group: BillGroup): Promise<void>;
+  createGroupWithMandateReservation(input: {
+    group: BillGroup;
+    mandateRevision: number;
+    sessionId: string;
+    expiresAt?: Date;
+    reservationId: string;
+  }): Promise<BillMandateResult>;
+  validateMandateReservation(input: {
+    billId: string;
+    ownerUserId: string;
+    totalMinor: number;
+    currency: string;
+    merchantId: string;
+  }): Promise<BillMandateResult>;
+  renewMandateReservation(input: {
+    billId: string;
+    ownerUserId: string;
+    confirmedTotalMinor: number;
+    mandateRevision: number;
+    expiresAt?: Date;
+    reservationId: string;
+    sessionId: string;
+    eventId: string;
+  }): Promise<BillMandateResult>;
+  cancelGroupAndCloseMandate(billId: string, ownerUserId: string): Promise<boolean>;
+  reconcileMandateReservations(): Promise<{ settled: number; expired: number; cancelled: number }>;
   /** Registers a freshly minted invite nonce (PENDING). */
   insertInviteNonce(row: InviteNonceRow): Promise<void>;
   /**
@@ -265,9 +431,11 @@ export interface Repositories {
   mode: 'postgres';
   orders: OrderRepository;
   reservations: ReservationRepository;
+  mandates: SpendingMandateRepository;
   idempotency: IdempotencyRepository;
   sessions: SessionRepository;
   refunds: RefundRepository;
+  disputes: DisputeRepository;
   policyEvents: PolicyEventRepository;
   webhookEvents: WebhookEventRepository;
   webhookReviews: WebhookReviewRepository;

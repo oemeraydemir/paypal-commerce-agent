@@ -13,6 +13,11 @@ export interface Product {
   dietary: string[];
   occasion: string[];
   available: boolean;
+  wellbeing?: {
+    dietary?: Record<string, { status: 'CONFLICT' | 'NO_CONFLICT' | 'UNKNOWN'; ingredients?: string[] }>;
+    allergens?: Record<string, { status: 'CONFLICT' | 'NO_CONFLICT' | 'UNKNOWN'; ingredients?: string[] }>;
+    dataVersion?: string;
+  };
 }
 
 export interface CatalogQuery {

@@ -76,6 +76,15 @@ beforeEach(async () => {
   mockRefund.mockResolvedValue({ id: 'REFUND-1', status: 'COMPLETED' });
   mockGetRefund.mockReset();
   mockGetRefund.mockResolvedValue({ status: 'COMPLETED', id: 'REFUND-1' });
+  // `verifyRefundableCapture` (non-interrupted approvals) asks PayPal for the
+  // authoritative capture. Every order in this suite is 13.00 EUR.
+  mockGetCapture.mockReset();
+  mockGetCapture.mockResolvedValue({
+    id: 'CAP-DEFAULT',
+    status: 'COMPLETED',
+    amount: { currencyCode: 'EUR', value: '13.00' },
+    sellerPayableBreakdown: { totalRefundedAmount: { currencyCode: 'EUR', value: '0.00' } },
+  });
   pool = newPool();
   await attachPersistence(pool, { advisoryLock: false });
 });

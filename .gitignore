@@ -56,3 +56,10 @@ test-results.json
 npm-audit-full.json
 *.iml
 _owner/
+
+# -- Generated test/log output (never source) --
+full-test-log.txt
+webhook-result.json
+audit-dry-run.log
+.pg_local/
+source/apps/flutter_app/coverage/

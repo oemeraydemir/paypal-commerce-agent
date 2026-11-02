@@ -6,6 +6,7 @@ import {
   PaymentsController,
 } from '@paypal/paypal-server-sdk';
 import * as https from 'https';
+import crypto from 'crypto';
 import { env } from '../config/environment';
 
 export interface PayPalClient {
@@ -27,6 +28,9 @@ export interface PayPalClient {
   // Read-only lookup of a captured payment (its seller_payable_breakdown.total_refunded_amount is
   // the authority for "was a refund issued" when the refund id was never recorded).
   getCapture(captureId: string): Promise<any>;
+  // Merchant-triggered dispute operations. These are never invoked by an AI tool.
+  getDispute(disputeId: string): Promise<any>;
+  provideDisputeEvidence(disputeId: string, evidence: { evidence_type: string; notes?: string; evidence_info?: Record<string, unknown> }): Promise<any>;
   // S5: verify a webhook signature via PayPal's verify-webhook-signature API.
   // (NOT HMAC — PayPal validates the signature against their certificate.)
   verifyWebhookSignature(payload: any): Promise<any>;
@@ -137,6 +141,12 @@ class PayPalClientImpl implements PayPalClient {
     return 'https://api.sandbox.paypal.com';
   }
 
+  private disputesBaseUrl(): string {
+    // The current Disputes API documentation uses the api-m host. Keep the
+    // existing webhook host unchanged; only the new disputes calls use this.
+    return 'https://api-m.sandbox.paypal.com';
+  }
+
   // Minimal JSON/forms POST helper over https.
   private httpsPost(
     url: string,
@@ -190,6 +200,78 @@ class PayPalClientImpl implements PayPalClient {
       throw new Error('Failed to obtain PayPal access token');
     }
     return res.access_token;
+  }
+
+  private httpsJsonRequest(url: string, method: 'GET' | 'POST', body: unknown, token: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const u = new URL(url);
+      const bodyStr = body === undefined ? '' : JSON.stringify(body);
+      const req = https.request({
+        hostname: u.hostname, path: u.pathname + u.search, method,
+        headers: { Authorization: `Bearer ${token}`, Accept: 'application/json',
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) }) },
+      }, (res) => {
+        let raw = '';
+        res.on('data', (chunk) => { raw += chunk; });
+        res.on('end', () => {
+          let parsed: any = {};
+          try { parsed = raw ? JSON.parse(raw) : {}; } catch { /* response validation below fails closed */ }
+          if ((res.statusCode ?? 500) < 200 || (res.statusCode ?? 500) >= 300) {
+            const error = new Error(`PayPal Disputes API returned HTTP ${res.statusCode ?? 'unknown'}`);
+            (error as any).statusCode = res.statusCode;
+            reject(error);
+            return;
+          }
+          resolve({ ...parsed, _httpStatus: res.statusCode });
+        });
+      });
+      req.on('error', reject);
+      if (body !== undefined) req.write(bodyStr);
+      req.end();
+    });
+  }
+
+  async getDispute(disputeId: string): Promise<any> {
+    const token = await this.getAccessToken();
+    return this.httpsJsonRequest(`${this.disputesBaseUrl()}/v1/customer/disputes/${encodeURIComponent(disputeId)}`, 'GET', undefined, token);
+  }
+
+  async provideDisputeEvidence(disputeId: string, evidence: { evidence_type: string; notes?: string; evidence_info?: Record<string, unknown> }): Promise<any> {
+    const token = await this.getAccessToken();
+    // PayPal's Provide Evidence operation is multipart/form-data even for text-only evidence;
+    // the `input` part carries the documented JSON payload. Document parts are deliberately
+    // unsupported until a controlled file-upload and malware-scanning flow exists.
+    const boundary = `aicafe-${crypto.randomBytes(18).toString('hex')}`;
+    const input = JSON.stringify({ evidences: [evidence] });
+    const body = `--${boundary}\r\nContent-Disposition: form-data; name="input"\r\nContent-Type: application/json\r\n\r\n${input}\r\n--${boundary}--\r\n`;
+    return this.httpsMultipartRequest(
+      `${this.disputesBaseUrl()}/v1/customer/disputes/${encodeURIComponent(disputeId)}/provide-evidence`, body, boundary, token
+    );
+  }
+
+  private httpsMultipartRequest(url: string, body: string, boundary: string, token: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const u = new URL(url);
+      const req = https.request({ hostname: u.hostname, path: u.pathname + u.search, method: 'POST', headers: {
+        Authorization: `Bearer ${token}`, Accept: 'application/json',
+        'Content-Type': `multipart/form-data; boundary=${boundary}`, 'Content-Length': Buffer.byteLength(body),
+      } }, (res) => {
+        let raw = '';
+        res.on('data', (chunk) => { raw += chunk; });
+        res.on('end', () => {
+          let parsed: any = {};
+          try { parsed = raw ? JSON.parse(raw) : {}; } catch { /* response validation below fails closed */ }
+          if (res.statusCode !== 200) {
+            reject(new Error(`PayPal Disputes API returned HTTP ${res.statusCode ?? 'unknown'}`));
+            return;
+          }
+          resolve({ ...parsed, _httpStatus: res.statusCode });
+        });
+      });
+      req.on('error', reject);
+      req.write(body);
+      req.end();
+    });
   }
 
   async verifyWebhookSignature(payload: any): Promise<any> {

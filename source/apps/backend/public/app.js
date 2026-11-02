@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
-  var SKEY = 'aicafe.session', SPKEY = 'aicafe.split.active', PKEY = 'aicafe.pending', CKEY = 'aicafe.cart', AKEY = 'aicafe.allergens', OKEY = 'aicafe.onboarded';
+  var SKEY = 'aicafe.session', SPKEY = 'aicafe.split.active', PKEY = 'aicafe.pending', CKEY = 'aicafe.cart', AKEY = 'aicafe.allergens', DKEY = 'aicafe.dietary', OKEY = 'aicafe.onboarded';
   var catalog = {}, cart = {}, session = null, busy = false;
   var policy = null, pseq = 0, ptimer = null, activeCat = 'all', allProducts = [];
   var lastPrepared = null, lastHealth = null;
@@ -376,7 +376,8 @@
     scale.appendChild(el('span', '', i18nT('policy.max') + ' ' + eur(max))); wrap.appendChild(scale);
     // Mandate summary: limit, scope, current cart, remaining allowance and a plain status line.
     var cartMinor = p.empty ? 0 : p.totalMinor, left = max - cartMinor;
-    var st = !p.empty && (p.decision === 'BLOCK' || cartMinor > max) ? 'exceeded' : (!p.empty && p.decision === 'REQUIRE_CONFIRMATION') ? 'reconfirm' : 'valid';
+    var expired = !!(L.validUntil && new Date(L.validUntil).getTime() <= Date.now());
+    var st = expired ? 'expired' : (!p.empty && (p.decision === 'BLOCK' || cartMinor > max) ? 'exceeded' : (!p.empty && p.decision === 'REQUIRE_CONFIRMATION') ? 'reconfirm' : 'valid');
     var rows = el('ul', 'mandate-list');
     function mrow(k, v) { var li = el('li', ''); li.appendChild(el('span', 'k', k)); li.appendChild(el('span', 'v', v)); rows.appendChild(li); }
     mrow(i18nT('mandate.limit'), eur(max));
@@ -384,10 +385,27 @@
     mrow(i18nT('mandate.cart'), eur(cartMinor));
     mrow(i18nT('mandate.remaining'), left >= 0 ? eur(left) : i18nT('mandate.over') + ' ' + eur(-left));
     mrow(i18nT('mandate.status'), i18nT('mandate.' + st));
+    mrow(i18nT('mandate.expires'), L.validUntil ? new Date(L.validUntil).toLocaleString() : i18nT('mandate.noExpiry'));
+    mrow(i18nT('mandate.lastUpdated'), L.updatedAt ? new Date(L.updatedAt).toLocaleString() : i18nT('mandate.notRecorded'));
     wrap.appendChild(rows);
     var rules = el('ul', 'mandate-rules');
     ['mandate.rule1', 'mandate.rule2', 'mandate.rule3'].forEach(function (k) { rules.appendChild(el('li', '', i18nT(k))); });
     wrap.appendChild(rules);
+    var violations = p.violations || [];
+    var needsRenewal = !p.empty && (expired || violations.some(function (v) { return v.type === 'MAX_PURCHASE_EXCEEDED' || v.type === 'ALLOWANCE_EXPIRED'; }));
+    if (needsRenewal) {
+      var renew = el('button', 'secondary', i18nT('mandate.renew').replace('{amount}', eur(cartMinor)));
+      renew.type = 'button';
+      renew.onclick = function () {
+        renew.disabled = true;
+        var nextLimit = Math.max(max, cartMinor), nextDaily = Math.max(L.dailySpendLimitMinor, nextLimit);
+        api('/api/policy', { method: 'PATCH', body: JSON.stringify({ maxPerPurchaseMinor: nextLimit, dailySpendLimitMinor: nextDaily, validUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString() }) })
+          .then(function () { schedulePolicy(); })
+          .catch(function (e) { renew.disabled = false; wrap.appendChild(el('div', 'policy BLOCK', e.message || i18nT('mandate.renewFailed'))); });
+      };
+      wrap.appendChild(renew);
+      wrap.appendChild(el('div', 'mut', i18nT('mandate.renewScope')));
+    }
     if (p.decision) {
       wrap.appendChild(el('div', 'mut', p.decision === 'BLOCK' && p.reason ? p.reason + '. ' + decLong('BLOCK') : decLong(p.decision)));
       var ul = el('ul', 'checks');
@@ -443,7 +461,9 @@
 
   // ---- Chat ---------------------------------------------------------------------------------
   function prefs() {
-    var out = { dietary: [] }; var d = $('diet').value; if (d) out.dietary.push(d);
+    var select = $('diet');
+    var selected = select && select.selectedOptions ? Array.from(select.selectedOptions).map(function (o) { return o.value; }) : (select && select.value ? [select.value] : []);
+    var out = { dietary: selected.filter(Boolean) };
     var b = parseFloat($('budget').value);
     if (isFinite(b) && b >= 1 && b <= 100) out.maxBudgetMinor = Math.round(b * 100);
     return out;
@@ -461,6 +481,7 @@
     status.textContent = parts.length ? i18nT('profile.applied') + ' ' + parts.join(' · ') : i18nT('profile.none');
   }
   function onProfileChange() {
+    save(DKEY, prefs().dietary);
     quickReplyGeneration++;
     renderProfileStatus();
     refreshQuickReplies();
@@ -512,7 +533,7 @@
     if (!items.length) return;
     busy = true; renderCart();
     var pbtn = $('pay'); pbtn.classList.add('loading'); pbtn.setAttribute('aria-busy', 'true'); pbtn.textContent = i18nT('checkout.contacting');
-    api('/api/orders/create', { method: 'POST', headers: { 'Idempotency-Key': uuid() }, body: JSON.stringify({ items: items }) }).then(function (o) {
+    syncWellbeing().then(function () { return api('/api/orders/create', { method: 'POST', headers: { 'Idempotency-Key': uuid() }, body: JSON.stringify({ items: items }) }); }).then(function (o) {
       if (!o.approvalUrl) throw new Error(i18nT('checkout.noLink'));
       save(PKEY, { orderId: o.orderId, paypalOrderId: o.paypalOrderId, total: o.totalFormatted });
       // Link any held pickup booking to the order the customer is about to pay.
@@ -614,7 +635,7 @@
     if (!items.length) return;
     split.busy = true; splitErr('');
     var go = $('split-go'); go.disabled = true; go.textContent = i18nT('split.creating');
-    api('/api/bills', { method: 'POST', body: JSON.stringify({ items: items, participantCount: split.n }) }).then(function (b) {
+    syncWellbeing().then(function () { return api('/api/bills', { method: 'POST', body: JSON.stringify({ items: items, participantCount: split.n }) }); }).then(function (b) {
       save(SPKEY, { billId: b.id });
       window.location.assign('/split#b=' + encodeURIComponent(b.id));
     }).catch(function (e) {
@@ -1173,12 +1194,12 @@
     }
   }
 
-  // Local-only allergen concerns (mirrors the Flutter app). Never sent to the server.
+  // Shopper concerns are sent only to the authenticated Wellbeing contract; no diagnosis or free text is collected.
   var ALLERGENS = [
     { k: 'gluten', en: 'Gluten', tr: 'Gluten' },
     { k: 'dairy', en: 'Dairy', tr: 'Süt' },
-    { k: 'nuts', en: 'Tree nuts', tr: 'Fındık / ceviz' },
-    { k: 'peanuts', en: 'Peanuts', tr: 'Yer fıstığı' },
+    { k: 'tree-nut', en: 'Tree nuts', tr: 'Fındık / ceviz' },
+    { k: 'peanut', en: 'Peanuts', tr: 'Yer fıstığı' },
     { k: 'soy', en: 'Soy', tr: 'Soya' },
     { k: 'egg', en: 'Egg', tr: 'Yumurta' },
     { k: 'fish', en: 'Fish', tr: 'Balık' },
@@ -1215,45 +1236,43 @@
     scheduleWellbeing();
   }
 
-  // ---- Wellbeing check (advisory) ------------------------------------------------------------
-  // The server compares the cart with the café's SAMPLE diet labels. It never says an item is
-  // safe or suitable. Allergen choices stay on this device and are only shown here, locally.
+  // ---- Wellbeing check (server-authoritative) ------------------------------------------------
   var wbTimer = null, wbSeq = 0;
   function scheduleWellbeing() { clearTimeout(wbTimer); wbTimer = setTimeout(refreshWellbeing, 250); }
-  function wbDiet() { var d = $('diet'); return d && d.value ? d.value : ''; }
+  function wbDiets() { return prefs().dietary; }
   function wbLabel(d) { return i18nT('wb.diet.' + d); }
   function refreshWellbeing() {
     var box = $('wellbeing'); if (!box) return;
-    var ids = Object.keys(cart), diet = wbDiet(), allergens = loadAllergens();
-    if (!ids.length || (!diet && !allergens.length)) { box.hidden = true; box.textContent = ''; return; }
+    var ids = Object.keys(cart), dietary = wbDiets(), allergens = loadAllergens();
+    if (!ids.length || (!dietary.length && !allergens.length)) { box.hidden = true; box.textContent = ''; return; }
     var seq = ++wbSeq;
-    var p = diet
-      ? api('/api/wellbeing/check', { method: 'POST', body: JSON.stringify({ items: ids.map(function (id) { return { productId: id, quantity: cart[id] }; }), diet: diet }) })
-      : Promise.resolve(null);
-    p.then(function (r) { if (seq === wbSeq) renderWellbeing(r, diet, allergens); })
-     .catch(function () { try { if (seq === wbSeq) renderWellbeing(null, diet, allergens, true); } catch (e) { /* page gone */ } });
+    syncWellbeing().then(function () { return api('/api/wellbeing/check', { method: 'POST', body: JSON.stringify({ items: ids.map(function (id) { return { productId: id, quantity: cart[id] }; }) }) }); })
+     .then(function (r) { if (seq === wbSeq) renderWellbeing(r, dietary, allergens); })
+     .catch(function (e) { try { if (seq === wbSeq) renderWellbeing(e.body && e.body.wellbeing, dietary, allergens, true); } catch (ignored) { /* page gone */ } });
   }
-  function renderWellbeing(r, diet, allergens, failed) {
+  function renderWellbeing(r, dietary, allergens, failed) {
     var box = $('wellbeing'); if (!box) return; // page already torn down
     box.textContent = ''; box.hidden = false;
     var h = el('h4', ''); h.appendChild(el('span', '', i18nT('wb.title'))); h.appendChild(el('span', 'wb-badge', i18nT('wb.badge'))); box.appendChild(h);
-    if (diet) {
-      if (r) {
+    if (r) {
         var ul = el('ul', '');
         r.items.forEach(function (it) {
           var li = el('li', ''); li.appendChild(el('span', '', it.quantity + ' × ' + it.name));
-          var ok = it.labelStatus === 'CARRIES_LABEL';
-          li.appendChild(el('span', ok ? 'wb-yes' : 'wb-no', ok ? i18nT('wb.carries').replace('{d}', wbLabel(diet)) : i18nT('wb.nolabel').replace('{d}', wbLabel(diet))));
+          li.appendChild(el('span', '', it.status));
+          it.conflicts.forEach(function (c) { li.appendChild(el('small', 'wb-no', c.restriction + ': ' + (c.ingredients.join(', ') || 'ingredient conflict'))); });
+          it.missing.forEach(function (m) { li.appendChild(el('small', 'wb-no', 'Missing information: ' + m)); });
           ul.appendChild(li);
         });
         box.appendChild(ul);
-      } else if (failed) { box.appendChild(el('p', '', i18nT('wb.unavailable'))); }
-    }
-    if (allergens.length) {
-      var names = allergens.map(function (k) { for (var i = 0; i < ALLERGENS.length; i++) { if (ALLERGENS[i].k === k) return allergenLabel(ALLERGENS[i]); } return k; });
-      box.appendChild(el('p', '', i18nT('wb.allergens').replace('{a}', names.join(', '))));
-    }
-    box.appendChild(el('p', '', i18nT('wb.notice')));
+    } else if (failed) { box.appendChild(el('p', 'wb-no', 'Wellbeing check unavailable. Checkout is blocked until the server can evaluate this cart.')); }
+    if (r && r.alternatives && r.alternatives.length) box.appendChild(el('p', '', 'Alternatives with no known conflict: ' + r.alternatives.map(function (a) { return a.name; }).join(', ')));
+    box.appendChild(el('p', '', r ? r.notice : i18nT('wb.notice')));
+  }
+
+  function syncWellbeing() {
+    var aliases = { nuts: 'tree-nut', peanuts: 'peanut' };
+    var allergens = loadAllergens().map(function (a) { return aliases[a] || a; });
+    return api('/api/wellbeing/preferences', { method: 'PUT', body: JSON.stringify({ preferences: { dietary: prefs().dietary, allergens: allergens } }) });
   }
 
   // ---- Onboarding + i18n wiring -------------------------------------------------------------
@@ -1312,11 +1331,13 @@
     // the owner having to guess which localStorage key to clear.
     try {
       if (new URLSearchParams(location.search).get('reset') === '1') {
-        drop(SKEY); drop(PKEY); drop(CKEY); drop(AKEY); drop(OKEY);
+        drop(SKEY); drop(PKEY); drop(CKEY); drop(AKEY); drop(DKEY); drop(OKEY);
       }
     } catch (e) { /* ignore */ }
 
     session = load(SKEY); cart = load(CKEY) || {};
+    var savedDietary = load(DKEY) || [];
+    Array.from($('diet').options).forEach(function (option) { option.selected = savedDietary.indexOf(option.value) >= 0; });
     initI18n();
     renderCoco();
     renderAllergenChips();

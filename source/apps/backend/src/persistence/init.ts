@@ -6,12 +6,13 @@ import { BillService } from '../bills/service';
 import { PickupService } from '../pickup/service';
 import { sessionStore } from '../session';
 import { refundService } from '../refunds/service';
+import { disputeService } from '../disputes/service';
 import { policyStorage } from '../policy/storage';
 import { webhookService } from '../paypal/webhook-service';
 import { dailySpendTracker } from '../policy/daily-spend-tracker';
 import { migrate } from './migrations';
 import { Queryable } from './types';
-import { resolveDatabaseSslOptions } from './database-ssl';
+import { removeConnectionStringSslMode, resolveDatabaseSslOptions } from './database-ssl';
 import { createPgRepositories } from './pg-repositories';
 import { registerRetrier, setRepos } from './registry';
 
@@ -58,6 +59,7 @@ export async function attachPersistence(
   const reservationsLoaded = await dailySpendTracker.hydrate();
   const ordersLoaded = await orderService.hydrate();
   await refundService.hydrate();
+  await disputeService.hydrate();
   await policyStorage.hydrate();
   await webhookService.hydrate();
 
@@ -66,8 +68,10 @@ export async function attachPersistence(
   // payments are never double-claimed).
   const billsLoaded = await BillService.getInstance().hydrate();
   const orphanClaimsCleared = await repos.bills.reconcileOrphanClaims();
-  if (billsLoaded > 0 || orphanClaimsCleared > 0) {
-    console.log(`BILL_HYDRATE groups=${billsLoaded} orphanClaimsCleared=${orphanClaimsCleared}`);
+  const mandateReservationsClosed = await repos.bills.reconcileMandateReservations();
+  if (billsLoaded > 0 || orphanClaimsCleared > 0 ||
+      mandateReservationsClosed.settled + mandateReservationsClosed.expired + mandateReservationsClosed.cancelled > 0) {
+    console.log(`BILL_HYDRATE groups=${billsLoaded} orphanClaimsCleared=${orphanClaimsCleared} mandateReservationsClosed=${JSON.stringify(mandateReservationsClosed)}`);
   }
 
   // Pickup Planner: keep a rolling 7-day calendar of slots (idempotent; PICKUP_AUTOSEED=false
@@ -89,11 +93,14 @@ export async function attachPersistence(
     repos.webhookEvents
       .deleteOlderThan(new Date(Date.now() - WEBHOOK_EVENT_RETENTION_MS))
       .catch((err: any) => console.warn(`Webhook event purge failed: ${err?.message ?? err}`));
+  const reconcileMandateReservations = () => repos.bills.reconcileMandateReservations()
+    .catch((err: any) => console.warn(`Mandate reservation reconciliation failed: ${err?.message ?? err}`));
   await purge();
   await purgeWebhookEvents();
   if (options.startTimers) {
     setInterval(purge, 60 * 60 * 1000).unref();
     setInterval(purgeWebhookEvents, 6 * 60 * 60 * 1000).unref();
+    setInterval(reconcileMandateReservations, 60 * 1000).unref();
   }
   return { mode: 'postgres', migrationsApplied, ordersLoaded, reservationsLoaded };
 }
@@ -119,7 +126,7 @@ export async function initPersistence(): Promise<PersistenceStatus> {
   }
 
   const pool = new Pool({
-    connectionString: env.DATABASE_URL,
+    connectionString: removeConnectionStringSslMode(env.DATABASE_URL),
     max: env.DATABASE_POOL_MAX,
     connectionTimeoutMillis: 10_000,
     ssl: resolveDatabaseSslOptions({

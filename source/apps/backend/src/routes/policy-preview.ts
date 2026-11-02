@@ -54,6 +54,9 @@ router.post('/policy/preview', requireSession, previewLimiter, (req, res, next) 
       blockedDietaryAttributes: policy.blockedDietaryAttributes,
       policyEnabled: policy.enabled,
       validUntil: policy.validUntil ? policy.validUntil.toISOString() : null,
+      updatedAt: policy.updatedAt.toISOString(),
+      allowedMerchantIds: policy.allowedMerchantIds,
+      blockedCategoryIds: policy.blockedCategoryIds,
     };
 
     const rawItems = req.body?.items;
@@ -132,6 +135,7 @@ router.post('/policy/preview', requireSession, previewLimiter, (req, res, next) 
       requiresExplicitApproval: outcome.requiresExplicitApproval,
       totalMinor,
       totalFormatted: money(totalMinor),
+      remainingPerPurchaseMinor: policy.maxPerPurchaseMinor - totalMinor,
       currency: currentBusiness.currency,
       checks,
       violations: outcome.violations,

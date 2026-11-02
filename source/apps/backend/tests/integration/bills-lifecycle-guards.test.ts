@@ -122,11 +122,11 @@ describe('/join and /split pages', () => {
 });
 
 describe('policy cannot be bypassed by splitting', () => {
-  test('a cart above the per-purchase limit is blocked at bill creation, like normal checkout', async () => {
+  test.each([2, 3])('a cart above the per-purchase limit is blocked before a %i-person split is created', async (participantCount) => {
     const res = await request(app)
       .post('/api/bills')
       .set(owner.headers)
-      .send({ items: [{ productId: 'coffee', quantity: 12 }], participantCount: 3 }); // 12 × €3.00 = €36 > €20
+      .send({ items: [{ productId: 'coffee', quantity: 12 }], participantCount }); // €36 whole cart > €20, irrespective of shares.
     expect(res.status).toBe(403);
     expect(res.body.policyDecision).toBe('BLOCK');
   });

@@ -115,6 +115,19 @@ describe('Priority 1: enriched dispute evidence package', () => {
     expect(event.violatedRules).toContain('CONFIRMATION_THRESHOLD_EXCEEDED');
   });
 
+  test('the signed evidence package includes recorded Wellbeing Guard decisions and product data version', async () => {
+    const orderId = await createOrder();
+    const event = policyStorage.getEvents().find((item) => item.orderId === orderId)!;
+    event.wellbeingDecision = {
+      status: 'UNKNOWN', productDataVersion: 'version-hash',
+      items: [{ productId: 'coffee', status: 'UNKNOWN', missing: ['allergen:dairy'] }],
+    };
+    const pkg = await fetchEvidence(orderId);
+    expect(pkg.policyEvents[0].wellbeingDecision).toMatchObject({ status: 'UNKNOWN', productDataVersion: 'version-hash' });
+    const verify = await request(app).post('/api/evidence/verify').send(pkg);
+    expect(verify.body.valid).toBe(true);
+  });
+
   test('the enriched package still verifies as valid', async () => {
     const orderId = await createOrder();
     const pkg = await fetchEvidence(orderId);

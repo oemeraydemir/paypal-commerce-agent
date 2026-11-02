@@ -91,6 +91,8 @@ export interface PolicyEvaluationContext {
 export interface PolicyEvaluation {
   decision: PolicyDecision;
   violations: PolicyViolation[];
+  guardDataVersion?: string;
+  wellbeingDecision?: { status: string; productDataVersion: string; items: unknown[] };
 }
 
 export interface PolicyEvent {
@@ -111,6 +113,8 @@ export interface PolicyEvent {
     dailySpendLimitMinor: number;
     confirmationThresholdMinor: number;
   };
+  guardDataVersion?: string;
+  wellbeingDecision?: { status: string; productDataVersion: string; items: unknown[] };
 }
 
 export interface DailySpendReservation {

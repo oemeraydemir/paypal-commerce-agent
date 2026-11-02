@@ -30,6 +30,14 @@ beforeEach(() => {
     purchaseUnits: [{ payments: { captures: [{ id: 'CAP-1', status: 'COMPLETED', amount: { value: '3.00', currency_code: 'EUR' } }] } }],
   });
   (paypalClient.refundCapture as jest.Mock).mockReset().mockResolvedValue({ id: 'RF-1', status: 'COMPLETED' });
+  // `verifyRefundableCapture` (non-interrupted approvals) asks PayPal for the
+  // authoritative capture; this order is 3.00 EUR.
+  (paypalClient.getCapture as jest.Mock).mockReset().mockResolvedValue({
+    id: 'CAP-1',
+    status: 'COMPLETED',
+    amount: { currencyCode: 'EUR', value: '3.00' },
+    sellerPayableBreakdown: { totalRefundedAmount: { currencyCode: 'EUR', value: '0.00' } },
+  });
 });
 
 async function waitFor<T>(fn: () => T | null | undefined | false, what: string, ms = 8000): Promise<T> {
@@ -40,6 +48,7 @@ async function waitFor<T>(fn: () => T | null | undefined | false, what: string, 
 test('shopper requests a refund from the receipt and sees the merchant decision', async () => {
   const s = await (await fetch(base + '/api/sessions', { method: 'POST' })).json();
   const h = { 'X-Session-Id': s.sessionId, Authorization: `Bearer ${s.sessionToken}`, 'Content-Type': 'application/json' };
+  await fetch(base + '/api/wellbeing/preferences', { method: 'PUT', headers: h, body: JSON.stringify({ preferences: { dietary: [], allergens: [] } }) });
   const created = await (await fetch(base + '/api/orders/create', { method: 'POST', headers: { ...h, 'Idempotency-Key': 'k-refund-1' }, body: JSON.stringify({ items: [{ productId: 'coffee', quantity: 1 }] }) })).json();
   expect(created.orderId).toBeTruthy();
 

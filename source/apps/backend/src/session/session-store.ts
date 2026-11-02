@@ -30,6 +30,7 @@ export interface SessionRecord {
   lastSeenAt: number;
   /** in-memory only: when lastSeenAt was last written to the database */
   persistedAt?: number;
+  wellbeingPreferences?: { dietary: string[]; allergens: string[] };
 }
 
 export interface IssuedSession {
@@ -82,6 +83,7 @@ export class SessionStore {
       tokenHash: record.tokenHash.toString('hex'),
       createdAt: new Date(record.createdAt),
       lastSeenAt: new Date(record.lastSeenAt),
+      wellbeingPreferences: record.wellbeingPreferences,
     });
     record.persistedAt = record.lastSeenAt;
     this.dirty.delete(sessionId);
@@ -121,6 +123,7 @@ export class SessionStore {
         createdAt: row.createdAt.getTime(),
         lastSeenAt: row.lastSeenAt.getTime(),
         persistedAt: row.lastSeenAt.getTime(),
+        wellbeingPreferences: row.wellbeingPreferences,
       };
       if (this.isExpired(record, now)) {
         await repos.sessions.remove(row.sessionId);
@@ -189,6 +192,18 @@ export class SessionStore {
 
   has(sessionId: string): boolean {
     return this.sessions.has(sessionId);
+  }
+
+  getWellbeingPreferences(sessionId: string) {
+    const value = this.sessions.get(sessionId)?.wellbeingPreferences;
+    return value ? { dietary: [...value.dietary], allergens: [...value.allergens] } : undefined;
+  }
+
+  async setWellbeingPreferences(sessionId: string, preferences: { dietary: string[]; allergens: string[] }): Promise<void> {
+    const record = this.sessions.get(sessionId);
+    if (!record) throw new Error('Session not found');
+    record.wellbeingPreferences = { dietary: [...preferences.dietary], allergens: [...preferences.allergens] };
+    await this.saveNow(sessionId);
   }
 
   remove(sessionId: string): boolean {

@@ -45,6 +45,7 @@ describe('Scoped AI Allowance', () => {
     expect(res.status).toBe(200);
     expect(res.body.enabled).toBe(true);
     expect(res.body.validUntil).toBeNull();
+    expect(res.body.updatedAt).toEqual(expect.any(String));
     expect(res.body.limits.maxPerPurchaseMinor).toBeGreaterThan(0);
     expect(res.body.limits.dailySpendLimitMinor).toBeGreaterThan(0);
     expect(res.body.usage.spentTodayMinor).toBe(0);
@@ -72,6 +73,10 @@ describe('Scoped AI Allowance', () => {
       .send({ items: [{ productId: 'coffee', quantity: 1 }] });
     expect(preview.status).toBe(200);
     expect(preview.body.limits.validUntil).toBe(future);
+    expect(preview.body.totalMinor).toBe(300);
+    expect(preview.body.remainingPerPurchaseMinor).toBe(1700);
+    expect(preview.body.limits.updatedAt).toEqual(expect.any(String));
+    expect(preview.body.limits.allowedMerchantIds.length).toBeGreaterThan(0);
 
     const created = await request(app)
       .post('/api/orders/create')
@@ -113,6 +118,21 @@ describe('Scoped AI Allowance', () => {
     expect(res.status).toBe(403);
     expect(res.body.policyDecision).toBe('BLOCK');
     expect(res.body.violations.map((v: any) => v.type)).toContain('ALLOWANCE_EXPIRED');
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+  });
+
+  test('order creation re-prices a changed cart and rejects it above the authorized amount', async () => {
+    await request(app)
+      .patch('/api/policy')
+      .set(sess.headers)
+      .send({ maxPerPurchaseMinor: 1000, dailySpendLimitMinor: 10000 });
+    const res = await request(app)
+      .post('/api/orders/create')
+      .set(sess.headers)
+      .set('Idempotency-Key', 'mandate-cart-changed')
+      .send({ items: [{ productId: 'coffee', quantity: 4 }] }); // Server reprices to €12, above the €10 mandate.
+    expect(res.status).toBe(403);
+    expect(res.body.violations.map((v: any) => v.type)).toContain('MAX_PURCHASE_EXCEEDED');
     expect(mockCreateOrder).not.toHaveBeenCalled();
   });
 

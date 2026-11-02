@@ -5,6 +5,7 @@ import 'package:flutter_app/l10n/app_strings.dart';
 import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/order.dart';
 import 'package:flutter_app/models/paid_receipt.dart';
+import 'package:flutter_app/models/pickup.dart';
 import 'package:flutter_app/providers/chat_provider.dart';
 import 'package:flutter_app/providers/locale_provider.dart';
 import 'package:flutter_app/services/api_service.dart';
@@ -126,6 +127,32 @@ class CheckoutProvider extends ChangeNotifier {
   // Stage 2: session-scoped allowance snapshot (limits + usage + expiry).
   PolicyAllowance? _allowance;
   PolicyAllowance? get allowance => _allowance;
+  PolicyPreview? _cartMandate;
+  PolicyPreview? get cartMandate => _cartMandate;
+  bool get requiresMandateRenewal => _policyStatus == CartPolicyStatus.blocked && _cartMandate != null &&
+      (_cartMandate!.violations.contains('MAX_PURCHASE_EXCEEDED') ||
+       _cartMandate!.violations.contains('ALLOWANCE_EXPIRED'));
+
+  Future<void> renewMandateForCurrentCart() async {
+    final preview = _cartMandate;
+    final allowance = _allowance;
+    final total = preview?.totalMinor;
+    if (preview == null || allowance == null || total == null || total <= 0) return;
+    try {
+      final max = total > allowance.maxPerPurchaseMinor ? total : allowance.maxPerPurchaseMinor;
+      final daily = max > allowance.dailySpendLimitMinor ? max : allowance.dailySpendLimitMinor;
+      _allowance = await api.updatePolicy(
+        maxPerPurchaseMinor: max,
+        dailySpendLimitMinor: daily,
+        validUntil: DateTime.now().add(const Duration(hours: 1)).toUtc().toIso8601String(),
+      );
+      _refreshPolicy();
+      notifyListeners();
+    } catch (error) {
+      _setRawError('Could not renew spending permission: $error');
+      notifyListeners();
+    }
+  }
 
   Future<void> refreshAllowance() async {
     try {
@@ -152,16 +179,19 @@ class CheckoutProvider extends ChangeNotifier {
     final items = _resolveItems();
     if (items.isEmpty) {
       _policyFuture = null;
+      _cartMandate = null;
       _policyStatus = CartPolicyStatus.idle;
       _clearPolicyReason();
       return;
     }
+    _cartMandate = null;
     _policyStatus = CartPolicyStatus.checking;
     _clearPolicyReason();
     _policyFuture = api
         .previewPolicy(items)
         .then((preview) {
           if (_disposed || version != _policyVersion) return;
+          _cartMandate = preview;
           switch (preview.decision) {
             case PolicyDecision.autoAllow:
               _policyStatus = CartPolicyStatus.allowed;
@@ -226,6 +256,20 @@ class CheckoutProvider extends ChangeNotifier {
   OrderCreateResult? _created;
   OrderCreateResult? get created => _created;
   bool get hasPendingOrder => _created != null && _captured == null;
+
+  /// The shopper's held pickup reservation (if any). Held until it is linked
+  /// to the order at payment. Owned here so the receipt can offer linking.
+  PickupBooking? _pickupBooking;
+  PickupBooking? get pickupBooking => _pickupBooking;
+
+  void setPickupBooking(PickupBooking? booking) {
+    if (_pickupBooking?.bookingId == booking?.bookingId &&
+        _pickupBooking?.status == booking?.status) {
+      return;
+    }
+    _pickupBooking = booking;
+    notifyListeners();
+  }
 
   OrderCaptureResult? _captured;
   OrderCaptureResult? get captured => _captured;
@@ -561,7 +605,7 @@ class CheckoutProvider extends ChangeNotifier {
   }
 
   /// Step 1+2: create the order server-side and open the PayPal approval URL.
-  Future<void> startCheckout() async {
+  Future<void> startCheckout({Map<String, dynamic>? wellbeingPreferences}) async {
     if (_busy) return;
     if (hasPendingOrder) {
       _setError('checkout.errorExistingOrder');
@@ -630,6 +674,7 @@ class CheckoutProvider extends ChangeNotifier {
       final result = await api.createOrder(
         items: currentItems,
         idempotencyKey: _idempotencyKey,
+        wellbeingPreferences: wellbeingPreferences,
       );
       final approvalUrl = result.approvalUrl;
       final approvalUri = approvalUrl == null

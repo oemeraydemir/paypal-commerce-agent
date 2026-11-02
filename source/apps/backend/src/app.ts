@@ -27,6 +27,7 @@ import billsRoutes from './routes/bills';
 import pickupRoutes from './routes/pickup';
 import wellbeingRoutes from './routes/wellbeing';
 import refundRequestRoutes from './routes/refund-requests';
+import disputeRoutes from './routes/disputes';
 import { currentBusiness } from './config/business-config';
 import { rejectClientTenantOverride } from './config/tenant';
 import fs from 'fs';
@@ -137,6 +138,7 @@ export function createApp() {
   app.use('/api', pickupRoutes);
   app.use('/api', wellbeingRoutes);
   app.use('/api', refundRequestRoutes);
+  app.use('/api', disputeRoutes);
   app.use('/', wellKnownMandateKeys);
 
   app.use(errorHandler);

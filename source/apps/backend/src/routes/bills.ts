@@ -35,6 +35,8 @@ import { policyService } from '../policy/service';
 import { policyStorage } from '../policy/storage';
 import { getRepos } from '../persistence/registry';
 import { buildEvaluationOrder, buildPolicyContext, buildPolicyOutcome } from '../policy/context-builder';
+import { sessionStore } from '../session';
+import { evaluateWellbeing } from '../wellbeing/service';
 import {
   BillGroup,
   BillShare,
@@ -51,6 +53,19 @@ const orderService = OrderService.getInstance();
 
 function participantHash(userId: string): string {
   return createHash('sha256').update(`bill-participant:${userId}`).digest('hex').slice(0, 12);
+}
+
+function billMandateError(reason: string): AppError {
+  const renewal = reason === 'BILL_MANDATE_RENEWAL_REQUIRED' || reason === 'MANDATE_CHANGED' || reason === 'ALLOWANCE_EXPIRED';
+  return new AppError(renewal ? 409 : 403,
+    renewal
+      ? 'The bill owner must explicitly renew spending permission for the full cart before participants can pay.'
+      : reason === 'MAX_PURCHASE_EXCEEDED'
+        ? 'The share exceeds the participant’s authorized purchase limit.'
+        : reason === 'DAILY_LIMIT_EXCEEDED'
+          ? 'The share exceeds the participant’s remaining daily allowance.'
+          : 'The participant’s spending permission does not authorize this payment.',
+    { code: renewal ? 'BILL_MANDATE_RENEWAL_REQUIRED' : reason, reason });
 }
 
 /** Rolls a share's order back to a non-payable state and releases its reservation. */
@@ -172,20 +187,28 @@ function serializeGroup(group: BillGroup, viewerId?: string) {
 
 // ---- P1: group lifecycle ----------------------------------------------------
 
-router.post('/bills', requireSession, (req, res, next) => {
+router.post('/bills', requireSession, async (req, res, next) => {
   try {
-    const { userId } = req.session!;
+    const { userId, sessionId } = req.session!;
     const { items, participantCount } = req.body ?? {};
     const validated = validateOrderItems(items, catalogService); // throws AppError 400
+    const wellbeingPreferences = sessionStore.getWellbeingPreferences(req.session!.sessionId);
+    if (!wellbeingPreferences) throw new AppError(428, 'Save your wellbeing preferences before creating a Split Bill', { code: 'WELLBEING_PROFILE_REQUIRED' });
+    const wellbeing = evaluateWellbeing(validated, wellbeingPreferences, catalogService);
+    if (!wellbeing.allowed) {
+      const total = validated.reduce((sum, item) => sum + item.lineTotalMinor, 0);
+      const policy = await policyStorage.getAuthoritativePolicy(userId);
+      policyStorage.recordEvent({ userId, sessionId: req.session!.sessionId, cartId: createHash('sha256').update(JSON.stringify(validated)).digest('hex').slice(0, 16), agent: 'server', amountMinor: total, currency: currentBusiness.currency, evaluation: { decision: 'BLOCK', violations: [], guardDataVersion: wellbeing.productDataVersion, wellbeingDecision: { status: wellbeing.status, productDataVersion: wellbeing.productDataVersion, items: wellbeing.items } }, policy });
+      return res.status(403).json({ error: 'Cart blocked by Wellbeing Guard', code: 'WELLBEING_GUARD_BLOCKED', wellbeing });
+    }
     if (!Number.isInteger(participantCount) || participantCount < MIN_PARTICIPANTS || participantCount > MAX_PARTICIPANTS) {
       throw new AppError(400, `participantCount must be an integer between ${MIN_PARTICIPANTS} and ${MAX_PARTICIPANTS}`);
     }
     // Splitting must not become a way around the spending policy: the WHOLE cart is
     // evaluated exactly like a normal checkout (no daily-spend reservation here; each
     // share reserves its own amount when it is paid). Only BLOCK stops creation.
-    const { sessionId } = req.session!;
     const wholeTotal = validated.reduce((sum, i) => sum + i.lineTotalMinor, 0);
-    const policy = policyStorage.getOrCreatePolicy(userId);
+    const policy = await policyStorage.getAuthoritativePolicy(userId);
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
     const ordersLastHour = orderService
       .getAll()
@@ -211,7 +234,35 @@ router.post('/bills', requireSession, (req, res, next) => {
       participantCount,
       currency: currentBusiness.currency,
       merchantId: currentBusiness.businessId,
+      persist: !getRepos(),
     });
+    const repos = getRepos();
+    if (repos) {
+      const reserved = await repos.bills.createGroupWithMandateReservation({
+        group,
+        mandateRevision: policyStorage.getRevision(userId),
+        sessionId,
+        expiresAt: policy.validUntil,
+        reservationId: uuidv4(),
+      });
+      if (!reserved.ok) {
+        billService.forgetUncommittedGroup(group.id);
+        throw new AppError(reserved.reason === 'MANDATE_CHANGED' || reserved.reason === 'ALLOWANCE_EXPIRED' ? 409 : 403,
+          reserved.reason === 'ALLOWANCE_EXPIRED'
+            ? 'Spending permission expired; review and authorize it again.'
+            : reserved.reason === 'MANDATE_CHANGED'
+              ? 'Spending permission changed; reload and confirm again.'
+              : reserved.reason === 'MAX_PURCHASE_EXCEEDED'
+                ? 'The full Split Bill cart exceeds the authorized purchase limit.'
+                : reserved.reason === 'MERCHANT_NOT_ALLOWED'
+                  ? 'This merchant is outside the authorized spending scope.'
+                  : reserved.reason === 'CURRENCY_MISMATCH'
+                    ? 'This cart currency is outside the authorized spending scope.'
+                    : 'The full Split Bill cart exceeds the remaining daily spending allowance.',
+          { code: reserved.reason });
+      }
+    }
+    policyStorage.recordEvent({ userId, sessionId, cartId: `bill_${group.id}`, agent: 'server', amountMinor: wholeTotal, currency: currentBusiness.currency, evaluation: { decision: 'AUTO_ALLOW', violations: [], guardDataVersion: wellbeing.productDataVersion, wellbeingDecision: { status: wellbeing.status, productDataVersion: wellbeing.productDataVersion, items: wellbeing.items } }, policy });
     res.status(201).json(serializeGroup(group, userId));
   } catch (err) {
     next(err);
@@ -230,14 +281,56 @@ router.post('/bills/:id/invite', requireSession, (req, res, next) => {
   }
 });
 
-router.post('/bills/:id/cancel', requireSession, (req, res, next) => {
+router.post('/bills/:id/cancel', requireSession, async (req, res, next) => {
   try {
     const { userId } = req.session!;
-    const group = billService.cancel(req.params.id, userId);
+    const repos = getRepos();
+    if (repos) {
+      const closed = await repos.bills.cancelGroupAndCloseMandate(req.params.id, userId);
+      if (!closed) throw new AppError(409, 'Bill has a payment in progress or cannot be cancelled.');
+    }
+    const group = repos
+      ? billService.applyPersistedCancellation(req.params.id, userId)
+      : billService.cancel(req.params.id, userId);
     res.json(serializeGroup(group, userId));
   } catch (err) {
     next(err);
   }
+});
+
+// Explicit owner confirmation re-establishes the full-cart spending permission
+// after a mandate revision/expiry. This is separate from each participant's
+// PayPal payment authorization.
+router.post('/bills/:id/mandate/renew', requireSession, async (req, res, next) => {
+  try {
+    const { userId, sessionId } = req.session!;
+    const group = billService.getById(req.params.id);
+    if (!group || group.createdByUserId !== userId) throw new AppError(404, 'Bill not found');
+    const confirmedTotalMinor = req.body?.confirmedTotalMinor;
+    if (!Number.isSafeInteger(confirmedTotalMinor) || confirmedTotalMinor !== group.totalMinor) {
+      throw new AppError(400, 'confirmedTotalMinor must equal the complete current bill total.', {
+        code: 'FULL_CART_CONFIRMATION_REQUIRED', totalMinor: group.totalMinor,
+      });
+    }
+    const repos = getRepos();
+    if (!repos) throw new AppError(503, 'Durable spending permission storage is unavailable.');
+    const policy = await policyStorage.getAuthoritativePolicy(userId);
+    const result = await repos.bills.renewMandateReservation({
+      billId: group.id, ownerUserId: userId, confirmedTotalMinor,
+      mandateRevision: policyStorage.getRevision(userId), expiresAt: policy.validUntil,
+      reservationId: uuidv4(), sessionId, eventId: uuidv4(),
+    });
+    if (!result.ok) throw new AppError(result.reason === 'MANDATE_CHANGED' || result.reason === 'ALLOWANCE_EXPIRED' ? 409 : 403,
+      'The full Split Bill amount is not authorized under the current spending mandate. Review the mandate and confirm again.',
+      { code: result.reason });
+    res.json({
+      billId: group.id, reservationId: result.reservation.id,
+      authorizedAmountMinor: result.reservation.amountMinor,
+      currency: result.reservation.currency, mandateRevision: result.reservation.mandateRevision,
+      status: result.reservation.status,
+      paymentAuthorization: 'SEPARATE_PER_PARTICIPANT',
+    });
+  } catch (err) { next(err); }
 });
 
 router.post('/bills/join', requireSession, async (req, res, next) => {
@@ -290,6 +383,36 @@ router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, n
       throw new AppError(409, 'Share payment previously failed; create a new bill or share');
     }
 
+    const repos = getRepos();
+    let billMandateReservationId: string | undefined;
+    if (repos) {
+      const mandate = await repos.bills.validateMandateReservation({
+        billId: group.id, ownerUserId: group.createdByUserId, totalMinor: group.totalMinor,
+        currency: group.currency, merchantId: group.merchantId,
+      });
+      if (!mandate.ok) throw billMandateError(mandate.reason);
+      billMandateReservationId = mandate.reservation.id;
+    } else {
+      const ownerPolicy = await policyStorage.getAuthoritativePolicy(group.createdByUserId);
+      const ownerEvaluation = policyService.evaluatePurchase(
+        buildEvaluationOrder(sessionId, group.items, group.totalMinor, group.currency, OrderOrigin.HUMAN),
+        ownerPolicy,
+        buildPolicyContext(group.createdByUserId, group.merchantId, dailySpendTracker)
+      );
+      if (ownerEvaluation.decision === 'BLOCK') {
+        throw new AppError(409, 'The bill owner must renew permission for the full cart.', { code: 'BILL_MANDATE_RENEWAL_REQUIRED' });
+      }
+    }
+
+    const wellbeingPreferences = sessionStore.getWellbeingPreferences(sessionId);
+    if (!wellbeingPreferences) throw new AppError(428, 'Save your wellbeing preferences before paying a Split Bill share', { code: 'WELLBEING_PROFILE_REQUIRED' });
+    const wellbeing = evaluateWellbeing(group.items, wellbeingPreferences, catalogService);
+    if (!wellbeing.allowed) {
+      const blockedPolicy = policyStorage.getOrCreatePolicy(userId);
+      policyStorage.recordEvent({ userId, sessionId, cartId: `bill_${group.id}`, agent: 'server', amountMinor: share.amountMinor, currency: group.currency, evaluation: { decision: 'BLOCK', violations: [], guardDataVersion: wellbeing.productDataVersion, wellbeingDecision: { status: wellbeing.status, productDataVersion: wellbeing.productDataVersion, items: wellbeing.items } }, policy: blockedPolicy });
+      return res.status(403).json({ error: 'Cart blocked by Wellbeing Guard', code: 'WELLBEING_GUARD_BLOCKED', wellbeing });
+    }
+
     // Idempotent resume: if an order already exists for this share, hand back the
     // same checkout instead of creating a second order / PayPal order.
     if (share.orderId) {
@@ -325,7 +448,7 @@ router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, n
     }
 
     // Authoritative policy evaluation + daily-spend reservation for the share.
-    const policy = policyStorage.getOrCreatePolicy(userId);
+    const policy = await policyStorage.getAuthoritativePolicy(userId);
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
     const ordersLastHour = orderService
       .getAll()
@@ -365,10 +488,13 @@ router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, n
       });
     }
 
-    const reservation = dailySpendTracker.tryReserve(userId, total, policy.dailySpendLimitMinor);
-    if (!reservation) {
-      throw new AppError(403, 'Purchase blocked by policy', { reason: 'Cart exceeds daily spend limit' });
-    }
+    const reserved = await dailySpendTracker.reserveWithinMandate({
+      userId, amountMinor: total, currency: group.currency, merchantId: group.merchantId,
+      mandateRevision: policyStorage.getRevision(userId), dailySpendLimitMinor: policy.dailySpendLimitMinor,
+      billMandateReservationId,
+    });
+    if (!reserved.ok) throw billMandateError(reserved.reason);
+    const reservation = reserved.reservation;
 
     // ---- Atomic per-share claim barrier (claim-before-order) ----
     // The share→order binding is decided by the DB, not by in-process state:
@@ -378,7 +504,6 @@ router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, n
     //     a second order/PayPal order (multi-instance safe).
     //   - without a durable store (dev/test): keep the original single-instance
     //     in-memory behavior where `share.orderId` is bound synchronously.
-    const repos = getRepos();
     const policyLimits = {
       maxPerPurchaseMinor: policy.maxPerPurchaseMinor,
       dailySpendLimitMinor: policy.dailySpendLimitMinor,
@@ -419,7 +544,7 @@ router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, n
           agent: 'server',
           amountMinor: total,
           currency: group.currency,
-          evaluation,
+      evaluation: { ...evaluation, guardDataVersion: wellbeing.productDataVersion, wellbeingDecision: { status: wellbeing.status, productDataVersion: wellbeing.productDataVersion, items: wellbeing.items } },
           policy,
         });
       } catch {
@@ -464,7 +589,7 @@ router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, n
         agent: 'server',
         amountMinor: total,
         currency: group.currency,
-        evaluation,
+        evaluation: { ...evaluation, guardDataVersion: wellbeing.productDataVersion, wellbeingDecision: { status: wellbeing.status, productDataVersion: wellbeing.productDataVersion, items: wellbeing.items } },
         policy,
       });
       const paypalOrder = await startSharePayPalCheckout(order, reservation.id, `bill-pay-${share.id}`);

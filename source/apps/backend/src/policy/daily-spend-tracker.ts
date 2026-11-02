@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 import { DailySpendReservation } from './domain';
 import { getRepos, writeQueue } from '../persistence/registry';
-import { ReservationRow } from '../persistence/types';
+import { ReservationRow, ReservationResult } from '../persistence/types';
 
 interface DailySpend {
   day: string;
@@ -27,6 +27,8 @@ interface ReservationRecord {
   reservation: DailySpendReservation;
   state: ReservationState;
   settledAt?: number;
+  mandateRevision?: number;
+  billMandateReservationId?: string;
 }
 
 const SETTLED_RETENTION_MS = 48 * 60 * 60 * 1000;
@@ -48,6 +50,8 @@ export class DailySpendTracker {
       state: record.state,
       createdAt: record.reservation.createdAt,
       settledAt: record.settledAt !== undefined ? new Date(record.settledAt) : undefined,
+      mandateRevision: record.mandateRevision,
+      billMandateReservationId: record.billMandateReservationId,
     };
   }
 
@@ -93,6 +97,8 @@ export class DailySpendTracker {
         },
         state: row.state,
         settledAt: row.settledAt?.getTime(),
+        mandateRevision: row.mandateRevision,
+        billMandateReservationId: row.billMandateReservationId,
       });
       if (row.state === 'CONFIRMED' && row.settledAt && row.settledAt.toISOString().slice(0, 10) === today) {
         const previous = this.confirmedSpend.get(row.userId);
@@ -173,6 +179,47 @@ export class DailySpendTracker {
     };
     this.records.set(id, { reservation, state: 'PENDING' });
     this.persist(id);
+    return { ...reservation, createdAt: new Date(reservation.createdAt) };
+  }
+
+  /** Reserves against the durable mandate when PostgreSQL is attached. */
+  async reserveWithinMandate(input: {
+    userId: string;
+    amountMinor: number;
+    currency: string;
+    merchantId: string;
+    mandateRevision: number;
+    dailySpendLimitMinor: number;
+    billMandateReservationId?: string;
+  }): Promise<ReservationResult> {
+    const repos = getRepos();
+    if (!repos) {
+      const fallback = this.tryReserve(input.userId, input.amountMinor, input.dailySpendLimitMinor);
+      if (!fallback) return { ok: false, reason: 'DAILY_LIMIT_EXCEEDED' };
+      return { ok: true, reservation: {
+        ...fallback, state: 'PENDING', mandateRevision: input.mandateRevision,
+        billMandateReservationId: input.billMandateReservationId,
+      } };
+    }
+    const result = await repos.reservations.reserveWithinMandate({
+      ...input, id: randomUUID(), createdAt: new Date(),
+    });
+    if (result.ok) this.adoptDurableReservation(result.reservation);
+    return result;
+  }
+
+  /** Mirrors an atomically inserted PostgreSQL reservation without writing it again. */
+  adoptDurableReservation(row: ReservationRow): DailySpendReservation {
+    const existing = this.records.get(row.id);
+    if (existing) return { ...existing.reservation, createdAt: new Date(existing.reservation.createdAt) };
+    const reservation: DailySpendReservation = {
+      id: row.id, userId: row.userId, amountMinor: row.amountMinor, createdAt: new Date(row.createdAt),
+    };
+    this.records.set(row.id, {
+      reservation, state: row.state, settledAt: row.settledAt?.getTime(),
+      mandateRevision: row.mandateRevision,
+      billMandateReservationId: row.billMandateReservationId,
+    });
     return { ...reservation, createdAt: new Date(reservation.createdAt) };
   }
 

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_app/services/api_service.dart';
 import 'package:flutter_app/models/chat_message.dart';
+import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/product.dart';
 import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/services/session_service.dart';
@@ -31,6 +32,89 @@ MockClient withSession(Future<http.Response> Function(http.Request) handler) {
 
 void main() {
   group('ApiService', () {
+    test('checkout uses the shared Wellbeing profile and evaluation contract before order creation', () async {
+      final calls = <String>[];
+      final api = ApiService(
+        baseUrl: 'http://localhost:3000',
+        storage: InMemorySessionStorage(),
+        client: withSession((request) async {
+          calls.add('${request.method} ${request.url.path}');
+          if (request.url.path == '/api/wellbeing/preferences') {
+            expect(request.method, 'PUT');
+            expect(jsonDecode(request.body), {
+              'preferences': {
+                'dietary': ['vegan', 'gluten-free'],
+                'allergens': ['fish', 'peanut'],
+              },
+            });
+            return http.Response('{}', 200);
+          }
+          if (request.url.path == '/api/wellbeing/check') {
+            expect(request.method, 'POST');
+            expect(jsonDecode(request.body), {
+              'items': [{'productId': 'coffee', 'quantity': 1}],
+            });
+            return http.Response(jsonEncode({'allowed': true, 'status': 'NO_KNOWN_CONFLICT'}), 200);
+          }
+          if (request.url.path == '/api/orders/create') {
+            return http.Response(jsonEncode({
+              'orderId': 'order-1', 'paypalOrderId': 'paypal-1', 'status': 'PAYMENT_PENDING',
+              'origin': 'HUMAN', 'totalMinor': 300, 'totalFormatted': '€3.00',
+              'currency': 'EUR', 'approvalUrl': 'https://paypal.test/approve',
+            }), 201, headers: {'content-type': 'application/json; charset=utf-8'});
+          }
+          fail('Unexpected request ${request.method} ${request.url.path}');
+        }),
+      );
+
+      final result = await api.createOrder(
+        items: [OrderItem(id: 'coffee', quantity: 1)],
+        wellbeingPreferences: {
+          'dietary': ['vegan', 'gluten-free'],
+          'allergens': ['fish', 'peanut'],
+        },
+      );
+      expect(result.orderId, 'order-1');
+      expect(calls, [
+        'PUT /api/wellbeing/preferences',
+        'POST /api/wellbeing/check',
+        'POST /api/orders/create',
+      ]);
+      api.dispose();
+    });
+
+    test('UNKNOWN Wellbeing result prevents Flutter from calling order creation', () async {
+      final calls = <String>[];
+      final api = ApiService(
+        baseUrl: 'http://localhost:3000',
+        storage: InMemorySessionStorage(),
+        client: withSession((request) async {
+          calls.add(request.url.path);
+          if (request.url.path == '/api/wellbeing/preferences') return http.Response('{}', 200);
+          if (request.url.path == '/api/wellbeing/check') {
+            return http.Response(jsonEncode({
+              'allowed': false,
+              'status': 'UNKNOWN',
+              'items': [{'name': 'Coffee', 'status': 'UNKNOWN', 'conflicts': [], 'missing': ['allergen:peanut']}],
+              'alternatives': [],
+              'notice': 'Not medical advice.',
+            }), 200);
+          }
+          fail('Order endpoint must not be called for UNKNOWN data');
+        }),
+      );
+
+      await expectLater(
+        api.createOrder(
+          items: [OrderItem(id: 'coffee', quantity: 1)],
+          wellbeingPreferences: {'dietary': [], 'allergens': ['peanut']},
+        ),
+        throwsA(isA<ApiException>().having((e) => e.code, 'code', 'WELLBEING_GUARD_BLOCKED')),
+      );
+      expect(calls, ['/api/wellbeing/preferences', '/api/wellbeing/check']);
+      api.dispose();
+    });
+
     test(
       'sends shopper profile and session auth headers with the AI request',
       () async {

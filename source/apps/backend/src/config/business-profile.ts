@@ -21,6 +21,11 @@ const productSchema = z.object({
   dietary: z.array(z.string().max(40)).default([]),
   occasion: z.array(z.string().max(40)).default([]),
   available: z.boolean().default(true),
+  wellbeing: z.object({
+    dietary: z.record(z.enum(['vegetarian', 'vegan', 'gluten-free']), z.object({ status: z.enum(['CONFLICT', 'NO_CONFLICT', 'UNKNOWN']), ingredients: z.array(z.string().min(1).max(100)).max(40).optional() })).optional(),
+    allergens: z.record(z.enum(['gluten', 'dairy', 'tree-nut', 'peanut', 'soy', 'egg', 'fish', 'shellfish']), z.object({ status: z.enum(['CONFLICT', 'NO_CONFLICT', 'UNKNOWN']), ingredients: z.array(z.string().min(1).max(100)).max(40).optional() })).optional(),
+    dataVersion: z.string().max(80).optional(),
+  }).optional(),
 });
 
 const businessSchema = z.object({

@@ -39,6 +39,8 @@ import {
 } from '../policy/context-builder';
 import { PolicyEvaluation } from '../policy/domain';
 import { captureLock } from '../orders/capture-lock';
+import { sessionStore } from '../session';
+import { evaluateWellbeing } from '../wellbeing/service';
 import {
   markOrderPaid,
   markOrderPaymentFailed,
@@ -50,10 +52,53 @@ const router = Router();
 const orderService = OrderService.getInstance();
 const catalogService = new CatalogService();
 
+// Run before idempotency replay so a cached response cannot bypass updated
+// session restrictions or changed product facts.
+function wellbeingOrderGuard(req: any, res: any, next: any): void {
+  try {
+    const { sessionId, userId } = req.session;
+    const preferences = sessionStore.getWellbeingPreferences(sessionId);
+    if (!preferences) throw new AppError(428, 'Save your wellbeing preferences before checkout', { code: 'WELLBEING_PROFILE_REQUIRED' });
+    const items = validateOrderItems(req.body?.items, catalogService);
+    const decision = evaluateWellbeing(items, preferences, catalogService);
+    res.locals.wellbeing = decision;
+    if (decision.allowed) return next();
+    const policy = policyStorage.getOrCreatePolicy(userId);
+    const cartId = createCartId(sessionId, items);
+    policyStorage.recordEvent({
+      userId, sessionId, cartId, agent: 'server',
+      amountMinor: items.reduce((sum, item) => sum + item.lineTotalMinor, 0),
+      currency: currentBusiness.currency,
+      evaluation: { decision: 'BLOCK', violations: [], guardDataVersion: decision.productDataVersion, wellbeingDecision: { status: decision.status, productDataVersion: decision.productDataVersion, items: decision.items } },
+      policy,
+    });
+    res.status(403).json({ error: 'Cart blocked by Wellbeing Guard', code: 'WELLBEING_GUARD_BLOCKED', wellbeing: decision });
+  } catch (err) { next(err); }
+}
+
 // Rolls an order back to a non-payable state and releases its reservation.
 function abandonOrder(orderId: string, reservationId?: string): void {
   if (reservationId) dailySpendTracker.cancelReservation(reservationId);
   orderService.updateStatus(orderId, OrderStatus.ORDER_CANCELLED);
+}
+
+function mandateReservationError(reason: string): AppError {
+  const renewalRequired = reason === 'ALLOWANCE_EXPIRED' || reason === 'MANDATE_CHANGED' ||
+    reason === 'MANDATE_DISABLED' || reason === 'BILL_MANDATE_RENEWAL_REQUIRED';
+  const messages: Record<string, string> = {
+    ALLOWANCE_EXPIRED: 'Spending permission expired. Review and authorize it again.',
+    MANDATE_CHANGED: 'Spending permission changed. Review and authorize it again.',
+    BILL_MANDATE_RENEWAL_REQUIRED: 'The Split Bill spending permission is no longer valid. The bill owner must authorize the full cart again.',
+    MAX_PURCHASE_EXCEEDED: 'The cart exceeds the authorized per-purchase limit.',
+    DAILY_LIMIT_EXCEEDED: 'The cart exceeds the remaining authorized daily allowance.',
+    MERCHANT_NOT_ALLOWED: 'This merchant is outside the authorized spending scope.',
+    CURRENCY_MISMATCH: 'The cart currency is outside the authorized spending scope.',
+    MANDATE_DISABLED: 'Spending permission is disabled. Review and authorize it again.',
+  };
+  return new AppError(renewalRequired ? 409 : 403, messages[reason] ?? 'Spending permission could not be verified.', {
+    code: renewalRequired ? 'MANDATE_RENEWAL_REQUIRED' : reason,
+    reason,
+  });
 }
 
 /**
@@ -166,7 +211,7 @@ function createResponse(order: ReturnType<OrderService['create']>, paypalOrderId
   };
 }
 
-router.post('/orders/create', requireSession, checkoutLimiter, idempotency, async (req, res, next) => {
+router.post('/orders/create', requireSession, checkoutLimiter, wellbeingOrderGuard, idempotency, async (req, res, next) => {
   try {
     // sessionId/userId come from the authenticated session, never from the body.
     const { sessionId, userId } = req.session!;
@@ -184,6 +229,8 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
 
     // FIX #9 + #12: authoritative pricing, currency + quantity validation.
     const validatedItems = validateOrderItems(items, catalogService);
+    const wellbeing = res.locals.wellbeing;
+    const wellbeingEvidence = { status: wellbeing.status, productDataVersion: wellbeing.productDataVersion, items: wellbeing.items };
 
     // The same cart must not be paid twice: while the owner has a running Split Bill
     // for exactly this cart, whole-cart checkout is refused (cancel the bill first).
@@ -234,20 +281,19 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
           return res.status(201).json(createResponse(existing, existing.paypalOrderId, approvalUrl));
         }
         // Order row exists but PayPal was never reached: resume from there.
-        const resumePolicy = policyStorage.getOrCreatePolicy(userId);
+        const resumePolicy = await policyStorage.getAuthoritativePolicy(userId);
         let reservationId = existing.reservationId;
         if (!reservationId || dailySpendTracker.getReservationState(reservationId) !== 'PENDING') {
-          const fresh = dailySpendTracker.tryReserve(
-            userId,
-            existing.totalMinor,
-            resumePolicy.dailySpendLimitMinor
-          );
-          if (!fresh) {
+          const reserved = await dailySpendTracker.reserveWithinMandate({
+            userId, amountMinor: existing.totalMinor, currency: existing.currency,
+            merchantId: currentBusiness.businessId, mandateRevision: policyStorage.getRevision(userId),
+            dailySpendLimitMinor: resumePolicy.dailySpendLimitMinor,
+          });
+          if (!reserved.ok) {
             orderService.updateStatus(existing.id, OrderStatus.ORDER_CANCELLED);
-            throw new AppError(403, 'Purchase blocked by policy', {
-              reason: 'Cart exceeds daily spend limit',
-            });
+            throw mandateReservationError(reserved.reason);
           }
+          const fresh = reserved.reservation;
           reservationId = fresh.id;
           orderService.setReservationId(existing.id, reservationId);
           try {
@@ -275,7 +321,7 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
     // authoritative PolicyEvents (sessionId + item selection).
     const cartId = createCartId(sessionId, validatedItems);
     // Per-user policy + per-user daily budget: isolated from every other session.
-    const policy = policyStorage.getOrCreatePolicy(userId);
+    const policy = await policyStorage.getAuthoritativePolicy(userId);
 
     // S10 (R9/R10): AUTHORITATIVE policy evaluation on an in-memory snapshot
     // BEFORE the order is persisted or PayPal is contacted. The client's
@@ -340,12 +386,12 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
 
     // S10 (R12): reserve spend against the daily limit BEFORE PayPal. A failure
     // here is a policy enforcement failure (R20) and creates no PayPal order.
-    const reservation = dailySpendTracker.tryReserve(
-      userId,
-      calculatedTotal,
-      policy.dailySpendLimitMinor
-    );
-    if (!reservation) {
+    const reserved = await dailySpendTracker.reserveWithinMandate({
+      userId, amountMinor: calculatedTotal, currency: currentBusiness.currency,
+      merchantId: currentBusiness.businessId, mandateRevision: policyStorage.getRevision(userId),
+      dailySpendLimitMinor: policy.dailySpendLimitMinor,
+    });
+    if (!reserved.ok) {
       // R20: record an authoritative BLOCK so the dashboard stays truthful.
       const denyEvaluation: PolicyEvaluation = {
         decision: 'BLOCK',
@@ -370,19 +416,9 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
         evaluation: denyEvaluation,
         policy,
       });
-      return res.status(403).json({
-        error: 'Purchase blocked by policy',
-        policyDecision: 'BLOCK',
-        violations: [
-          {
-            type: 'DAILY_LIMIT_EXCEEDED',
-            message: `Cart total ${calculatedTotal} exceeds remaining daily budget.`,
-          },
-        ],
-        reason: 'Cart exceeds daily spend limit',
-        suggestion: 'Reduce your cart total or wait for the daily budget to reset.',
-      });
+      throw mandateReservationError(reserved.reason);
     }
+    const reservation = reserved.reservation;
 
     const order = orderService.create(
       sessionId,
@@ -424,7 +460,7 @@ router.post('/orders/create', requireSession, checkoutLimiter, idempotency, asyn
       agent: 'server',
       amountMinor: order.totalMinor,
       currency: order.currency,
-      evaluation,
+      evaluation: { ...evaluation, guardDataVersion: wellbeing.productDataVersion, wellbeingDecision: wellbeingEvidence },
       policy,
     });
 

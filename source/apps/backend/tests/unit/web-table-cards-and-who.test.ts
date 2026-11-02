@@ -32,7 +32,7 @@ function load() {
     setTimeout: () => 0, clearTimeout: () => {},
   };
   const src = fs.readFileSync(path.join(__dirname, '../../public/app.js'), 'utf8');
-  const inst = src.replace(/\n  boot\(\);\n\}\)\(\);\s*$/, '\n  globalThis.t = { renderMarkdown: renderMarkdown, renderReceipt: renderReceipt };\n})();');
+  const inst = src.replace(/\r?\n  boot\(\);\r?\n\}\)\(\);\s*$/, '\n  globalThis.t = { renderMarkdown: renderMarkdown, renderReceipt: renderReceipt };\n})();');
   expect(inst).not.toBe(src);
   vm.runInNewContext(inst, ctx);
   return { t: ctx.t, get };

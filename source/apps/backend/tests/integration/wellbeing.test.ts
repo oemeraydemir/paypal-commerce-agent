@@ -1,82 +1,99 @@
 import request from 'supertest';
 import { createApp } from '../../src/app';
-import { newSession, resetSessionState, TestSession } from '../helpers/session';
-import { evaluateWellbeing, parseDiet } from '../../src/wellbeing/service';
+import { newSession, resetSessionState } from '../helpers/session';
+import { evaluateWellbeing, parseWellbeingPreferences } from '../../src/wellbeing/service';
 import { CatalogService } from '../../src/catalog/service';
+import { policyStorage } from '../../src/policy/storage';
+import { BillService } from '../../src/bills/service';
 
 const app = createApp();
 const catalog = new CatalogService();
-let s: TestSession;
+let s: Awaited<ReturnType<typeof newSession>>;
 
-beforeEach(async () => {
-  resetSessionState();
-  s = await newSession(app);
-});
+beforeEach(async () => { resetSessionState(); BillService.getInstance().reset(); s = await newSession(app); });
 
-const veganItem = catalog.getAll().find((p) => p.dietary.includes('vegan'))!;
-const plainItem = catalog.getAll().find((p) => !p.dietary.includes('vegan') && !p.dietary.includes('vegetarian'))!;
-
-describe('wellbeing check: honesty rules', () => {
-  test('always reports sample-data status and a confirm-with-café notice', async () => {
-    const r = await request(app).post('/api/wellbeing/check').set(s.headers).send({ items: [{ productId: veganItem.id, quantity: 1 }], diet: 'vegan' });
-    expect(r.status).toBe(200);
-    expect(r.body.dataStatus).toBe('SAMPLE_DATA_UNVERIFIED');
-    expect(r.body.confirmWithCafe).toBe(true);
-    expect(r.body.notice).toMatch(/not been verified/i);
-    expect(r.body.allergens.status).toBe('NO_DATA');
-    expect(r.headers['cache-control']).toBe('no-store');
+describe('Wellbeing Guard authoritative contract', () => {
+  test('supports multiple restrictions and treats unverified product data as UNKNOWN', async () => {
+    const product = catalog.getAll()[0];
+    await request(app).put('/api/wellbeing/preferences').set(s.headers).send({ preferences: { dietary: ['vegan', 'gluten-free'], allergens: ['peanut', 'fish'] } }).expect(200);
+    const result = await request(app).post('/api/wellbeing/check').set(s.headers).send({ items: [{ productId: product.id, quantity: 1 }] }).expect(200);
+    expect(result.body.status).toBe('UNKNOWN');
+    expect(result.body.allowed).toBe(false);
+    expect(result.body.items[0].missing).toEqual(expect.arrayContaining(['dietary:vegan', 'dietary:gluten-free', 'allergen:peanut', 'allergen:fish']));
+    expect(result.body.items[0].productDataVersion).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.body.notice).toMatch(/not medical advice/i);
   });
 
-  test('never claims safety, suitability or compliance anywhere in the response', async () => {
-    const r = await request(app).post('/api/wellbeing/check').set(s.headers).send({ items: [{ productId: veganItem.id, quantity: 1 }], diet: 'vegan' });
-    const text = JSON.stringify(r.body).toLowerCase();
-    for (const bad of ['"safe"', 'is safe', 'allergen-free"', 'suitable', 'compliant":true', 'guarantee']) {
-      expect(text).not.toContain(bad);
-    }
+  test('rejects malformed and unauthenticated preference access', async () => {
+    expect((await request(app).put('/api/wellbeing/preferences').send({ preferences: { dietary: [], allergens: [] } })).status).toBe(401);
+    expect((await request(app).put('/api/wellbeing/preferences').set(s.headers).send({ preferences: { dietary: ['keto'], allergens: [] } })).status).toBe(400);
   });
 
-  test('allergens are refused: they never leave the device', async () => {
-    const r = await request(app).post('/api/wellbeing/check').set(s.headers).send({ items: [{ productId: veganItem.id, quantity: 1 }], allergens: ['gluten'] });
-    expect(r.status).toBe(400);
-    expect(r.body.details?.code).toBe('ALLERGENS_NOT_ACCEPTED');
+  test('distinguishes confirmed conflicts, known no-conflict and unknown', () => {
+    const p = catalog.getAll()[0];
+    const enriched = Object.assign(Object.create(Object.getPrototypeOf(catalog)), catalog) as CatalogService;
+    (enriched as any).products = [{ ...p, wellbeing: { dietary: { vegan: { status: 'CONFLICT', ingredients: ['milk'] }, vegetarian: { status: 'NO_CONFLICT' } }, allergens: { dairy: { status: 'CONFLICT', ingredients: ['milk'] } } } }];
+    const conflict = evaluateWellbeing([{ productId: p.id, quantity: 1 }], { dietary: ['vegan'], allergens: ['dairy'] }, enriched);
+    expect(conflict.status).toBe('CONFIRMED_CONFLICT');
+    expect(conflict.items[0].conflicts[0].ingredients).toEqual(['milk']);
+    const clear = evaluateWellbeing([{ productId: p.id, quantity: 1 }], { dietary: ['vegetarian'], allergens: [] }, enriched);
+    expect(clear.status).toBe('NO_KNOWN_CONFLICT');
+    expect(clear.allowed).toBe(true);
   });
 
-  test('requires a session and validates input', async () => {
-    expect((await request(app).post('/api/wellbeing/check').send({ items: [{ productId: veganItem.id, quantity: 1 }] })).status).toBe(401);
-    expect((await request(app).post('/api/wellbeing/check').set(s.headers).send({ items: [{ productId: veganItem.id, quantity: 1 }], diet: 'keto' })).status).toBe(400);
-    expect((await request(app).post('/api/wellbeing/check').set(s.headers).send({ items: [{ productId: 'nope', quantity: 1 }] })).status).toBeGreaterThanOrEqual(400);
-    expect((await request(app).post('/api/wellbeing/check').set(s.headers).send({ items: [] })).status).toBe(400);
+  test('validates preference enum values', () => {
+    expect(() => parseWellbeingPreferences({ dietary: [], allergens: ['unknown'] })).toThrow();
   });
-});
 
-describe('wellbeing check: label logic', () => {
-  test('no preference means no judgement', () => {
-    const r = evaluateWellbeing([{ productId: plainItem.id, quantity: 1 }], null, catalog);
-    expect(r.overall).toBe('NO_PREFERENCE');
-    expect(r.items[0].labelStatus).toBe('NO_PREFERENCE');
+  test('direct order API cannot bypass missing profile or UNKNOWN restriction data', async () => {
+    const product = catalog.getAll()[0];
+    await request(app).put('/api/wellbeing/preferences').set(s.headers).send({ preferences: { dietary: ['vegan'], allergens: [] } });
+    const response = await request(app).post('/api/orders/create').set(s.headers).send({ items: [{ productId: product.id, quantity: 1 }] });
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('WELLBEING_GUARD_BLOCKED');
+    expect(response.body.wellbeing.status).toBe('UNKNOWN');
+    const evidence = policyStorage.getEvents(s.userId).find((event) => event.wellbeingDecision?.status === 'UNKNOWN');
+    expect(evidence?.guardDataVersion).toMatch(/^[a-f0-9]{64}$/);
+    expect(evidence?.wellbeingDecision?.items).toHaveLength(1);
   });
-  test('a vegan label satisfies vegetarian, but a vegetarian label never satisfies vegan', () => {
-    const veg = catalog.getAll().find((p) => p.dietary.includes('vegetarian') && !p.dietary.includes('vegan'));
-    expect(evaluateWellbeing([{ productId: veganItem.id, quantity: 1 }], 'vegetarian', catalog).overall).toBe('ALL_ITEMS_CARRY_LABEL');
-    if (veg) expect(evaluateWellbeing([{ productId: veg.id, quantity: 1 }], 'vegan', catalog).overall).toBe('SOME_ITEMS_LACK_LABEL');
-  });
-  test('one unlabelled item flags the whole cart for a check with the café', () => {
-    const r = evaluateWellbeing(
-      [{ productId: veganItem.id, quantity: 1 }, { productId: plainItem.id, quantity: 1 }], 'vegan', catalog);
-    expect(r.overall).toBe('SOME_ITEMS_LACK_LABEL');
-    expect(r.items.map((i) => i.labelStatus)).toEqual(['CARRIES_LABEL', 'NO_LABEL']);
-  });
-  test('parseDiet only accepts the supported values', () => {
-    expect(parseDiet(undefined)).toBeNull();
-    expect(parseDiet('gluten-free')).toBe('gluten-free');
-    expect(() => parseDiet('paleo')).toThrow();
-  });
-});
 
-describe('data-status labelling elsewhere', () => {
-  test('the catalog API states that diet labels are unverified sample data', async () => {
-    const r = await request(app).get('/api/catalog');
-    expect(r.body.dietaryDataStatus).toBe('SAMPLE_DATA_UNVERIFIED');
-    expect(r.body.dietaryNotice).toMatch(/sample data/i);
+  test('checkout requires an initialized profile even when the caller skips the profile API', async () => {
+    const fresh = await request(app).post('/api/sessions').expect(201);
+    const headers = { 'X-Session-Id': fresh.body.sessionId, Authorization: `Bearer ${fresh.body.sessionToken}` };
+    const product = catalog.getAll()[0];
+    const response = await request(app).post('/api/orders/create').set(headers).send({ items: [{ productId: product.id, quantity: 1 }] });
+    expect(response.status).toBe(428);
+    expect(response.body.details.code).toBe('WELLBEING_PROFILE_REQUIRED');
+  });
+
+  test('Split Bill creation applies the whole-cart Wellbeing decision', async () => {
+    await request(app).put('/api/wellbeing/preferences').set(s.headers).send({ preferences: { dietary: ['vegan'], allergens: [] } });
+    const product = catalog.getAll()[0];
+    const response = await request(app).post('/api/bills').set(s.headers).send({ items: [{ productId: product.id, quantity: 1 }], participantCount: 2 });
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('WELLBEING_GUARD_BLOCKED');
+    expect(response.body.wellbeing.status).toBe('UNKNOWN');
+  });
+
+  test('Split Bill share payment checks the participant profile against the bill products', async () => {
+    const created = await request(app).post('/api/bills').set(s.headers).send({ items: [{ productId: 'coffee', quantity: 1 }], participantCount: 2 });
+    expect(created.status).toBe(201);
+    const ownerShare = created.body.shares[0];
+    await request(app).put('/api/wellbeing/preferences').set(s.headers).send({ preferences: { dietary: ['vegan'], allergens: [] } });
+    const response = await request(app).post(`/api/bills/${created.body.id}/shares/${ownerShare.id}/pay`).set(s.headers).send({});
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('WELLBEING_GUARD_BLOCKED');
+    expect(response.body.wellbeing.status).toBe('UNKNOWN');
+  });
+
+  test('evaluates current product data version on each request', () => {
+    const p = catalog.getAll()[0];
+    const mutable = Object.assign(Object.create(Object.getPrototypeOf(catalog)), catalog) as CatalogService;
+    (mutable as any).products = [{ ...p, wellbeing: { dietary: { vegan: { status: 'NO_CONFLICT' } }, dataVersion: 'version-one' } }];
+    const first = evaluateWellbeing([{ productId: p.id, quantity: 1 }], { dietary: ['vegan'], allergens: [] }, mutable);
+    (mutable as any).products = [{ ...p, wellbeing: { dietary: { vegan: { status: 'CONFLICT', ingredients: ['egg'] } }, dataVersion: 'version-two' } }];
+    const second = evaluateWellbeing([{ productId: p.id, quantity: 1 }], { dietary: ['vegan'], allergens: [] }, mutable);
+    expect(first.productDataVersion).not.toBe(second.productDataVersion);
+    expect(second.status).toBe('CONFIRMED_CONFLICT');
   });
 });

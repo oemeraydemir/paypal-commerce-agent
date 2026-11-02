@@ -186,6 +186,11 @@ class PolicyPreview {
   /// This is advisory display data; checkout re-evaluates policy on the server.
   final int? maxPerPurchaseMinor;
   final String currency;
+  final int? totalMinor;
+  final int? remainingPerPurchaseMinor;
+  final String? validUntil;
+  final String? updatedAt;
+  final List<String> violations;
 
   const PolicyPreview({
     required this.empty,
@@ -193,6 +198,11 @@ class PolicyPreview {
     this.reason,
     this.maxPerPurchaseMinor,
     this.currency = 'EUR',
+    this.totalMinor,
+    this.remainingPerPurchaseMinor,
+    this.validUntil,
+    this.updatedAt,
+    this.violations = const <String>[],
   });
 
   factory PolicyPreview.fromJson(Map<String, dynamic> json) {
@@ -206,6 +216,13 @@ class PolicyPreview {
       reason: json['reason'] as String?,
       maxPerPurchaseMinor: rawLimit is num ? rawLimit.toInt() : null,
       currency: rawCurrency is String ? rawCurrency : 'EUR',
+      totalMinor: (json['totalMinor'] as num?)?.toInt(),
+      remainingPerPurchaseMinor: (json['remainingPerPurchaseMinor'] as num?)?.toInt(),
+      validUntil: limits['validUntil'] as String?,
+      updatedAt: limits['updatedAt'] as String?,
+      violations: json['violations'] is List
+          ? (json['violations'] as List).whereType<Map>().map((v) => v['type']).whereType<String>().toList()
+          : const <String>[],
     );
   }
 }
@@ -222,6 +239,8 @@ class PolicyAllowance {
   final int spentTodayMinor;
   final int pendingMinor;
   final int remainingTodayMinor;
+  final String? updatedAt;
+  final List<String> allowedMerchantIds;
 
   const PolicyAllowance({
     required this.enabled,
@@ -232,6 +251,8 @@ class PolicyAllowance {
     required this.spentTodayMinor,
     required this.pendingMinor,
     required this.remainingTodayMinor,
+    this.updatedAt,
+    this.allowedMerchantIds = const <String>[],
   });
 
   factory PolicyAllowance.fromJson(Map<String, dynamic> json) {
@@ -251,6 +272,10 @@ class PolicyAllowance {
       spentTodayMinor: n(usage['spentTodayMinor']),
       pendingMinor: n(usage['pendingMinor']),
       remainingTodayMinor: n(usage['remainingTodayMinor']),
+      updatedAt: json['updatedAt'] as String?,
+      allowedMerchantIds: limits['allowedMerchantIds'] is List
+          ? (limits['allowedMerchantIds'] as List).whereType<String>().toList()
+          : const <String>[],
     );
   }
 }

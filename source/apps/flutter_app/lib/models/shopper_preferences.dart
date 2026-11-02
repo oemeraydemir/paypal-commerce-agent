@@ -43,6 +43,7 @@ class ShopperPreferences {
     'soy': 'Soy',
     'shellfish': 'Shellfish',
     'gluten': 'Gluten',
+    'fish': 'Fish',
   };
 
   /// Turkish display labels for [allergenOptions] (keys stay canonical).
@@ -54,6 +55,7 @@ class ShopperPreferences {
     'soy': 'Soya',
     'shellfish': 'Kabuklu deniz ürünü',
     'gluten': 'Gluten',
+    'fish': 'Balık',
   };
 
   /// Returns the localized display label for an allergen key (defaults to English).
@@ -89,6 +91,11 @@ class ShopperPreferences {
     'dietary': dietary.toList()..sort(),
     'allergens': allergens.toList()..sort(),
     if (maxBudgetMinor != null) 'maxBudgetMinor': maxBudgetMinor,
+  };
+
+  Map<String, dynamic> toWellbeingJson() => {
+    'dietary': dietary.toList()..sort(),
+    'allergens': allergens.toList()..sort(),
   };
 
   factory ShopperPreferences.fromJson(Map<String, dynamic> json) {

@@ -1,9 +1,11 @@
 import { Router } from 'express';
+import { createHash } from 'crypto';
 import { requireSession } from '../middleware/session-auth';
 import { AppError } from '../middleware/error-handler';
 import { SlidingWindowLimiter } from '../middleware/rate-limit';
 import { OrderService } from '../orders/service';
 import { RefundError, RefundRequestRecord, RefundStatus, refundService } from '../refunds/service';
+import { classifyRefundRequest } from '../refunds/classifier';
 
 // Customer-side refund REQUESTS. A shopper can ask for a refund of their own order (or, for a
 // split bill, their own share's order) and watch its status. Requesting moves no money: it
@@ -61,15 +63,31 @@ router.post('/orders/:orderId/refund-request', requireSession, async (req, res, 
     if (noteRaw !== undefined && typeof noteRaw !== 'string') throw new AppError(400, 'note must be text');
     const note = (noteRaw ?? '').replace(/\s+/g, ' ').trim().slice(0, 120);
     const reason = `Customer (${code as CustomerReason})${note ? ': ' + note : ''}`;
-
+    const requestKey = req.get('Idempotency-Key');
+    if (requestKey && (requestKey.length < 8 || requestKey.length > 200)) throw new AppError(400, 'Idempotency-Key must be 8 to 200 characters.');
+    const idempotencyKeyHash = requestKey
+      ? createHash('sha256').update(`${sessionId}:${requestKey}`).digest('hex')
+      : undefined;
     let amountMinor: number | undefined;
     if (req.body?.amountMinor !== undefined) {
       amountMinor = Number(req.body.amountMinor);
       if (!Number.isInteger(amountMinor) || amountMinor <= 0) throw new AppError(400, 'amountMinor must be a positive integer.');
     }
+    const idempotencyFingerprint = requestKey
+      ? createHash('sha256').update(JSON.stringify({ orderId: order.id, code, note, amountMinor: amountMinor ?? null })).digest('hex')
+      : undefined;
+    if (idempotencyKeyHash) {
+      const prior = await refundService.getByIdempotencyKeyHash(idempotencyKeyHash);
+      if (prior) {
+        if (prior.idempotencyFingerprint !== idempotencyFingerprint) throw new AppError(409, 'Idempotency-Key was already used for a different refund request.');
+        return res.status(200).json(view(prior));
+      }
+    }
     let record: RefundRequestRecord;
     try {
-      record = refundService.propose({ orderId: order.id, amountMinor, reason, proposedBy: 'CUSTOMER' });
+      // The classifier receives only the reason code, not free-text or order/payment data.
+      const aiRecommendation = await classifyRefundRequest(code, '');
+      record = refundService.propose({ orderId: order.id, amountMinor, reason, proposedBy: 'CUSTOMER', aiRecommendation, idempotencyKeyHash, idempotencyFingerprint });
     } catch (err) {
       throw err instanceof RefundError ? new AppError(err.status, err.message) : err;
     }
@@ -77,6 +95,13 @@ router.post('/orders/:orderId/refund-request', requireSession, async (req, res, 
     try {
       await refundService.saveNow(record.id);
     } catch {
+      if (idempotencyKeyHash) {
+        const prior = await refundService.getByIdempotencyKeyHash(idempotencyKeyHash).catch(() => undefined);
+        if (prior) {
+          if (prior.idempotencyFingerprint !== idempotencyFingerprint) throw new AppError(409, 'Idempotency-Key was already used for a different refund request.');
+          return res.status(200).json(view(prior));
+        }
+      }
       refundService.discard(record.id);
       throw new AppError(503, 'Storage unavailable; your request was not saved. Please retry.');
     }

@@ -64,6 +64,7 @@ export interface EvidencePolicyEvent {
   amountMinor: number;
   currency: string;
   policySnapshot: { maxPerPurchaseMinor: number; dailySpendLimitMinor: number; confirmationThresholdMinor: number };
+  wellbeingDecision?: { status: string; productDataVersion: string; items: unknown[] };
 }
 
 export type EvidenceTimelineStepKind =
@@ -72,6 +73,8 @@ export type EvidenceTimelineStepKind =
   | 'HUMAN_APPROVAL'
   | 'PAYMENT_CAPTURED'
   | 'REFUND_REQUESTED'
+  | 'REFUND_AI_ADVISORY'
+  | 'REFUND_MERCHANT_APPROVED'
   | 'REFUND_ISSUED'
   | 'REFUND_DECLINED';
 
@@ -177,6 +180,20 @@ function buildRefundSteps(orderId: string): EvidenceTimelineStep[] {
       at: r.createdAt,
       detail: `${(r.amountMinor / 100).toFixed(2)} ${r.currency} requested by ${who}`,
     });
+    if (r.aiRecommendation) {
+      steps.push({
+        step: 'REFUND_AI_ADVISORY',
+        at: r.createdAt,
+        detail: `Non-binding ${r.aiRecommendation.source.toLowerCase()} classification: ${r.aiRecommendation.category}; merchant review required.`,
+      });
+    }
+    if (r.merchantApprovedAt) {
+      steps.push({
+        step: 'REFUND_MERCHANT_APPROVED',
+        at: r.merchantApprovedAt,
+        detail: 'Merchant approval recorded; this is distinct from PayPal confirming the refund.',
+      });
+    }
     if (r.status === 'REFUNDED') {
       steps.push({
         step: 'REFUND_ISSUED',
@@ -310,6 +327,7 @@ export function buildEvidencePackage(orderId: string): EvidencePackage | null {
       amountMinor: e.amountMinor,
       currency: e.currency,
       policySnapshot: e.policySnapshot,
+      ...(e.wellbeingDecision ? { wellbeingDecision: e.wellbeingDecision } : {}),
     }));
 
   const summary: EvidenceOrderSummary = {

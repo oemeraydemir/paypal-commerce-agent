@@ -10,9 +10,11 @@ import { buildEvidencePackage } from '../../src/evidence/service';
 import { newSession, resetSessionState, TestSession } from '../helpers/session';
 
 jest.mock('../../src/paypal/client', () => ({
-  paypalClient: { createOrder: jest.fn(), captureOrder: jest.fn(), refundCapture: jest.fn(), getRefund: jest.fn(), getCapture: jest.fn() },
+  paypalClient: { createOrder: jest.fn(), captureOrder: jest.fn(), refundCapture: jest.fn(), getRefund: jest.fn(), getCapture: jest.fn(), getDispute: jest.fn(), provideDisputeEvidence: jest.fn() },
 }));
+jest.mock('../../src/refunds/classifier', () => ({ classifyRefundRequest: jest.fn(async () => ({ source: 'RULES_FALLBACK', category: 'OTHER', confidence: 0.5, recommendation: 'MERCHANT_REVIEW', rationale: 'Merchant review required.', binding: false })) }));
 const mockRefund = paypalClient.refundCapture as jest.Mock;
+const mockGetCapture = paypalClient.getCapture as jest.Mock;
 const KEY = 'merchant-key-0123456789';
 const app = createApp();
 const orders = OrderService.getInstance();
@@ -33,6 +35,10 @@ beforeEach(async () => {
   resetRefundRouteState();
   resetRefundRequestRouteState();
   mockRefund.mockReset().mockResolvedValue({ id: 'REFUND-1', status: 'COMPLETED' });
+  mockGetCapture.mockReset().mockImplementation(async (captureId: string) => {
+    const order = orders.getById(captureId.replace(/^CAP-/, ''))!;
+    return { id: captureId, status: 'COMPLETED', amount: { currencyCode: order.currency, value: (order.totalMinor / 100).toFixed(2) } };
+  });
   me = await newSession(app);
   other = await newSession(app);
 });
@@ -65,6 +71,20 @@ describe('customer refund request', () => {
     expect((await request(app).post(url).set(me.headers).send({ reason: 'other' })).status).toBe(409);
   });
 
+  test('customer idempotency returns the same request and stores a non-binding AI recommendation', async () => {
+    const order = paidOrder(me.sessionId);
+    const url = `/api/orders/${order.id}/refund-request`;
+    const first = await request(app).post(url).set(me.headers).set('Idempotency-Key', 'refund-key-123').send({ reason: 'changed_mind' });
+    const duplicate = await request(app).post(url).set(me.headers).set('Idempotency-Key', 'refund-key-123').send({ reason: 'changed_mind' });
+    expect(first.status).toBe(201);
+    expect(duplicate.status).toBe(200);
+    expect(duplicate.body.id).toBe(first.body.id);
+    expect(refundService.get(first.body.id)?.aiRecommendation).toMatchObject({ binding: false, recommendation: 'MERCHANT_REVIEW' });
+    expect(mockRefund).not.toHaveBeenCalled();
+    const reused = await request(app).post(url).set(me.headers).set('Idempotency-Key', 'refund-key-123').send({ reason: 'changed_mind', note: 'different' });
+    expect(reused.status).toBe(409);
+  });
+
   test('an unpaid order cannot be refunded', async () => {
     const o = orders.create(me.sessionId, [{ productId: 'coffee', name: 'Coffee', quantity: 1, unitPriceMinor: 300, lineTotalMinor: 300 }], 'EUR', OrderOrigin.HUMAN);
     expect((await request(app).post(`/api/orders/${o.id}/refund-request`).set(me.headers).send({ reason: 'other' })).status).toBe(409);
@@ -84,6 +104,7 @@ describe('customer refund request', () => {
 
     const pkg = buildEvidencePackage(order.id)!;
     expect(pkg.timeline.map((t) => t.step)).toEqual(expect.arrayContaining(['REFUND_REQUESTED', 'REFUND_ISSUED']));
+    expect(pkg.timeline.map((t) => t.step)).toEqual(expect.arrayContaining(['REFUND_AI_ADVISORY', 'REFUND_MERCHANT_APPROVED']));
     expect(pkg.disputeDefense.recommendedResponse).toMatch(/refunded in full/i);
     expect(pkg.disputeDefense.keyFacts.join(' ')).toMatch(/refund of 13\.00 EUR was issued/i);
   });
