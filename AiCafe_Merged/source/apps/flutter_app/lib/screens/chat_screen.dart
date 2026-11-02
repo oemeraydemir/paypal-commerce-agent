@@ -532,11 +532,8 @@ class _ChatScreenState extends State<ChatScreen> {
           },
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.tune),
-            tooltip: t(context, 'action.profile'),
-            onPressed: _editPreferences,
-          ),
+          // Profile editing is available via the "Edit" link in the profile row
+          // below, so the duplicate tune icon is omitted to keep the header calm.
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: t(context, 'action.clear'),
@@ -613,21 +610,37 @@ class _ChatScreenState extends State<ChatScreen> {
                 // The AI answer arrives seconds after [_send] already scrolled,
                 // so keep the newest bubble in view whenever content changes.
                 _autoScrollOnNewContent(chat.messages.length, chat.loading);
+                if (chat.messages.isEmpty) {
+                  // Empty state: center the welcome card so the space above and
+                  // below is balanced instead of leaving a large dead band under
+                  // a top-pinned card (the earlier top-heavy look).
+                  return Center(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _WelcomePanel(
+                            onPromptSelected: (prompt) {
+                              _controller.text = prompt;
+                              _send();
+                            },
+                          ),
+                          if (chat.loading)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 12),
+                              child: _AssistantTypingBubble(),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  itemCount: chat.messages.isEmpty
-                      ? 1 + (chat.loading ? 1 : 0)
-                      : chat.messages.length + (chat.loading ? 1 : 0),
+                  itemCount: chat.messages.length + (chat.loading ? 1 : 0),
                   itemBuilder: (context, index) {
-                    if (chat.messages.isEmpty && index == 0) {
-                      return _WelcomePanel(
-                        onPromptSelected: (prompt) {
-                          _controller.text = prompt;
-                          _send();
-                        },
-                      );
-                    }
                     if (chat.loading && index == chat.messages.length) {
                       return const _AssistantTypingBubble();
                     }
@@ -757,14 +770,17 @@ class _ChatScreenState extends State<ChatScreen> {
           );
         }
         final products = snap.data!;
+        final scheme = Theme.of(context).colorScheme;
         return SizedBox(
           height: 56,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            itemCount: products.length,
-            separatorBuilder: (context, index) => const SizedBox(width: 8),
-            itemBuilder: (context, i) {
+          child: Stack(
+            children: [
+              ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                itemCount: products.length,
+                separatorBuilder: (context, index) => const SizedBox(width: 8),
+                itemBuilder: (context, i) {
               final p = products[i];
               return Consumer<CheckoutProvider>(
                 builder: (ctx, checkout, _) => ActionChip(
@@ -785,6 +801,26 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               );
             },
+              ),
+              // Trailing fade on the right edge so a partially visible chip reads
+              // as "more to scroll", not as something awkwardly cut off.
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.centerRight,
+                        end: Alignment.centerLeft,
+                        colors: [
+                          scheme.surface.withValues(alpha: 0.9),
+                          scheme.surface.withValues(alpha: 0.0),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
       },

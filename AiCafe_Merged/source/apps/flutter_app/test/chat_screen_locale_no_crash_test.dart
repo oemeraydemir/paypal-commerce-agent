@@ -142,7 +142,6 @@ void main() {
       (tester) async {
     await _pumpChat(tester, 'tr');
 
-    expect(find.byTooltip('Alışveriş profili'), findsOneWidget);
     expect(find.byTooltip('Sohbeti temizle'), findsOneWidget);
     expect(find.byTooltip('Yardım & tanıtım'), findsOneWidget);
     expect(find.byTooltip('Sepet'), findsOneWidget);
@@ -156,7 +155,6 @@ void main() {
     await context.read<LocaleProvider>().setLanguage('en');
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Shopping profile'), findsOneWidget);
     expect(find.byTooltip('Clear conversation'), findsOneWidget);
     expect(find.byTooltip('Help & intro'), findsOneWidget);
     expect(find.byTooltip('Cart'), findsOneWidget);
@@ -166,7 +164,6 @@ void main() {
     );
 
     // No stale Turkish chrome left behind.
-    expect(find.byTooltip('Alışveriş profili'), findsNothing);
     expect(find.byTooltip('Sepet'), findsNothing);
     expect(find.byTooltip('Sohbeti temizle'), findsNothing);
     expect(find.byTooltip('Yardım & tanıtım'), findsNothing);
@@ -181,15 +178,15 @@ void main() {
       (tester) async {
     await _pumpChat(tester, 'en');
 
-    expect(find.byTooltip('Shopping profile'), findsOneWidget);
+    expect(find.byTooltip('Help & intro'), findsOneWidget);
 
     final context = tester.element(find.byType(ChatScreen));
     await context.read<LocaleProvider>().setLanguage('tr');
     await tester.pumpAndSettle();
 
-    expect(find.byTooltip('Alışveriş profili'), findsOneWidget);
+    expect(find.byTooltip('Yardım & tanıtım'), findsOneWidget);
     expect(find.byTooltip('Sepet'), findsOneWidget);
-    expect(find.byTooltip('Shopping profile'), findsNothing);
+    expect(find.byTooltip('Help & intro'), findsNothing);
     expect(find.byTooltip('Cart'), findsNothing);
     expect(tester.takeException(), isNull);
   });

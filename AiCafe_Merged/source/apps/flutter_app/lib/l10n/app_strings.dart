@@ -54,9 +54,8 @@ class AppStrings {
           'and no product is ever confirmed safe.',
       'welcome.title': 'A smarter way to order',
       'welcome.body':
-          'Tell the AI what you need. It finds café items and prepares a priced '
-          'cart for you to review. You stay in control: payment only happens '
-          'after you approve it in PayPal sandbox.',
+          'Describe what you want — the AI builds a priced cart for you to '
+          'review. You approve payment in the PayPal sandbox.',
       'welcome.try': 'Try a request',
       'welcome.chip1': 'Vegetarian breakfast under €20',
       'welcome.prompt1': 'Plan a vegetarian breakfast for two under €20.',
@@ -322,10 +321,8 @@ class AppStrings {
           'doğrulanmaz ve hiçbir ürünün güvenli olduğu kanıtlanmaz.',
       'welcome.title': 'Sipariş vermenin daha akıllı yolu',
       'welcome.body':
-          'Yapay zekaya neye ihtiyacın olduğunu söyle. Kafe ürünlerini bulur ve '
-          'senin incelemen için fiyatlandırılmış bir sepet hazırlar. Kontrol '
-          'sende kalır: ödeme yalnızca PayPal (sandbox) üzerinde onayladığında '
-          'gerçekleşir.',
+          'Ne istediğini anlat — yapay zeka fiyatlandırılmış bir sepet hazırlasın. '
+          'Ödemeyi PayPal sandbox üzerinde sen onaylarsın.',
       'welcome.try': 'Bir istek dene',
       'welcome.chip1': '20 € altı vejetaryen kahvaltı',
       'welcome.prompt1': 'İki kişilik vejetaryen bir kahvaltı planla, 20 € altı.',
