@@ -10,6 +10,7 @@ import 'package:flutter_app/providers/shopper_profile_provider.dart';
 import 'package:flutter_app/screens/chat_screen.dart';
 import 'package:flutter_app/services/api_service.dart';
 import 'package:flutter_app/services/secure_session_storage.dart';
+import 'package:flutter_app/theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -72,11 +73,7 @@ class MyApp extends StatelessWidget {
             GlobalWidgetsLocalizations.delegate,
           ],
           supportedLocales: const [Locale('en', 'IE'), Locale('tr', 'TR')],
-          theme: ThemeData(
-            useMaterial3: true,
-            colorSchemeSeed: const Color(0xFF176B55),
-            brightness: Brightness.light,
-          ),
+          theme: buildBrightFusionTheme(),
           home: const ChatScreen(),
         ),
       ),
