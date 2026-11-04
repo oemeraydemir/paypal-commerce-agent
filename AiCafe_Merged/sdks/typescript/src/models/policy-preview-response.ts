@@ -3,6 +3,7 @@ import type { Schema } from "../core/validation/schema.js";
 import { decisionSchema, type Decision } from "./decision.js";
 import { policyCheckSchema, type PolicyCheck } from "./policy-check.js";
 import { policyLimitsSchema, type PolicyLimits } from "./policy-limits.js";
+import { transactionPassportSchema, type TransactionPassport } from "./transaction-passport.js";
 import { violationSchema, type Violation } from "./violation.js";
 
 /** policy preview response. */
@@ -31,6 +32,11 @@ export type PolicyPreviewResponse = {
   limits?: PolicyLimits;
   /** enforced by (field). */
   enforcedBy?: string;
+  /**
+   * Read-only, server-derived explanation of one prepared cart. Not a payment record, never stored
+   * or signed; payment authority is always the shopper.
+   */
+  passport?: TransactionPassport;
 };
 
 export const policyPreviewResponseSchema: Schema<PolicyPreviewResponse> = s.object<PolicyPreviewResponse>({
@@ -46,4 +52,5 @@ export const policyPreviewResponseSchema: Schema<PolicyPreviewResponse> = s.obje
   violations: s.optional(s.array(s.lazy(() => violationSchema))),
   limits: s.optional(s.lazy(() => policyLimitsSchema)),
   enforcedBy: s.optional(s.string()),
+  passport: s.optional(s.lazy(() => transactionPassportSchema)),
 });

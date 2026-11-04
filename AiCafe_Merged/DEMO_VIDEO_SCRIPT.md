@@ -22,13 +22,13 @@
 
 | Time | What the viewer sees | What you say (short) |
 |---|---|---|
-| 0:00–0:20 | Storefront + chat. Type: *"I want a ~€12 vegetarian lunch, surprise me."* | "The shopper describes intent and a budget. The agent has catalog and cart tools only — there is no payment tool." |
-| 0:20–0:50 | Agent returns a cart. Show the **policy verdict** (`AUTO_ALLOW` / `REQUIRE_CONFIRMATION` / `BLOCK`) and the server-computed **prices**. | "Prices and the spending policy are computed on the server, not by the model. The agent can prepare, but cannot pay." |
-| 0:50–1:20 | Storefront (or the Flutter app, if verified): the **Coco** barista badge, the "Why these items?" panel, and the **unverified allergy note** when an allergen is selected. | "The cart is explainable. Allergy info is shown as *unverified* — we never claim an item is allergen-free." |
-| 1:20–1:50 | Checkout → human approves on PayPal **sandbox** (show the approval screen, not credentials). | "Only the human approves the payment in the PayPal sandbox. Live money cannot be configured." |
-| 1:50–2:20 | Merchant **AG Grid** dashboard: orders grid, filters, pinned columns, refund queue. | "The merchant sees every order and proposes refunds; only an authenticated merchant approval calls PayPal." |
-| 2:20–2:45 | `GET /api/orders/:id/mandate` → Ed25519-signed **Cart Mandate**; mention the MCP server lets external agents shop, never pay. | "Every order has a tamper-evident mandate of who could propose and who held payment authority. External agents go through MCP with no pay tool." |
-| 2:45–3:00 | Wrap: accessibility note (Semantics labels, keyboard/screen-reader tested grid). | "Designed to be run and judged in minutes, accessibly." |
+| 0:00–0:18 | Storefront + chat. Type: *"I want a ~€12 vegetarian lunch, surprise me."* | "The shopper describes intent and a budget. The agent has catalog and cart tools only — there is no payment tool." |
+| 0:18–0:45 | Agent returns a cart. Show the **policy verdict** (`AUTO_ALLOW` / `REQUIRE_CONFIRMATION` / `BLOCK`) and the server-computed **prices**. | "Prices and the spending policy are computed on the server, not by the model. The agent can prepare, but cannot pay." |
+| 0:45–1:10 | Storefront (or the Flutter app, if verified): the **Coco** barista badge, the "Why these items?" panel, and the **unverified allergy note** when an allergen is selected. | "The cart is explainable. Allergy info is shown as *unverified* — we never claim an item is allergen-free." |
+| 1:10–1:38 | Checkout → human approves on PayPal **sandbox** (show the approval screen, not credentials). | "Only the human approves the payment in the PayPal sandbox. Live money cannot be configured." |
+| 1:38–2:05 | Merchant **AG Grid** dashboard: orders grid, filters, pinned columns, refund queue. | "The merchant sees every order and proposes refunds; only an authenticated merchant approval calls PayPal." |
+| 2:05–2:30 | `GET /api/orders/:id/mandate` → Ed25519-signed **Cart Mandate**; mention the MCP server lets external agents shop, never pay. | "Every order has a tamper-evident mandate of who could propose and who held payment authority. External agents go through MCP with no pay tool." |
+| 2:30–2:50 | Wrap: accessibility note (Semantics labels, keyboard/screen-reader tested grid). | "Designed to be run and judged in minutes, accessibly." |
 
 ## If the AI answers "at capacity" during the take (free-tier providers)
 

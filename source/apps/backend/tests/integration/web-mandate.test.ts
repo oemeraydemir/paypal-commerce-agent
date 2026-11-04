@@ -78,3 +78,23 @@ describe('spending mandate card', () => {
     expect(t).toMatch(/not verified by the café/);
   });
 });
+
+describe('purchase impact inside the mandate card', () => {
+  test('shows the per-person amounts if the cart were split, and no refund row before any refund', async () => {
+    const d = await open({ coffee: 2 }); // EUR 6.00
+    await waitFor(() => /If split between 2/.test(card(d).textContent || ''), 'impact rows');
+    const text = card(d).textContent || '';
+    expect(text).toMatch(/If split between 2\s*€3\.00 each/);
+    expect(text).toMatch(/If split between 3\s*€2\.00 each/);
+    expect(text).not.toMatch(/Refunded so far/);
+    // one card only: the impact rows live in the existing mandate card
+    expect(d.window.document.querySelectorAll('.pbox').length).toBe(1);
+  });
+
+  test('the limit shown stays the whole-order limit whatever the split', async () => {
+    const d = await open({ coffee: 1, croissant: 1 });
+    await waitFor(() => /If split between 3/.test(card(d).textContent || ''), 'impact rows');
+    const text = card(d).textContent || '';
+    expect(text).toMatch(/Limit per order\s*€20\.00/);
+  });
+});

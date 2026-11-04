@@ -80,7 +80,7 @@ The map and the [API reference](api-reference.md) answer different questions, an
 
 | Use | For |
 | --- | --- |
-| **[`sdk-map.md`](sdk-map.md) + [`map/operations/`](map/operations/sessions.md)** | Traversing the SDK and working out its surface — locating the operation you need (this SDK exposes **35 operations**), its exact signature, which credential it sends, which channel every request field travels on, which error type it rejects with and how to read it, and the file behind any type. This is the index to consume the SDK from, and the one to reach for first. |
+| **[`sdk-map.md`](sdk-map.md) + [`map/operations/`](map/operations/sessions.md)** | Traversing the SDK and working out its surface — locating the operation you need (this SDK exposes **41 operations**), its exact signature, which credential it sends, which channel every request field travels on, which error type it rejects with and how to read it, and the file behind any type. This is the index to consume the SDK from, and the one to reach for first. |
 | **[`api-reference.md`](api-reference.md)** | Usage guidance for a single operation once you know which one you want — a code sample for each of the two call forms (awaiting it, and the non-throwing `.asApiResult()`), per-parameter descriptions, and the success and error types it resolves or rejects with. |
 
 ---

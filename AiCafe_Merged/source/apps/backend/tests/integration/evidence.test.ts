@@ -120,4 +120,46 @@ describe('Dispute Evidence Package', () => {
       expect(item.name).toBeUndefined();
     }
   });
+
+  test('the package separates verified records from AI-generated narrative', async () => {
+    const orderId = await createOrder();
+    const pkg = (await request(app).get(`/api/orders/${orderId}/evidence`).set(sess.headers)).body;
+
+    expect(Array.isArray(pkg.evidenceItems)).toBe(true);
+    expect(pkg.evidenceItems.length).toBeGreaterThan(1);
+    // The AI narrative is explicitly marked as narrative + unverified.
+    const narrative = pkg.evidenceItems.find((it: any) => it.kind === 'ai-narrative');
+    expect(narrative).toBeDefined();
+    expect(narrative.source).toBe('narrative');
+    expect(narrative.verified).toBe(false);
+    // Every verified record must carry source=record + verified=true.
+    for (const it of pkg.evidenceItems) {
+      if (it.kind === 'ai-narrative') continue;
+      expect(it.source).toBe('record');
+      expect(it.verified).toBe(true);
+    }
+  });
+
+  test('a scoped allowance is reflected in the evidence order summary and timeline', async () => {
+    // Create a shopper scope, then an order bound to it.
+    const scopeRes = await request(app)
+      .post('/api/policy/scopes')
+      .set(sess.headers)
+      .send({ label: 'Evidence budget', currency: 'EUR', dailySpendLimitMinor: 2000 });
+    expect(scopeRes.status).toBe(201);
+    const scopeId = scopeRes.body.scope.id;
+
+    const orderRes = await request(app)
+      .post('/api/orders/create')
+      .set(sess.headers)
+      .set('Idempotency-Key', 'evidence-scoped-order')
+      .send({ items: [{ productId: 'coffee', quantity: 1 }], scopeId });
+    expect(orderRes.status).toBe(201);
+    const orderId = orderRes.body.orderId;
+
+    const pkg = (await request(app).get(`/api/orders/${orderId}/evidence`).set(sess.headers)).body;
+    expect(pkg.order.appliedScopeId).toBe(scopeId);
+    const scopeStep = pkg.timeline.find((s: any) => typeof s.detail === 'string' && s.detail.includes(scopeId));
+    expect(scopeStep).toBeDefined();
+  });
 });

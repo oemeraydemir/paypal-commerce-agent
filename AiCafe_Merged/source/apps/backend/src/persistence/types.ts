@@ -15,6 +15,8 @@ export interface ReservationRow {
   settledAt?: Date;
   mandateRevision?: number;
   billMandateReservationId?: string;
+  /** Optional scoped-allowance binding (server-set; never from the client). */
+  scopeId?: string;
 }
 
 export interface StoredSpendingMandate {
@@ -38,7 +40,10 @@ export interface SpendingMandateEvent {
 
 export type MandateBlockReason = 'ALLOWANCE_EXPIRED' | 'MAX_PURCHASE_EXCEEDED' |
   'DAILY_LIMIT_EXCEEDED' | 'MERCHANT_NOT_ALLOWED' | 'CURRENCY_MISMATCH' |
-  'MANDATE_CHANGED' | 'MANDATE_DISABLED' | 'BILL_MANDATE_RENEWAL_REQUIRED';
+  'MANDATE_CHANGED' | 'MANDATE_DISABLED' | 'BILL_MANDATE_RENEWAL_REQUIRED' |
+  'SCOPE_NOT_FOUND' | 'SCOPE_PENDING' | 'SCOPE_REVOKED' | 'SCOPE_EXPIRED' |
+  'SCOPE_SPENT' | 'SCOPE_CURRENCY_MISMATCH' | 'SCOPE_MERCHANT_NOT_ALLOWED' |
+  'SCOPE_ORIGIN_NOT_ALLOWED';
 
 export type ReservationResult =
   | { ok: true; reservation: ReservationRow }
@@ -192,6 +197,57 @@ export interface PolicyEventRepository {
   save(event: { id: string; userId: string; timestamp: string }): Promise<void>;
 }
 
+export type AllowanceScopeKind =
+  | 'SHOPPER'
+  | 'AGENT_PROPOSED'
+  | 'AGENT_GRANTED';
+export type AllowanceScopeStatus =
+  | 'PENDING_APPROVAL'
+  | 'ACTIVE'
+  | 'SPENT'
+  | 'EXPIRED'
+  | 'REVOKED';
+export type AllowanceScopeOrigin = 'HUMAN' | 'AI_ASSISTED' | 'AI_AGENT';
+
+export interface AllowanceScopeRow {
+  id: string;
+  userId: string;
+  sessionRef: string | null;
+  kind: AllowanceScopeKind;
+  label: string;
+  originsAllowed: AllowanceScopeOrigin[];
+  currency: string;
+  maxPerPurchaseMinor: number | null;
+  dailySpendLimitMinor: number | null;
+  categorySpendLimits: Record<string, number> | null;
+  allowedMerchantIds: string[] | null;
+  nightWindow: { startHour: number; endHour: number; maxMinor: number } | null;
+  status: AllowanceScopeStatus;
+  issuedBy: string;
+  approvedBy: { id: string; at: string } | null;
+  createdAt: Date;
+  expiresAt: Date | null;
+  updatedAt: Date;
+}
+
+export interface AllowanceScopeAuditRow {
+  id: string;
+  scopeId: string;
+  userId: string;
+  eventType: string;
+  actor: string;
+  details: Record<string, unknown>;
+  occurredAt: string;
+}
+
+export interface AllowanceScopeRepository {
+  loadAll(): Promise<AllowanceScopeRow[]>;
+  /** Upserts the full current snapshot (last write wins, like orders). */
+  save(row: AllowanceScopeRow): Promise<void>;
+  appendAudit(event: AllowanceScopeAuditRow): Promise<void>;
+  loadAudit(scopeId: string): Promise<AllowanceScopeAuditRow[]>;
+}
+
 export interface OrderRepository {
   loadAll(): Promise<Order[]>;
   /** Upserts the full current snapshot of one order (self-healing: last write wins). */
@@ -211,6 +267,7 @@ export interface ReservationRepository {
     mandateRevision: number;
     billMandateReservationId?: string;
     createdAt: Date;
+    scopeId?: string;
   }): Promise<ReservationResult>;
   getDailyUsage(userId: string, dayStart: Date): Promise<{ spentMinor: number; pendingMinor: number; billReservedMinor: number }>;
 }
@@ -442,6 +499,7 @@ export interface Repositories {
   captureClaims: CaptureClaimRepository;
   bills: BillRepository;
   pickup: PickupRepository;
+  scopes: AllowanceScopeRepository;
   /**
    * Optional append-only store for mandate audit events (hash-chained). When absent
    * (deployments without the mandate_events table) the audit chain lives in memory only;

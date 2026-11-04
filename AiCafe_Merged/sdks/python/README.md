@@ -91,7 +91,7 @@ Two generated references cover the SDK; each answers a different question:
 | **[API Reference](api-reference.md)** | Usage guidance for a single **parsed** operation: `client.<group>.<operation>(...)` returns the typed payload and raises `ApiError` on any non-2xx, with `.error` the typed error body, or `RawError` for a status the operation does not document. |
 | **[Raw API Reference](raw-api-reference.md)** | The same for the **raw** variant: `client.<group>.with_raw_response.<operation>(...)` returns `ApiResult[T, E]` and never raises for an API error. |
 
-Both API references carry every one of the 35 operations, with a sync and an async sample and a parameter table each.
+Both API references carry every one of the 41 operations, with a sync and an async sample and a parameter table each.
 
 ## SDK map
 

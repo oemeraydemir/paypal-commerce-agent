@@ -29,6 +29,7 @@ interface ReservationRecord {
   settledAt?: number;
   mandateRevision?: number;
   billMandateReservationId?: string;
+  scopeId?: string;
 }
 
 const SETTLED_RETENTION_MS = 48 * 60 * 60 * 1000;
@@ -52,6 +53,7 @@ export class DailySpendTracker {
       settledAt: record.settledAt !== undefined ? new Date(record.settledAt) : undefined,
       mandateRevision: record.mandateRevision,
       billMandateReservationId: record.billMandateReservationId,
+      scopeId: record.scopeId,
     };
   }
 
@@ -191,6 +193,7 @@ export class DailySpendTracker {
     mandateRevision: number;
     dailySpendLimitMinor: number;
     billMandateReservationId?: string;
+    scopeId?: string;
   }): Promise<ReservationResult> {
     const repos = getRepos();
     if (!repos) {
@@ -199,6 +202,7 @@ export class DailySpendTracker {
       return { ok: true, reservation: {
         ...fallback, state: 'PENDING', mandateRevision: input.mandateRevision,
         billMandateReservationId: input.billMandateReservationId,
+        scopeId: input.scopeId,
       } };
     }
     const result = await repos.reservations.reserveWithinMandate({
@@ -219,6 +223,7 @@ export class DailySpendTracker {
       reservation, state: row.state, settledAt: row.settledAt?.getTime(),
       mandateRevision: row.mandateRevision,
       billMandateReservationId: row.billMandateReservationId,
+      scopeId: row.scopeId,
     });
     return { ...reservation, createdAt: new Date(reservation.createdAt) };
   }

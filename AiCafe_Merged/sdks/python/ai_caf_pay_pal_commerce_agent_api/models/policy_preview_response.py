@@ -7,6 +7,7 @@ from ..core import UNSET, Optional, OptionalNullable, SdkBaseModel
 from .enums.decision import DecisionOrStr
 from .policy_check import PolicyCheck, PolicyCheckDict
 from .policy_limits import PolicyLimits, PolicyLimitsDict
+from .transaction_passport import TransactionPassport, TransactionPassportDict
 from .violation import Violation, ViolationDict
 
 
@@ -49,6 +50,10 @@ class PolicyPreviewResponse(SdkBaseModel):
     enforced_by: Optional[str] = Field(default=UNSET, alias="enforcedBy")
     """enforced by (field)."""
 
+    passport: Optional[TransactionPassport] = UNSET
+    """Read-only, server-derived explanation of one prepared cart. Not a payment record, never stored or signed; payment
+    authority is always the shopper."""
+
 
 class PolicyPreviewResponseDict(TypedDict):
     empty: NotRequired[bool]
@@ -63,3 +68,4 @@ class PolicyPreviewResponseDict(TypedDict):
     violations: NotRequired[list[ViolationDict]]
     limits: NotRequired[PolicyLimitsDict]
     enforced_by: NotRequired[str]
+    passport: NotRequired[TransactionPassportDict]

@@ -1,15 +1,15 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "AI Café — PayPal Commerce Agent API",
+    "title": "AI Caf\u00e9 \u2014 PayPal Commerce Agent API",
     "version": "1.0.0",
-    "description": "Agentic-commerce API for the PayPal AI Hackathon. A natural-language AI agent prepares a shopping cart, but the **server owns all prices** and a **human authorizes every PayPal payment** — the agent never touches money. A read-only PayPal Ops Copilot lets a merchant audit activity. This spec powers SDK generation (APIMatic) and the Postman collection.",
+    "description": "Agentic-commerce API for the PayPal AI Hackathon. A natural-language AI agent prepares a shopping cart, but the **server owns all prices** and a **human authorizes every PayPal payment** \u2014 the agent never touches money. A read-only PayPal Ops Copilot lets a merchant audit activity. This spec powers SDK generation (APIMatic) and the Postman collection.",
     "license": {
       "name": "MIT",
       "url": "https://opensource.org/licenses/MIT"
     },
     "contact": {
-      "name": "AI Café team"
+      "name": "AI Caf\u00e9 team"
     }
   },
   "servers": [
@@ -53,7 +53,7 @@
     },
     {
       "name": "MCP (Agentic Commerce)",
-      "description": "Model Context Protocol server: lets any external AI agent shop at AI Café and start a PayPal checkout that only a human can approve"
+      "description": "Model Context Protocol server: lets any external AI agent shop at AI Caf\u00e9 and start a PayPal checkout that only a human can approve"
     },
     {
       "name": "Refunds",
@@ -1956,6 +1956,228 @@
             "description": "notices (field)."
           }
         }
+      },
+      "AllowanceScope": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Scope id."
+          },
+          "kind": {
+            "enum": [
+              {
+                "value": "SHOPPER",
+                "description": "Enum value SHOPPER."
+              },
+              {
+                "value": "AGENT_PROPOSED",
+                "description": "Enum value AGENT_PROPOSED."
+              },
+              {
+                "value": "AGENT_GRANTED",
+                "description": "Enum value AGENT_GRANTED."
+              }
+            ],
+            "description": "Scope kind."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label (field)."
+          },
+          "sessionRef": {
+            "type": "string",
+            "nullable": true,
+            "description": "Non-reversible session label (field)."
+          },
+          "originsAllowed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Origins permitted (field)."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency (field)."
+          },
+          "maxPerPurchaseMinor": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Per-purchase cap in minor units (field)."
+          },
+          "dailySpendLimitMinor": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Daily cap in minor units (field)."
+          },
+          "categorySpendLimits": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "nullable": true,
+            "description": "Category caps (field)."
+          },
+          "allowedMerchantIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "Allowed merchant ids (field)."
+          },
+          "nightWindow": {
+            "type": "object",
+            "nullable": true,
+            "description": "Night window rule (field)."
+          },
+          "status": {
+            "enum": [
+              {
+                "value": "PENDING_APPROVAL",
+                "description": "Enum value PENDING_APPROVAL."
+              },
+              {
+                "value": "ACTIVE",
+                "description": "Enum value ACTIVE."
+              },
+              {
+                "value": "SPENT",
+                "description": "Enum value SPENT."
+              },
+              {
+                "value": "EXPIRED",
+                "description": "Enum value EXPIRED."
+              },
+              {
+                "value": "REVOKED",
+                "description": "Enum value REVOKED."
+              }
+            ],
+            "description": "Scope status."
+          },
+          "issuedBy": {
+            "type": "string",
+            "description": "Issuer (field)."
+          },
+          "approvedBy": {
+            "type": "object",
+            "nullable": true,
+            "description": "Shopper approval record (field)."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Created at (field)."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Expiry (field)."
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Updated at (field)."
+          }
+        }
+      },
+      "AllowanceScopeCreateInput": {
+        "type": "object",
+        "required": [
+          "label",
+          "currency"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Human-readable label."
+          },
+          "originsAllowed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Origins permitted (default all)."
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency; must match the shopper policy currency."
+          },
+          "maxPerPurchaseMinor": {
+            "type": "integer",
+            "description": "Per-purchase cap in minor units (optional)."
+          },
+          "dailySpendLimitMinor": {
+            "type": "integer",
+            "description": "Daily cap in minor units (optional)."
+          },
+          "categorySpendLimits": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Category caps (optional)."
+          },
+          "allowedMerchantIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Allowed merchant ids (optional)."
+          },
+          "nightWindow": {
+            "type": "object",
+            "description": "Night window rule (optional)."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Expiry (optional)."
+          }
+        }
+      },
+      "AllowanceScopeApproveInput": {
+        "type": "object",
+        "properties": {
+          "maxPerPurchaseMinor": {
+            "type": "integer",
+            "description": "Optional updated per-purchase cap."
+          },
+          "dailySpendLimitMinor": {
+            "type": "integer",
+            "description": "Optional updated daily cap."
+          }
+        }
+      },
+      "AllowanceScopeListResponse": {
+        "type": "object",
+        "properties": {
+          "scopes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AllowanceScope"
+            },
+            "description": "The shopper's scopes."
+          }
+        }
+      },
+      "AllowanceScopeDetailResponse": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AllowanceScope"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Audit events for the scope."
+          }
+        }
       }
     }
   },
@@ -2312,13 +2534,13 @@
                         "name": "Flat White",
                         "quantity": 2,
                         "unitPriceMinor": 350,
-                        "unitPriceFormatted": "€3.50",
+                        "unitPriceFormatted": "\u20ac3.50",
                         "lineTotalMinor": 700,
-                        "lineTotalFormatted": "€7.00"
+                        "lineTotalFormatted": "\u20ac7.00"
                       }
                     ],
                     "totalMinor": 700,
-                    "totalFormatted": "€7.00",
+                    "totalFormatted": "\u20ac7.00",
                     "currency": "EUR",
                     "cartId": "c_abc",
                     "message": "Cart prepared with 1 item(s).",
@@ -2558,7 +2780,7 @@
                   "status": "CREATED",
                   "origin": "AI_ASSISTED",
                   "totalMinor": 700,
-                  "totalFormatted": "€7.00",
+                  "totalFormatted": "\u20ac7.00",
                   "currency": "EUR",
                   "approvalUrl": "https://www.sandbox.paypal.com/checkoutnow?token=..."
                 }
@@ -3410,7 +3632,7 @@
             }
           },
           "404": {
-            "description": "Unknown session — send initialize again",
+            "description": "Unknown session \u2014 send initialize again",
             "content": {
               "application/json": {
                 "schema": {
@@ -4203,6 +4425,264 @@
             }
           }
         }
+      }
+    },
+    "/api/policy/scopes": {
+      "get": {
+        "tags": [
+          "Policy"
+        ],
+        "summary": "List the shopper's scoped allowances",
+        "responses": {
+          "200": {
+            "description": "Scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceScopeListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getPolicyScopes",
+        "description": "Returns all scopes owned by the authenticated session."
+      },
+      "post": {
+        "tags": [
+          "Policy"
+        ],
+        "summary": "Create a scoped allowance",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceScope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable (currency/ceiling)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postPolicyScopes",
+        "description": "Creates a scope. A HUMAN issuer yields an ACTIVE scope; an AI-prepared session yields a PENDING (agent-proposed) scope awaiting shopper approval.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowanceScopeCreateInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/policy/scopes/{scopeId}": {
+      "get": {
+        "tags": [
+          "Policy"
+        ],
+        "summary": "Get one scope with its audit trail",
+        "responses": {
+          "200": {
+            "description": "Scope with audit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceScopeDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getPolicyScope",
+        "description": "Returns the scope plus its event trail. Only the owning session may read it."
+      }
+    },
+    "/api/policy/scopes/{scopeId}/approve": {
+      "post": {
+        "tags": [
+          "Policy"
+        ],
+        "summary": "Approve a pending scope or confirm a limit increase",
+        "responses": {
+          "200": {
+            "description": "Approved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceScope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable (ceiling)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postPolicyScopeApprove",
+        "description": "Activates a PENDING scope, or records a fresh shopper approval for a limit increase. Limits remain capped by the global ceiling.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AllowanceScopeApproveInput"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/policy/scopes/{scopeId}/revoke": {
+      "post": {
+        "tags": [
+          "Policy"
+        ],
+        "summary": "Revoke a scoped allowance",
+        "responses": {
+          "200": {
+            "description": "Revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AllowanceScope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Session required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postPolicyScopeRevoke",
+        "description": "Revokes a scope. Subsequent checkouts bound to it fail closed."
       }
     }
   }

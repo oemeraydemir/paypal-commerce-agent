@@ -22,6 +22,8 @@ from .get_orders_error import GetOrdersErrorBody, get_orders_error_mapper
 from .get_orders_stats_error import GetOrdersStatsErrorBody, get_orders_stats_error_mapper
 from .get_policy_events_error import GetPolicyEventsErrorBody, get_policy_events_error_mapper
 from .get_policy_events_stats_error import GetPolicyEventsStatsErrorBody, get_policy_events_stats_error_mapper
+from .get_policy_scope_error import GetPolicyScopeErrorBody, get_policy_scope_error_mapper
+from .get_policy_scopes_error import GetPolicyScopesErrorBody, get_policy_scopes_error_mapper
 from .list_refunds_error import ListRefundsErrorBody, list_refunds_error_mapper
 from .mcp_end_session_error import McpEndSessionErrorBody, mcp_end_session_error_mapper
 from .mcp_rpc_error import McpRpcErrorBody, mcp_rpc_error_mapper
@@ -38,7 +40,11 @@ from .post_orders_order_id_capture_error import (
     post_orders_order_id_capture_error_mapper,
 )
 from .post_policy_preview_error import PostPolicyPreviewErrorBody, post_policy_preview_error_mapper
+from .post_policy_scope_approve_error import PostPolicyScopeApproveErrorBody, post_policy_scope_approve_error_mapper
+from .post_policy_scope_revoke_error import PostPolicyScopeRevokeErrorBody, post_policy_scope_revoke_error_mapper
+from .post_policy_scopes_error import PostPolicyScopesErrorBody, post_policy_scopes_error_mapper
 from .post_sessions_error import PostSessionsErrorBody, post_sessions_error_mapper
+from .post_take_home_suggestions_error import PostTakeHomeSuggestionsErrorBody, post_take_home_suggestions_error_mapper
 from .post_webhooks_paypal_error import PostWebhooksPaypalErrorBody, post_webhooks_paypal_error_mapper
 from .propose_refund_error import ProposeRefundErrorBody, propose_refund_error_mapper
 from .reject_refund_error import RejectRefundErrorBody, reject_refund_error_mapper
@@ -65,6 +71,8 @@ __all__ = [
     "GetOrdersStatsErrorBody",
     "GetPolicyEventsErrorBody",
     "GetPolicyEventsStatsErrorBody",
+    "GetPolicyScopeErrorBody",
+    "GetPolicyScopesErrorBody",
     "ListRefundsErrorBody",
     "McpEndSessionErrorBody",
     "McpRpcErrorBody",
@@ -75,7 +83,11 @@ __all__ = [
     "PostOrdersOrderIdCancelErrorBody",
     "PostOrdersOrderIdCaptureErrorBody",
     "PostPolicyPreviewErrorBody",
+    "PostPolicyScopeApproveErrorBody",
+    "PostPolicyScopeRevokeErrorBody",
+    "PostPolicyScopesErrorBody",
     "PostSessionsErrorBody",
+    "PostTakeHomeSuggestionsErrorBody",
     "PostWebhooksPaypalErrorBody",
     "ProposeRefundErrorBody",
     "RejectRefundErrorBody",
@@ -100,6 +112,8 @@ __all__ = [
     "get_orders_stats_error_mapper",
     "get_policy_events_error_mapper",
     "get_policy_events_stats_error_mapper",
+    "get_policy_scope_error_mapper",
+    "get_policy_scopes_error_mapper",
     "list_refunds_error_mapper",
     "mcp_end_session_error_mapper",
     "mcp_rpc_error_mapper",
@@ -110,7 +124,11 @@ __all__ = [
     "post_orders_order_id_cancel_error_mapper",
     "post_orders_order_id_capture_error_mapper",
     "post_policy_preview_error_mapper",
+    "post_policy_scope_approve_error_mapper",
+    "post_policy_scope_revoke_error_mapper",
+    "post_policy_scopes_error_mapper",
     "post_sessions_error_mapper",
+    "post_take_home_suggestions_error_mapper",
     "post_webhooks_paypal_error_mapper",
     "propose_refund_error_mapper",
     "reject_refund_error_mapper",

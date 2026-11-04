@@ -1,9 +1,16 @@
 from . import enums, unions
 from .ai_chat_request import AiChatRequest, AiChatRequestDict
 from .ai_chat_response import AiChatResponse, AiChatResponseDict
+from .allowance_scope import AllowanceScope, AllowanceScopeDict
+from .allowance_scope_approve_input import AllowanceScopeApproveInput, AllowanceScopeApproveInputDict
+from .allowance_scope_create_input import AllowanceScopeCreateInput, AllowanceScopeCreateInputDict
+from .allowance_scope_detail_response import AllowanceScopeDetailResponse, AllowanceScopeDetailResponseDict
+from .allowance_scope_list_response import AllowanceScopeListResponse, AllowanceScopeListResponseDict
 from .api_refunds_response import ApiRefundsResponse, ApiRefundsResponseDict
+from .basis import Basis, BasisDict
 from .catalog_response import CatalogResponse, CatalogResponseDict
 from .checks import Checks, ChecksDict
+from .control import Control, ControlDict
 from .create_order_request import CreateOrderRequest, CreateOrderRequestDict
 from .create_order_response import CreateOrderResponse, CreateOrderResponseDict
 from .error import Error, ErrorDict
@@ -11,6 +18,9 @@ from .error1 import Error1, Error1Dict
 from .error_error import ErrorError, ErrorErrorDict
 from .issued_session import IssuedSession, IssuedSessionDict
 from .item import Item, ItemDict
+from .item1 import Item1, Item1Dict
+from .line import Line, LineDict
+from .mandate import Mandate, MandateDict
 from .mandate_verification import MandateVerification, MandateVerificationDict
 from .mcp_request import McpRequest, McpRequestDict
 from .mcp_response import McpResponse, McpResponseDict
@@ -35,6 +45,11 @@ from .propose_refund_request import ProposeRefundRequest, ProposeRefundRequestDi
 from .refund_request import RefundRequest, RefundRequestDict
 from .refund_request_error import RefundRequestError, RefundRequestErrorDict
 from .signed_cart_mandate import SignedCartMandate, SignedCartMandateDict
+from .step import Step, StepDict
+from .take_home_item import TakeHomeItem, TakeHomeItemDict
+from .take_home_request import TakeHomeRequest, TakeHomeRequestDict
+from .take_home_response import TakeHomeResponse, TakeHomeResponseDict
+from .transaction_passport import TransactionPassport, TransactionPassportDict
 from .unions import Id, IdDict
 from .violation import Violation, ViolationDict
 
@@ -45,12 +60,26 @@ __all__ = [
     "AiChatRequestDict",
     "AiChatResponse",
     "AiChatResponseDict",
+    "AllowanceScope",
+    "AllowanceScopeApproveInput",
+    "AllowanceScopeApproveInputDict",
+    "AllowanceScopeCreateInput",
+    "AllowanceScopeCreateInputDict",
+    "AllowanceScopeDetailResponse",
+    "AllowanceScopeDetailResponseDict",
+    "AllowanceScopeDict",
+    "AllowanceScopeListResponse",
+    "AllowanceScopeListResponseDict",
     "ApiRefundsResponse",
     "ApiRefundsResponseDict",
+    "Basis",
+    "BasisDict",
     "CatalogResponse",
     "CatalogResponseDict",
     "Checks",
     "ChecksDict",
+    "Control",
+    "ControlDict",
     "CreateOrderRequest",
     "CreateOrderRequestDict",
     "CreateOrderResponse",
@@ -66,7 +95,13 @@ __all__ = [
     "IssuedSession",
     "IssuedSessionDict",
     "Item",
+    "Item1",
+    "Item1Dict",
     "ItemDict",
+    "Line",
+    "LineDict",
+    "Mandate",
+    "MandateDict",
     "MandateVerification",
     "MandateVerificationDict",
     "McpRequest",
@@ -115,6 +150,16 @@ __all__ = [
     "RefundRequestErrorDict",
     "SignedCartMandate",
     "SignedCartMandateDict",
+    "Step",
+    "StepDict",
+    "TakeHomeItem",
+    "TakeHomeItemDict",
+    "TakeHomeRequest",
+    "TakeHomeRequestDict",
+    "TakeHomeResponse",
+    "TakeHomeResponseDict",
+    "TransactionPassport",
+    "TransactionPassportDict",
     "Violation",
     "ViolationDict",
 ]

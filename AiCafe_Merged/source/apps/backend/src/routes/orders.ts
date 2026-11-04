@@ -33,6 +33,8 @@ import { policyService } from '../policy/service';
 import { policyStorage } from '../policy/storage';
 import { requireAllergenAcknowledgement } from '../policy/allergen-ack';
 import { dailySpendTracker } from '../policy/daily-spend-tracker';
+import { allowanceScopeService, buildScopedPolicy } from '../policy/allowance-scope';
+import { paypalBusyError } from '../checkout/rescue';
 import {
   buildEvaluationOrder,
   buildPolicyContext,
@@ -95,6 +97,15 @@ function mandateReservationError(reason: string): AppError {
     MERCHANT_NOT_ALLOWED: 'This merchant is outside the authorized spending scope.',
     CURRENCY_MISMATCH: 'The cart currency is outside the authorized spending scope.',
     MANDATE_DISABLED: 'Spending permission is disabled. Review and authorize it again.',
+    SCOPE_NOT_FOUND: 'The scoped allowance no longer exists. Review the allowance and try again.',
+    SCOPE_NOT_OWNED: 'The scoped allowance does not belong to this session and cannot be used.',
+    SCOPE_PENDING: 'The scoped allowance is awaiting approval and cannot be used yet.',
+    SCOPE_REVOKED: 'The scoped allowance was revoked. Review the allowance and try again.',
+    SCOPE_EXPIRED: 'The scoped allowance has expired. Review the allowance and try again.',
+    SCOPE_SPENT: 'The cart exceeds the remaining scoped allowance.',
+    SCOPE_CURRENCY_MISMATCH: 'The cart currency is outside the scoped allowance.',
+    SCOPE_MERCHANT_NOT_ALLOWED: 'This merchant is outside the scoped allowance.',
+    SCOPE_ORIGIN_NOT_ALLOWED: 'This purchase origin is not permitted by the scoped allowance.',
   };
   return new AppError(renewalRequired ? 409 : 403, messages[reason] ?? 'Spending permission could not be verified.', {
     code: renewalRequired ? 'MANDATE_RENEWAL_REQUIRED' : reason,
@@ -171,19 +182,11 @@ async function startPayPalCheckout(
       // Priority 2 (Checkout Rescue): an upstream 5xx/timeout is usually transient.
       // Say so plainly, tell the buyer how long to wait, and reassure them their
       // cart is safe. We NEVER auto-retry: the buyer stays in control.
-      throw new AppError(
-        502,
-        'PayPal is busy right now. Please wait about 30 seconds and try again.',
-        {
-          code: 'PAYPAL_BUSY',
-          upstreamStatus,
-          retryable: true,
-          retryAfterSeconds: 30,
-          suggestion: 'Wait about 30 seconds, then retry. Your cart is saved.',
-          alternativePayment: 'You can also try a card or another payment method.',
-          cartSaved: true,
-        }
-      );
+      const busy = paypalBusyError(`UPSTREAM_${upstreamStatus}`);
+      throw new AppError(busy.statusCode, busy.message, {
+        ...busy.details,
+        upstreamStatus,
+      });
     }
     throw err;
   }
@@ -322,7 +325,32 @@ router.post('/orders/create', requireSession, checkoutLimiter, wellbeingOrderGua
     // authoritative PolicyEvents (sessionId + item selection).
     const cartId = createCartId(sessionId, validatedItems);
     // Per-user policy + per-user daily budget: isolated from every other session.
-    const policy = await policyStorage.getAuthoritativePolicy(userId);
+    const globalPolicy = await policyStorage.getAuthoritativePolicy(userId);
+
+    // Stage 2 (Scoped AI Allowance): the client MAY bind a scope to this checkout.
+    // Server-authoritative + fail-closed: a scope that is missing, not owned,
+    // pending, revoked, expired, wrong-currency, wrong-origin or wrong-merchant
+    // REJECTS the checkout — it never falls back to the global policy. When a
+    // scope is accepted, the EFFECTIVE policy is the min of the scope and the
+    // global ceiling (non-escalation), so a scope can never grant more authority.
+    const scopeIdRaw = req.body?.scopeId;
+    let policy = globalPolicy;
+    let appliedScopeId: string | undefined;
+    if (scopeIdRaw !== undefined) {
+      if (typeof scopeIdRaw !== 'string' || scopeIdRaw.length === 0 || scopeIdRaw.length > 64) {
+        throw new AppError(400, 'scopeId must be a non-empty string');
+      }
+      const scopeResolve = await allowanceScopeService.resolveActive({
+        userId,
+        scopeId: scopeIdRaw,
+        origin,
+        merchantId: currentBusiness.businessId,
+        currency: currentBusiness.currency,
+      });
+      if (!scopeResolve.ok) throw mandateReservationError(scopeResolve.code);
+      policy = buildScopedPolicy(globalPolicy, scopeResolve.scope);
+      appliedScopeId = scopeResolve.scope.id;
+    }
 
     // S10 (R9/R10): AUTHORITATIVE policy evaluation on an in-memory snapshot
     // BEFORE the order is persisted or PayPal is contacted. The client's
@@ -396,6 +424,7 @@ router.post('/orders/create', requireSession, checkoutLimiter, wellbeingOrderGua
       userId, amountMinor: calculatedTotal, currency: currentBusiness.currency,
       merchantId: currentBusiness.businessId, mandateRevision: policyStorage.getRevision(userId),
       dailySpendLimitMinor: policy.dailySpendLimitMinor,
+      scopeId: appliedScopeId,
     });
     if (!reserved.ok) {
       // R20: record an authoritative BLOCK so the dashboard stays truthful.
@@ -446,6 +475,16 @@ router.post('/orders/create', requireSession, checkoutLimiter, wellbeingOrderGua
       enabled: policy.enabled,
       validUntil: policy.validUntil ? policy.validUntil.toISOString() : null,
     };
+    // Stage 2: bind the applied scope (when one was resolved) so the order and
+    // its Cart Mandate can evidence precisely which scope governed the checkout.
+    if (appliedScopeId) order.policyAppliedLimits.appliedScopeId = appliedScopeId;
+    order.appliedScopeId = appliedScopeId;
+
+    // Stage 2: record a usage audit event on the scope (provenance only; the
+    // authoritative spend accounting lives in the scoped reservation).
+    if (appliedScopeId) {
+      void allowanceScopeService.recordUsage(userId, appliedScopeId, calculatedTotal, order.currency, origin);
+    }
 
     // WRITE-AHEAD: the order (and, queued before it, its reservation) must be durable
     // BEFORE PayPal is contacted. If storage is down nothing was sent to PayPal.
@@ -667,19 +706,8 @@ router.post('/orders/:orderId/capture', requireSession, checkoutLimiter, async (
         // R15: ambiguous transport/network error — do NOT release the reservation,
         // because the capture may have succeeded remotely.
         // Priority 2 (Checkout Rescue): explain the wait honestly and keep the cart.
-        throw new AppError(
-          502,
-          'PayPal could not be reached. Your cart is saved; please wait about 30 seconds and try again.',
-          {
-            paypalIssue,
-            code: 'PAYPAL_BUSY',
-            retryable: true,
-            retryAfterSeconds: 30,
-            suggestion: 'Wait about 30 seconds, then retry. Your cart is saved.',
-            alternativePayment: 'You can also try a card or another payment method.',
-            cartSaved: true,
-          }
-        );
+        const busyCapture = paypalBusyError(paypalIssue ?? 'CAPTURE_UPSTREAM_ERROR');
+        throw new AppError(busyCapture.statusCode, busyCapture.message, busyCapture.details);
       }
     }
 

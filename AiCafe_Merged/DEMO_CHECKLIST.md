@@ -27,7 +27,7 @@ list is the pass/fail gate.
 - [ ] No statement claims an item is **allergen-free** or **safe**.
 - [ ] No claim that Flutter allergen preferences are filtered **server-side** (they are stored locally).
 - [ ] No live-money PayPal flow shown; sandbox only.
-- [ ] Test counts quoted match `docs/EVIDENCE.md` and keep the historical/re-measured distinction.
+- [ ] Test counts quoted match `docs/EVIDENCE.md` and keep the historical/re-measured distinction. Current backend run (2026-11-04): **137 suites / 1320 tests pass**; `flutter analyze` clean (widget tests blocked in sandbox; owner-machine run 163/163).
 - [ ] Links in `README.md`, `docs/JUDGING.md`, `docs/DETAILS.md` resolve (no broken demo-checklist/arch links).
 
 ## Open items before submitting (carried over from the jury self-review)

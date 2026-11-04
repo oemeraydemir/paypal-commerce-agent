@@ -106,6 +106,7 @@ describe('migrations', () => {
       '011_persistent_spending_mandates',
       '012_refund_audit_and_disputes',
       '013_mandate_events',
+      '014_allowance_scopes',
     ]);
     expect(await migrate(fresh as any, { advisoryLock: false })).toEqual([]);
   });

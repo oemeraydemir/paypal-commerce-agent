@@ -400,6 +400,50 @@ export const MIGRATIONS: Migration[] = [
        )`,
     ],
   },
+  {
+    // Scoped AI Allowance (Stage 2.5). Additive only: no existing table is
+    // altered in a destructive way; existing rows never drop columns. The
+    // `allowance_scopes` table is the durable source of truth for named,
+    // session-bound spending envelopes. `allowance_scope_events` is an
+    // append-only audit trail. `scope_id` columns are added to the existing
+    // reservation/order tables so a scoped checkout is traceable end-to-end.
+    id: '014_allowance_scopes',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS allowance_scopes (
+         id text PRIMARY KEY,
+         user_id text NOT NULL,
+         session_ref text,
+         kind text NOT NULL CHECK (kind IN ('SHOPPER','AGENT_PROPOSED','AGENT_GRANTED')),
+         label text NOT NULL,
+         origins_allowed jsonb NOT NULL,
+         currency text NOT NULL,
+         max_per_purchase_minor integer,
+         daily_spend_limit_minor integer,
+         category_spend_limits jsonb,
+         allowed_merchant_ids jsonb,
+         night_window jsonb,
+         status text NOT NULL CHECK (status IN ('PENDING_APPROVAL','ACTIVE','SPENT','EXPIRED','REVOKED')),
+         issued_by text NOT NULL,
+         approved_by jsonb,
+         created_at timestamptz NOT NULL,
+         expires_at timestamptz,
+         updated_at timestamptz NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS allowance_scopes_user_status_idx ON allowance_scopes (user_id, status)`,
+      `CREATE TABLE IF NOT EXISTS allowance_scope_events (
+         id text PRIMARY KEY,
+         scope_id text NOT NULL,
+         user_id text NOT NULL,
+         event_type text NOT NULL,
+         actor text NOT NULL,
+         details jsonb NOT NULL,
+         occurred_at timestamptz NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS allowance_scope_events_scope_time_idx ON allowance_scope_events (scope_id, occurred_at)`,
+      `ALTER TABLE spend_reservations ADD COLUMN IF NOT EXISTS scope_id text`,
+      `ALTER TABLE orders ADD COLUMN IF NOT EXISTS scope_id text`,
+    ],
+  },
 ];
 
 export interface MigrateOptions {

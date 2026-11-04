@@ -11,6 +11,7 @@ import { policyStorage } from '../policy/storage';
 import { webhookService } from '../paypal/webhook-service';
 import { dailySpendTracker } from '../policy/daily-spend-tracker';
 import { mandateAudit } from '../policy/mandate-audit';
+import { allowanceScopeService } from '../policy/allowance-scope';
 import { migrate } from './migrations';
 import { Queryable } from './types';
 import { removeConnectionStringSslMode, resolveDatabaseSslOptions } from './database-ssl';
@@ -56,6 +57,7 @@ export async function attachPersistence(
   registerRetrier(() => policyStorage.retryDirty());
   registerRetrier(() => webhookService.retryDirty());
   registerRetrier(() => mandateAudit.retryDirty());
+  registerRetrier(() => allowanceScopeService.retryDirty());
 
   await sessionStore.hydrate();
   const reservationsLoaded = await dailySpendTracker.hydrate();
@@ -65,6 +67,7 @@ export async function attachPersistence(
   await policyStorage.hydrate();
   await webhookService.hydrate();
   await mandateAudit.hydrate();
+  await allowanceScopeService.hydrate();
 
   // Split Bill: rebuild the in-memory read model from durable state, then clear
   // any claims left dangling by a crashed instance (TTL-guarded so in-flight

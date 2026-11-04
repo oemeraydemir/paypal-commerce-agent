@@ -41,6 +41,22 @@ export interface EvidenceOrderSummary {
   paypalOrderId?: string;
   paypalCaptureId?: string;
   paypalStatus?: string;
+  /** Stage 2: the scoped-allowance id that governed this order (if any). */
+  appliedScopeId?: string;
+}
+
+/**
+ * One item in the evidence pack. `source` separates VERIFIED server records from
+ * AI-GENERATED narrative, so a reviewer (or a court) can see at a glance what is
+ * an original record versus an assistant-authored summary. `verified` is true
+ * only for records the server actually produced; narratives are always false.
+ */
+export interface EvidenceItem {
+  kind: 'order-record' | 'mandate-record' | 'policy-record' | 'payment-record' | 'refund-record' | 'ai-narrative';
+  source: 'record' | 'narrative';
+  verified: boolean;
+  label: string;
+  detail: string;
 }
 
 /** Full detail of a single policy rule that fired (which rule, why, expected vs actual). */
@@ -109,6 +125,8 @@ export interface EvidencePackagePayload {
   policyEvents: EvidencePolicyEvent[];
   timeline: EvidenceTimelineStep[];
   disputeDefense: EvidenceDisputeDefense;
+  /** Stage 3.5: explicit provenance ledger separating verified records from AI narrative. */
+  evidenceItems: EvidenceItem[];
   humanApproval: {
     authority: 'buyer_approval_at_paypal';
     state: 'awaiting_approval' | 'approved' | 'not_recorded';
@@ -300,6 +318,53 @@ function buildDisputeDefense(
   };
 }
 
+/** Builds the explicit provenance ledger for the package (verified records vs AI narrative). */
+function buildEvidenceItems(
+  order: Order,
+  policyEvents: EvidencePolicyEvent[],
+  timeline: EvidenceTimelineStep[],
+  disputeDefense: EvidenceDisputeDefense
+): EvidenceItem[] {
+  const items: EvidenceItem[] = [
+    {
+      kind: 'order-record', source: 'record', verified: true,
+      label: 'Order record',
+      detail: `Order ${order.id} (${order.status}) created ${order.createdAt.toISOString()} for ${(order.totalMinor / 100).toFixed(2)} ${order.currency}.`,
+    },
+    {
+      kind: 'mandate-record', source: 'record', verified: true,
+      label: 'Signed Cart Mandate',
+      detail: 'EdDSA-signed proposal of the exact cart, prices and enforced limits (kid-bound to the server keyring).',
+    },
+  ];
+  for (const e of policyEvents) {
+    items.push({
+      kind: 'policy-record', source: 'record', verified: true,
+      label: 'Policy decision',
+      detail: `${e.decision} at ${e.timestamp} — ${e.reason}`,
+    });
+  }
+  if (order.paypalCaptureId) {
+    items.push({
+      kind: 'payment-record', source: 'record', verified: true,
+      label: 'PayPal capture', detail: `Capture ${order.paypalCaptureId} (status ${order.paypalStatus ?? 'unknown'}).`,
+    });
+  }
+  const refunds = refundService.listForOrder(order.id).filter((r) => r.status === 'REFUNDED');
+  for (const r of refunds) {
+    items.push({
+      kind: 'refund-record', source: 'record', verified: true,
+      label: 'Refund', detail: `${(r.amountMinor / 100).toFixed(2)} ${r.currency}${r.paypalRefundId ? ' · ' + r.paypalRefundId : ''}.`,
+    });
+  }
+  items.push({
+    kind: 'ai-narrative', source: 'narrative', verified: false,
+    label: 'AI-generated defense narrative',
+    detail: 'Auto-authored summary and recommended response. It is an assistant-written interpretation of the verified records, not itself a record.',
+  });
+  return items;
+}
+
 export function buildEvidencePackage(orderId: string): EvidencePackage | null {
   const order = OrderService.getInstance().getById(orderId);
   if (!order) return null;
@@ -339,13 +404,22 @@ export function buildEvidencePackage(orderId: string): EvidencePackage | null {
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
     items: [...order.items].map((i) => ({ productId: i.productId, quantity: i.quantity })),
+    ...(order.appliedScopeId ? { appliedScopeId: order.appliedScopeId } : {}),
   };
   if (order.paypalOrderId) summary.paypalOrderId = order.paypalOrderId;
   if (order.paypalCaptureId) summary.paypalCaptureId = order.paypalCaptureId;
   if (order.paypalStatus) summary.paypalStatus = order.paypalStatus;
 
   const timeline = [...buildTimeline(order, policyEvents), ...buildRefundSteps(order.id)];
+  if (order.appliedScopeId) {
+    timeline.splice(1, 0, {
+      step: 'POLICY_EVALUATED',
+      at: order.createdAt.toISOString(),
+      detail: `Scoped allowance ${order.appliedScopeId} was applied (server-set)`,
+    });
+  }
   const disputeDefense = buildDisputeDefense(order, policyEvents, timeline);
+  const evidenceItems = buildEvidenceItems(order, policyEvents, timeline, disputeDefense);
 
   const payload: EvidencePackagePayload = {
     version: EVIDENCE_VERSION,
@@ -356,6 +430,7 @@ export function buildEvidencePackage(orderId: string): EvidencePackage | null {
     policyEvents,
     timeline,
     disputeDefense,
+    evidenceItems,
     humanApproval: {
       authority: 'buyer_approval_at_paypal',
       state: approvalState(order.status),

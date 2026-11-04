@@ -357,6 +357,19 @@
       try { if (seq === pseq) { policy = null; $('policy').textContent = ''; updatePay(); } } catch (e) { /* page torn down */ }
     });
   }
+  // Purchase impact (shown inside the existing mandate card, never as a second card).
+  // Per-person amounts use the same display rule as the split preview; the server computes the real shares.
+  var impactByOrder = {};
+  function impactTotals() {
+    var out = { orders: 0, refunded: 0, total: 0 };
+    Object.keys(impactByOrder).forEach(function (k) { out.orders++; out.refunded += impactByOrder[k].refunded; out.total += impactByOrder[k].total; });
+    return out;
+  }
+  function shareText(total, n) {
+    var a = splitAmounts(total, n), seen = [], i;
+    for (i = 0; i < a.length; i++) if (seen.indexOf(a[i]) < 0) seen.push(a[i]);
+    return seen.map(eur).join(' + ') + (seen.length === 1 ? ' ' + i18nT('impact.each') : '');
+  }
   function renderPolicy(p) {
     var box = $('policy'); box.textContent = '';
     var L = p.limits; var max = L.maxPerPurchaseMinor; var wrap = el('div', 'pbox' + (p.decision ? ' ' + p.decision : ''));
@@ -387,6 +400,12 @@
     mrow(i18nT('mandate.status'), i18nT('mandate.' + st));
     mrow(i18nT('mandate.expires'), L.validUntil ? new Date(L.validUntil).toLocaleString() : i18nT('mandate.noExpiry'));
     mrow(i18nT('mandate.lastUpdated'), L.updatedAt ? new Date(L.updatedAt).toLocaleString() : i18nT('mandate.notRecorded'));
+    if (!p.empty && cartMinor > 0) {
+      mrow(i18nT('impact.split2'), shareText(cartMinor, 2));
+      mrow(i18nT('impact.split3'), shareText(cartMinor, 3));
+    }
+    var imp = impactTotals();
+    if (imp.orders) mrow(i18nT('impact.refunded'), eur(imp.refunded) + ' ' + i18nT('impact.of').replace('{t}', eur(imp.total)));
     wrap.appendChild(rows);
     var rules = el('ul', 'mandate-rules');
     ['mandate.rule1', 'mandate.rule2', 'mandate.rule3'].forEach(function (k) { rules.appendChild(el('li', '', i18nT(k))); });
@@ -888,6 +907,10 @@
     function load() {
       return api(base + '/refund-status').then(function (d) {
         out.textContent = ''; form.textContent = '';
+        var refundedSum = 0;
+        (d.refunds || []).forEach(function (r) { if (r.status === 'REFUNDED') refundedSum += r.amountMinor; });
+        impactByOrder[orderId] = { refunded: refundedSum, total: (d.refundableMinor || 0) + refundedSum };
+        if (policy) renderPolicy(policy);
         var open = false;
         (d.refunds || []).forEach(function (r) {
           out.appendChild(el('div', '', statusLine(r)));

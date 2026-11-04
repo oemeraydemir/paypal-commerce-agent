@@ -93,46 +93,51 @@
         "type": "object",
         "properties": {
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "error (field)."
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "human-readable message (field)."
           },
           "code": {
-            "type": "string"
+            "type": "string",
+            "description": "code (field)."
           },
           "policyDecision": {
-            "type": "string",
             "enum": [
-              "AUTO_ALLOW",
-              "REQUIRE_CONFIRMATION",
-              "BLOCK"
-            ]
+              {
+                "value": "AUTO_ALLOW",
+                "description": "Enum value AUTO_ALLOW."
+              },
+              {
+                "value": "REQUIRE_CONFIRMATION",
+                "description": "Enum value REQUIRE_CONFIRMATION."
+              },
+              {
+                "value": "BLOCK",
+                "description": "Enum value BLOCK."
+              }
+            ],
+            "description": "policy decision (field)."
           },
           "violations": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "type": {
-                  "type": "string"
-                },
-                "rule": {
-                  "type": "string"
-                },
-                "message": {
-                  "type": "string"
-                }
-              }
-            }
+              "$ref": "#/components/schemas/Violation"
+            },
+            "description": "Any policy violations that would be reported."
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "description": "explanation for this outcome (field)."
           },
           "suggestion": {
-            "type": "string"
+            "type": "string",
+            "description": "suggested next step for the shopper (field)."
           }
-        }
+        },
+        "description": "error."
       },
       "IssuedSession": {
         "type": "object",
@@ -144,7 +149,8 @@
         "properties": {
           "sessionId": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "session identifier (field)."
           },
           "sessionToken": {
             "type": "string",
@@ -152,28 +158,34 @@
           },
           "expiresAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "expiration timestamp (RFC 3339) (field)."
           }
-        }
+        },
+        "description": "issued session."
       },
       "Product": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "unique identifier (field)."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "name (field)."
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "description (field)."
           },
           "priceMinor": {
             "type": "integer",
             "description": "Price in minor units (e.g. cents)."
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
           },
           "dietary": {
             "type": "array",
@@ -186,32 +198,39 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "tags (field)."
           },
           "category": {
-            "type": "string"
+            "type": "string",
+            "description": "category (field)."
           },
           "occasion": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "occasion (field)."
           }
-        }
+        },
+        "description": "product."
       },
       "CatalogResponse": {
         "type": "object",
         "properties": {
           "count": {
-            "type": "integer"
+            "type": "integer",
+            "description": "number of items (field)."
           },
           "products": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Product"
-            }
+            },
+            "description": "products (field)."
           }
-        }
+        },
+        "description": "catalog response."
       },
       "AIChatRequest": {
         "type": "object",
@@ -221,7 +240,8 @@
         "properties": {
           "message": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "human-readable message (field)."
           },
           "preferences": {
             "type": "object",
@@ -229,56 +249,162 @@
               "dietary": {
                 "type": "array",
                 "items": {
-                  "type": "string",
                   "enum": [
-                    "vegetarian",
-                    "vegan",
-                    "gluten-free"
+                    {
+                      "value": "vegetarian",
+                      "description": "Enum value vegetarian."
+                    },
+                    {
+                      "value": "vegan",
+                      "description": "Enum value vegan."
+                    },
+                    {
+                      "value": "gluten-free",
+                      "description": "Enum value gluten-free."
+                    }
                   ]
                 },
-                "maxItems": 3
+                "maxItems": 3,
+                "description": "dietary (field)."
               },
               "maxBudgetMinor": {
                 "type": "integer",
                 "minimum": 100,
-                "maximum": 10000
+                "maximum": 10000,
+                "description": "max budget minor units (field)."
               }
-            }
+            },
+            "description": "preferences."
           }
-        }
+        },
+        "description": "aichat request."
       },
       "AIChatResponse": {
         "type": "object",
         "properties": {
           "sessionId": {
-            "type": "string"
+            "type": "string",
+            "description": "session identifier (field)."
           },
           "response": {
-            "type": "string"
+            "type": "string",
+            "description": "response (field)."
           },
           "preparedCart": {
+            "nullable": true,
             "type": "object",
-            "nullable": true
+            "description": "The validated, server-priced cart prepared by the agent; null when none was prepared.",
+            "properties": {
+              "items": {
+                "type": "array",
+                "description": "The validated cart lines with authoritative pricing.",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "productId": {
+                      "type": "string",
+                      "description": "Product identifier."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Product name."
+                    },
+                    "quantity": {
+                      "type": "integer",
+                      "description": "Quantity."
+                    },
+                    "unitPriceMinor": {
+                      "type": "integer",
+                      "description": "Unit price in minor units."
+                    },
+                    "unitPriceFormatted": {
+                      "type": "string",
+                      "description": "Formatted unit price."
+                    },
+                    "lineTotalMinor": {
+                      "type": "integer",
+                      "description": "Line total in minor units."
+                    },
+                    "lineTotalFormatted": {
+                      "type": "string",
+                      "description": "Formatted line total."
+                    }
+                  },
+                  "description": "A single validated cart line."
+                }
+              },
+              "totalMinor": {
+                "type": "integer",
+                "description": "Cart total in minor units."
+              },
+              "totalFormatted": {
+                "type": "string",
+                "description": "Formatted cart total."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO 4217 currency code."
+              },
+              "cartId": {
+                "type": "string",
+                "description": "Deterministic cart identifier."
+              },
+              "message": {
+                "type": "string",
+                "description": "Human-readable summary."
+              },
+              "policyDecision": {
+                "$ref": "#/components/schemas/PolicyDecision"
+              },
+              "policyViolations": {
+                "type": "array",
+                "description": "Any policy violations found.",
+                "items": {
+                  "$ref": "#/components/schemas/Violation"
+                }
+              },
+              "requiresExplicitApproval": {
+                "type": "boolean",
+                "description": "True when human approval is required."
+              },
+              "retrySuggested": {
+                "type": "boolean",
+                "description": "True when an alternative cart is suggested."
+              },
+              "reason": {
+                "type": "string",
+                "description": "Outcome explanation."
+              }
+            }
           },
           "checkoutReady": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "whether the cart is ready for checkout (field)."
           },
           "suggestion": {
-            "type": "object",
             "nullable": true,
-            "description": "Rule-based mode only. Present when the cheapest match is over the shopper budget: a manual add-anyway offer. It is not a prepared cart and authorises nothing."
+            "type": "object",
+            "description": "Rule-based mode only: a manual add-anyway offer. Not a prepared cart; authorises nothing.",
+            "additionalProperties": true
           },
           "toolRounds": {
-            "type": "integer"
+            "type": "integer",
+            "description": "number of tool-calling rounds used (field)."
           },
           "messageCount": {
-            "type": "integer"
+            "type": "integer",
+            "description": "number of messages in the conversation (field)."
           },
           "mode": {
-            "type": "string",
             "enum": [
-              "ai",
-              "rule-based"
+              {
+                "value": "ai",
+                "description": "Enum value ai."
+              },
+              {
+                "value": "rule-based",
+                "description": "Enum value rule-based."
+              }
             ],
             "description": "\"ai\" when an LLM answered; \"rule-based\" when every AI provider was exhausted and the clearly-labelled non-AI Quick Planner answered. Rule-based carts are attributed to HUMAN, never AI_AGENT."
           },
@@ -300,7 +426,8 @@
             "type": "boolean",
             "description": "true when an earlier provider/model failed first, the provider changed within the turn, or the rule-based planner answered."
           }
-        }
+        },
+        "description": "aichat response."
       },
       "OrderItem": {
         "type": "object",
@@ -310,13 +437,16 @@
         ],
         "properties": {
           "productId": {
-            "type": "string"
+            "type": "string",
+            "description": "product identifier (field)."
           },
           "quantity": {
             "type": "integer",
-            "minimum": 1
+            "minimum": 1,
+            "description": "quantity, a positive integer (field)."
           }
-        }
+        },
+        "description": "order item."
       },
       "CreateOrderRequest": {
         "type": "object",
@@ -329,92 +459,124 @@
             "items": {
               "$ref": "#/components/schemas/OrderItem"
             },
-            "minItems": 1
+            "minItems": 1,
+            "description": "items (field)."
           }
-        }
+        },
+        "description": "create order request."
       },
       "CreateOrderResponse": {
         "type": "object",
         "properties": {
           "orderId": {
-            "type": "string"
+            "type": "string",
+            "description": "order identifier (field)."
           },
           "paypalOrderId": {
-            "type": "string"
+            "type": "string",
+            "description": "paypal order id (field)."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "current status (field)."
           },
           "origin": {
-            "type": "string",
             "enum": [
-              "AI_AGENT",
-              "HUMAN"
-            ]
+              {
+                "value": "AI_AGENT",
+                "description": "Enum value AI_AGENT."
+              },
+              {
+                "value": "HUMAN",
+                "description": "Enum value HUMAN."
+              }
+            ],
+            "description": "how the order was created (field)."
           },
           "totalMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "total in minor currency units (field)."
           },
           "totalFormatted": {
-            "type": "string"
+            "type": "string",
+            "description": "total formatted (field)."
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
           },
           "approvalUrl": {
             "type": "string",
             "format": "uri",
-            "nullable": true
+            "nullable": true,
+            "description": "approval url (field)."
           }
-        }
+        },
+        "description": "create order response."
       },
       "Order": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "unique identifier (field)."
           },
           "sessionId": {
             "type": "string",
             "description": "Public, non-reversible ref."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "current status (field)."
           },
           "origin": {
-            "type": "string",
             "enum": [
-              "AI_AGENT",
-              "HUMAN"
-            ]
+              {
+                "value": "AI_AGENT",
+                "description": "Enum value AI_AGENT."
+              },
+              {
+                "value": "HUMAN",
+                "description": "Enum value HUMAN."
+              }
+            ],
+            "description": "how the order was created (field)."
           },
           "totalMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "total in minor currency units (field)."
           },
           "totalFormatted": {
-            "type": "string"
+            "type": "string",
+            "description": "total formatted (field)."
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
           },
           "itemCount": {
-            "type": "integer"
+            "type": "integer",
+            "description": "item count (field)."
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "creation timestamp (RFC 3339) (field)."
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "last update timestamp (RFC 3339) (field)."
           },
           "items": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OrderItem"
-            }
+            },
+            "description": "items (field)."
           }
-        }
+        },
+        "description": "order."
       },
       "OrdersListResponse": {
         "type": "object",
@@ -423,107 +585,141 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/Order"
-            }
+            },
+            "description": "orders (field)."
           },
           "total": {
-            "type": "integer"
+            "type": "integer",
+            "description": "total (field)."
           },
           "returned": {
-            "type": "integer"
+            "type": "integer",
+            "description": "returned (field)."
           }
-        }
+        },
+        "description": "orders list response."
       },
       "OrdersStats": {
         "type": "object",
         "properties": {
           "total": {
-            "type": "integer"
+            "type": "integer",
+            "description": "total (field)."
           },
           "aiAssisted": {
-            "type": "integer"
+            "type": "integer",
+            "description": "AI assisted (field)."
           },
           "aiAssistedPercentage": {
-            "type": "number"
+            "type": "number",
+            "description": "AI assisted percentage (field)."
           },
           "revenueMinor": {
             "type": "integer",
             "description": "Gross captured amount of PAID orders (before refunds)."
           },
           "revenueFormatted": {
-            "type": "string"
+            "type": "string",
+            "description": "revenue formatted (field)."
           },
           "refundedMinor": {
             "type": "integer",
             "description": "Sum of merchant-approved refunds on paid orders (never more than captured)."
           },
           "refundedFormatted": {
-            "type": "string"
+            "type": "string",
+            "description": "refunded formatted (field)."
           },
           "netRevenueMinor": {
             "type": "integer",
             "description": "revenueMinor minus refundedMinor; what the merchant keeps."
           },
           "netRevenueFormatted": {
-            "type": "string"
+            "type": "string",
+            "description": "net revenue formatted (field)."
           }
-        }
+        },
+        "description": "orders stats."
       },
       "PolicyCheck": {
         "type": "object",
         "properties": {
           "rule": {
-            "type": "string"
+            "type": "string",
+            "description": "rule (field)."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "label (field)."
           },
           "status": {
-            "type": "string",
             "enum": [
-              "pass",
-              "confirm",
-              "fail"
-            ]
+              {
+                "value": "pass",
+                "description": "Enum value pass."
+              },
+              {
+                "value": "confirm",
+                "description": "Enum value confirm."
+              },
+              {
+                "value": "fail",
+                "description": "Enum value fail."
+              }
+            ],
+            "description": "current status (field)."
           },
           "detail": {
-            "type": "string"
+            "type": "string",
+            "description": "detail (field)."
           }
-        }
+        },
+        "description": "policy check."
       },
       "PolicyLimits": {
         "type": "object",
         "properties": {
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
           },
           "maxPerPurchaseMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "max per-purchase minor units (field)."
           },
           "confirmationThresholdMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "confirmation threshold minor units (field)."
           },
           "dailySpendLimitMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "daily spend limit minor units (field)."
           },
           "dailySpentMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "daily spent minor units (field)."
           },
           "dailyPendingMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "daily pending minor units (field)."
           },
           "dailyRemainingMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "daily remaining minor units (field)."
           },
           "blockedDietaryAttributes": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "blocked dietary attributes (field)."
           },
           "policyEnabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "policy enabled (field)."
           }
-        }
+        },
+        "description": "policy limits."
       },
       "PolicyPreviewRequest": {
         "type": "object",
@@ -532,119 +728,213 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/OrderItem"
-            }
+            },
+            "description": "items (field)."
           }
-        }
+        },
+        "description": "policy preview request."
       },
       "PolicyPreviewResponse": {
         "type": "object",
         "properties": {
           "empty": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "empty (field)."
           },
           "decision": {
-            "type": "string",
             "enum": [
-              "AUTO_ALLOW",
-              "REQUIRE_CONFIRMATION",
-              "BLOCK"
+              {
+                "value": "AUTO_ALLOW",
+                "description": "Enum value AUTO_ALLOW."
+              },
+              {
+                "value": "REQUIRE_CONFIRMATION",
+                "description": "Enum value REQUIRE_CONFIRMATION."
+              },
+              {
+                "value": "BLOCK",
+                "description": "Enum value BLOCK."
+              }
             ],
-            "nullable": true
+            "nullable": true,
+            "description": "final policy decision (field)."
           },
           "reason": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "explanation for this outcome (field)."
           },
           "suggestion": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "suggested next step for the shopper (field)."
           },
           "requiresExplicitApproval": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "requires explicit approval (field)."
           },
           "totalMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "total in minor currency units (field)."
           },
           "totalFormatted": {
-            "type": "string"
+            "type": "string",
+            "description": "total formatted (field)."
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
           },
           "checks": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PolicyCheck"
-            }
+            },
+            "description": "checks (field)."
           },
           "violations": {
             "type": "array",
             "items": {
-              "type": "object"
-            }
+              "$ref": "#/components/schemas/Violation"
+            },
+            "description": "Any policy violations that would be reported."
           },
           "limits": {
             "$ref": "#/components/schemas/PolicyLimits"
           },
           "enforcedBy": {
-            "type": "string"
+            "type": "string",
+            "description": "enforced by (field)."
+          },
+          "passport": {
+            "$ref": "#/components/schemas/TransactionPassport",
+            "nullable": true
           }
-        }
+        },
+        "description": "policy preview response."
       },
       "PolicyEvent": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "unique identifier (field)."
           },
           "timestamp": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "event timestamp (RFC 3339) (field)."
           },
           "sessionId": {
             "type": "string",
             "description": "Public, non-reversible ref."
           },
           "cartId": {
-            "type": "string"
+            "type": "string",
+            "description": "cart identifier (field)."
           },
           "orderId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "order identifier (field)."
           },
           "agent": {
-            "type": "string"
+            "type": "string",
+            "description": "agent (field)."
           },
           "amountMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "amount in minor currency units (field)."
           },
           "amountFormatted": {
-            "type": "string"
+            "type": "string",
+            "description": "amount formatted (field)."
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
           },
           "decision": {
-            "type": "string",
             "enum": [
-              "AUTO_ALLOW",
-              "REQUIRE_CONFIRMATION",
-              "BLOCK"
-            ]
+              {
+                "value": "AUTO_ALLOW",
+                "description": "Enum value AUTO_ALLOW."
+              },
+              {
+                "value": "REQUIRE_CONFIRMATION",
+                "description": "Enum value REQUIRE_CONFIRMATION."
+              },
+              {
+                "value": "BLOCK",
+                "description": "Enum value BLOCK."
+              }
+            ],
+            "description": "final policy decision (field)."
           },
           "violatedRules": {
             "type": "array",
+            "description": "Identifiers of rules that were violated for this decision.",
             "items": {
-              "type": "object"
+              "type": "string",
+              "description": "A violated rule identifier."
             }
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "description": "explanation for this outcome (field)."
           },
           "policySnapshot": {
-            "type": "object"
+            "type": "object",
+            "description": "Snapshot of the policy that was in effect, captured at decision time.",
+            "properties": {
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether purchase policy is enabled."
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO 4217 currency code."
+              },
+              "maxPerPurchaseMinor": {
+                "type": "integer",
+                "description": "Per-purchase cap in minor units."
+              },
+              "dailySpendLimitMinor": {
+                "type": "integer",
+                "description": "Daily spend cap in minor units."
+              },
+              "confirmationThresholdMinor": {
+                "type": "integer",
+                "description": "Above this amount, explicit human approval is required (minor units)."
+              },
+              "allowedMerchantIds": {
+                "type": "array",
+                "description": "Allowed merchant identifiers.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "blockedCategoryIds": {
+                "type": "array",
+                "description": "Blocked product category identifiers.",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "validUntil": {
+                "type": "string",
+                "nullable": true,
+                "description": "Policy expiry (RFC 3339)."
+              },
+              "revision": {
+                "type": "integer",
+                "nullable": true,
+                "description": "Policy revision number."
+              }
+            }
           }
-        }
+        },
+        "description": "policy event."
       },
       "PolicyEventsResponse": {
         "type": "object",
@@ -653,61 +943,77 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PolicyEvent"
-            }
+            },
+            "description": "events (field)."
           },
           "total": {
-            "type": "integer"
+            "type": "integer",
+            "description": "total (field)."
           }
-        }
+        },
+        "description": "policy events response."
       },
       "PolicyEventsStats": {
         "type": "object",
         "properties": {
           "totalRequests": {
-            "type": "integer"
+            "type": "integer",
+            "description": "total requests (field)."
           },
           "allowed": {
-            "type": "integer"
+            "type": "integer",
+            "description": "allowed (field)."
           },
           "blocked": {
-            "type": "integer"
+            "type": "integer",
+            "description": "blocked (field)."
           },
           "spentMinor": {
-            "type": "integer"
+            "type": "integer",
+            "description": "spent minor units (field)."
           },
           "spentFormatted": {
-            "type": "string"
+            "type": "string",
+            "description": "spent formatted (field)."
           }
-        }
+        },
+        "description": "policy events stats."
       },
       "OpsStatus": {
         "type": "object",
         "properties": {
           "enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "whether the capability is enabled (field)."
           },
           "requiresKey": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "whether a provider key is required (field)."
           },
           "readOnly": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "whether the capability is read-only (field)."
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "description": "explanation for this outcome (field)."
           },
           "paypalTools": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "paypal tools (field)."
           },
           "internalTools": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "internal tools (field)."
           }
-        }
+        },
+        "description": "ops status."
       },
       "OpsAskRequest": {
         "type": "object",
@@ -718,9 +1024,11 @@
           "question": {
             "type": "string",
             "minLength": 3,
-            "maxLength": 500
+            "maxLength": 500,
+            "description": "question (field)."
           }
-        }
+        },
+        "description": "ops ask request."
       },
       "McpRequest": {
         "type": "object",
@@ -730,10 +1038,13 @@
         ],
         "properties": {
           "jsonrpc": {
-            "type": "string",
             "enum": [
-              "2.0"
-            ]
+              {
+                "value": "2.0",
+                "description": "Enum value 2.0."
+              }
+            ],
+            "description": "jsonrpc (field)."
           },
           "id": {
             "oneOf": [
@@ -743,32 +1054,53 @@
               {
                 "type": "integer"
               }
-            ]
+            ],
+            "description": "unique identifier (field)."
           },
           "method": {
-            "type": "string",
             "enum": [
-              "initialize",
-              "ping",
-              "tools/list",
-              "tools/call",
-              "notifications/initialized"
-            ]
+              {
+                "value": "initialize",
+                "description": "Enum value initialize."
+              },
+              {
+                "value": "ping",
+                "description": "Enum value ping."
+              },
+              {
+                "value": "tools/list",
+                "description": "Enum value tools/list."
+              },
+              {
+                "value": "tools/call",
+                "description": "Enum value tools/call."
+              },
+              {
+                "value": "notifications/initialized",
+                "description": "Enum value notifications/initialized."
+              }
+            ],
+            "description": "method (field)."
           },
           "params": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": true,
+            "description": "params (field)."
           }
-        }
+        },
+        "description": "mcp request."
       },
       "McpResponse": {
         "type": "object",
         "properties": {
           "jsonrpc": {
-            "type": "string",
             "enum": [
-              "2.0"
-            ]
+              {
+                "value": "2.0",
+                "description": "Enum value 2.0."
+              }
+            ],
+            "description": "jsonrpc (field)."
           },
           "id": {
             "type": "string",
@@ -777,20 +1109,25 @@
           },
           "result": {
             "type": "object",
-            "additionalProperties": true
+            "additionalProperties": true,
+            "description": "result (field)."
           },
           "error": {
             "type": "object",
             "properties": {
               "code": {
-                "type": "integer"
+                "type": "integer",
+                "description": "code (field)."
               },
               "message": {
-                "type": "string"
+                "type": "string",
+                "description": "human-readable message (field)."
               }
-            }
+            },
+            "description": "error."
           }
-        }
+        },
+        "description": "mcp response."
       },
       "RefundRequest": {
         "type": "object",
@@ -808,10 +1145,12 @@
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "unique identifier (field)."
           },
           "orderId": {
-            "type": "string"
+            "type": "string",
+            "description": "order identifier (field)."
           },
           "amountMinor": {
             "type": "integer",
@@ -821,36 +1160,58 @@
           },
           "currency": {
             "type": "string",
-            "example": "EUR"
+            "example": "EUR",
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
           },
           "reason": {
             "type": "string",
             "minLength": 3,
             "maxLength": 200,
-            "example": "Coffee arrived cold"
+            "example": "Coffee arrived cold",
+            "description": "explanation for this outcome (field)."
           },
           "proposedBy": {
-            "type": "string",
             "enum": [
-              "OPS_COPILOT",
-              "MERCHANT"
-            ]
+              {
+                "value": "OPS_COPILOT",
+                "description": "Enum value OPS_COPILOT."
+              },
+              {
+                "value": "MERCHANT",
+                "description": "Enum value MERCHANT."
+              }
+            ],
+            "description": "proposed by (field)."
           },
           "status": {
-            "type": "string",
             "enum": [
-              "PROPOSED",
-              "PROCESSING",
-              "REFUNDED",
-              "REJECTED"
-            ]
+              {
+                "value": "PROPOSED",
+                "description": "Enum value PROPOSED."
+              },
+              {
+                "value": "PROCESSING",
+                "description": "Enum value PROCESSING."
+              },
+              {
+                "value": "REFUNDED",
+                "description": "Enum value REFUNDED."
+              },
+              {
+                "value": "REJECTED",
+                "description": "Enum value REJECTED."
+              }
+            ],
+            "description": "current status (field)."
           },
           "paypalRefundId": {
-            "type": "string"
+            "type": "string",
+            "description": "paypal refund id (field)."
           },
           "paypalRefundStatus": {
             "type": "string",
-            "example": "COMPLETED"
+            "example": "COMPLETED",
+            "description": "paypal refund status (field)."
           },
           "lastError": {
             "type": "string",
@@ -858,17 +1219,21 @@
           },
           "createdAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "creation timestamp (RFC 3339) (field)."
           },
           "updatedAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "last update timestamp (RFC 3339) (field)."
           },
           "decidedAt": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "time the request was decided (RFC 3339) (field)."
           }
-        }
+        },
+        "description": "refund request."
       },
       "ProposeRefundRequest": {
         "type": "object",
@@ -878,7 +1243,8 @@
         ],
         "properties": {
           "orderId": {
-            "type": "string"
+            "type": "string",
+            "description": "order identifier (field)."
           },
           "amountMinor": {
             "type": "integer",
@@ -888,9 +1254,11 @@
           "reason": {
             "type": "string",
             "minLength": 3,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "explanation for this outcome (field)."
           }
-        }
+        },
+        "description": "propose refund request."
       },
       "SignedCartMandate": {
         "type": "object",
@@ -904,57 +1272,682 @@
         "properties": {
           "mandate": {
             "type": "object",
-            "description": "Canonical content that was signed (version aicafe.cart-mandate/1). expiresAt is a signed constant and is never recomputed while verifying."
+            "description": "Canonical content that was signed (version aicafe.cart-mandate/1).",
+            "additionalProperties": true
           },
           "signature": {
             "type": "string",
             "description": "base64url Ed25519 signature over the stable-stringified mandate"
           },
           "alg": {
-            "type": "string",
             "enum": [
-              "EdDSA"
-            ]
+              {
+                "value": "EdDSA",
+                "description": "Enum value EdDSA."
+              }
+            ],
+            "description": "alg (field)."
           },
           "kid": {
             "type": "string",
             "description": "Key id: the active key or a configured previous public key"
           },
           "canonicalization": {
-            "type": "string",
             "enum": [
-              "aicafe-stable-json/1"
+              {
+                "value": "aicafe-stable-json/1",
+                "description": "Enum value aicafe-stable-json/1."
+              }
             ],
             "description": "UTF-8 JSON, object keys sorted, no whitespace (fast-json-stable-stringify 2.x). Not RFC 8785."
           }
-        }
+        },
+        "description": "signed cart mandate."
       },
       "MandateVerification": {
         "type": "object",
         "properties": {
           "valid": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "whether the verification passed (field)."
           },
           "checks": {
             "type": "object",
             "properties": {
               "knownKey": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "known key (field)."
               },
               "signature": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "signature (field)."
               },
               "notExpired": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "not expired (field)."
               },
               "matchesOrder": {
                 "type": "boolean",
-                "nullable": true
+                "nullable": true,
+                "description": "matches order (field)."
               }
-            }
+            },
+            "description": "checks."
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "description": "explanation for this outcome (field)."
+          }
+        },
+        "description": "mandate verification."
+      },
+      "PolicyDecision": {
+        "description": "The authoritative policy decision for a cart.",
+        "enum": [
+          {
+            "value": "AUTO_ALLOW",
+            "description": "Allowed"
+          },
+          {
+            "value": "REQUIRE_CONFIRMATION",
+            "description": "Approval required"
+          },
+          {
+            "value": "BLOCK",
+            "description": "Blocked"
+          }
+        ]
+      },
+      "OrderOrigin": {
+        "description": "How the order was created.",
+        "enum": [
+          {
+            "value": "AI_ASSISTED",
+            "description": "AI confirmed by a human"
+          },
+          {
+            "value": "AI_AGENT",
+            "description": "Initiated by AI"
+          },
+          {
+            "value": "HUMAN",
+            "description": "Created by a human"
+          }
+        ]
+      },
+      "RefundStatus": {
+        "description": "Lifecycle state of a refund request.",
+        "enum": [
+          {
+            "value": "UNDER_REVIEW",
+            "description": "Awaiting merchant approval"
+          },
+          {
+            "value": "APPROVED",
+            "description": "Approved, not yet issued"
+          },
+          {
+            "value": "REJECTED",
+            "description": "Rejected"
+          },
+          {
+            "value": "REFUNDED",
+            "description": "Issued via PayPal"
+          },
+          {
+            "value": "FAILED",
+            "description": "Failed; retry eligible"
+          }
+        ]
+      },
+      "RefundProposedBy": {
+        "description": "Who proposed the refund.",
+        "enum": [
+          {
+            "value": "CUSTOMER",
+            "description": "Customer"
+          },
+          {
+            "value": "AGENT",
+            "description": "Agent"
+          },
+          {
+            "value": "MERCHANT",
+            "description": "Merchant"
+          }
+        ]
+      },
+      "McpVersion": {
+        "description": "JSON-RPC protocol version.",
+        "enum": [
+          {
+            "value": "2.0",
+            "description": "JSON-RPC 2.0"
+          }
+        ]
+      },
+      "McpMethod": {
+        "description": "MCP method name.",
+        "enum": [
+          {
+            "value": "initialize",
+            "description": "Handshake verb"
+          },
+          {
+            "value": "notifications/initialized",
+            "description": "Client-ready notification"
+          },
+          {
+            "value": "tools/list",
+            "description": "List available tools"
+          },
+          {
+            "value": "tools/call",
+            "description": "Invoke a tool"
+          }
+        ]
+      },
+      "AiMode": {
+        "description": "Which engine answered.",
+        "enum": [
+          {
+            "value": "ai",
+            "description": "LLM answered"
+          },
+          {
+            "value": "rule-based",
+            "description": "Quick planner answered"
+          }
+        ]
+      },
+      "PolicyCheckStatus": {
+        "description": "Per-rule check outcome.",
+        "enum": [
+          {
+            "value": "PASS",
+            "description": "Check passed"
+          },
+          {
+            "value": "WARN",
+            "description": "Warning produced"
+          },
+          {
+            "value": "BLOCK",
+            "description": "Check blocked"
+          }
+        ]
+      },
+      "MandateAlg": {
+        "description": "Signature algorithm.",
+        "enum": [
+          {
+            "value": "EdDSA",
+            "description": "Ed25519 (EdDSA)"
+          }
+        ]
+      },
+      "MandateCanonicalization": {
+        "description": "Canonicalization scheme used before signing.",
+        "enum": [
+          {
+            "value": "jcs",
+            "description": "JSON Canonicalization (RFC 8785)"
+          }
+        ]
+      },
+      "MatchMode": {
+        "description": "How multiple search terms are combined.",
+        "enum": [
+          {
+            "value": "all",
+            "description": "Every term must match"
+          },
+          {
+            "value": "any",
+            "description": "Any term may match"
+          }
+        ]
+      },
+      "Violation": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Type of violation (e.g. policy, constraint)."
+          },
+          "rule": {
+            "type": "string",
+            "description": "Identifier of the violated rule."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation of the violation."
+          }
+        },
+        "description": "A single policy violation found when evaluating a cart."
+      },
+      "TakeHomeItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "unique identifier (field)."
+          },
+          "title": {
+            "type": "string",
+            "description": "title (field)."
+          },
+          "brand": {
+            "type": "string",
+            "nullable": true,
+            "description": "brand (field)."
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true,
+            "description": "image url (field)."
+          },
+          "merchantDomain": {
+            "type": "string",
+            "nullable": true,
+            "description": "merchant domain (field)."
+          },
+          "price": {
+            "type": "number",
+            "nullable": true,
+            "description": "price (field)."
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
+          },
+          "availability": {
+            "type": "string",
+            "nullable": true,
+            "description": "availability (field)."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "https URL of the retailer page. Outbound link only."
+          }
+        },
+        "description": "take home item."
+      },
+      "TakeHomeRequest": {
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "items": {
+              "type": "object",
+              "required": [
+                "productId"
+              ],
+              "properties": {
+                "productId": {
+                  "type": "string",
+                  "description": "product identifier (field)."
+                }
+              },
+              "description": "items."
+            },
+            "description": "items (field)."
+          }
+        },
+        "description": "take home request."
+      },
+      "TakeHomeResponse": {
+        "type": "object",
+        "required": [
+          "enabled",
+          "items"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "False when CHANNEL3_API_KEY is not configured."
+          },
+          "query": {
+            "type": "string",
+            "description": "query (field)."
+          },
+          "source": {
+            "enum": [
+              {
+                "value": "channel3",
+                "description": "Enum value channel3."
+              }
+            ],
+            "description": "source (field)."
+          },
+          "disclosure": {
+            "type": "string",
+            "description": "disclosure (field)."
+          },
+          "note": {
+            "type": "string",
+            "description": "note (field)."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TakeHomeItem"
+            },
+            "description": "items (field)."
+          }
+        },
+        "description": "take home response."
+      },
+      "TransactionPassport": {
+        "type": "object",
+        "description": "Read-only, server-derived explanation of one prepared cart. Not a payment record, never stored or signed; payment authority is always the shopper.",
+        "required": [
+          "kind",
+          "isPaymentRecord",
+          "totalMinor",
+          "currency",
+          "lines",
+          "mandate",
+          "control",
+          "steps",
+          "notices"
+        ],
+        "properties": {
+          "kind": {
+            "enum": [
+              {
+                "value": "transaction-passport",
+                "description": "Enum value transaction-passport."
+              }
+            ],
+            "description": "kind (field)."
+          },
+          "isPaymentRecord": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "is payment record (field)."
+          },
+          "totalMinor": {
+            "type": "integer",
+            "description": "total in minor currency units (field)."
+          },
+          "currency": {
+            "type": "string",
+            "description": "ISO 4217 currency code (e.g. EUR) (field)."
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "productId",
+                "name",
+                "quantity",
+                "unitPriceMinor",
+                "lineTotalMinor"
+              ],
+              "properties": {
+                "productId": {
+                  "type": "string",
+                  "description": "product identifier (field)."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "name (field)."
+                },
+                "quantity": {
+                  "type": "integer",
+                  "description": "quantity, a positive integer (field)."
+                },
+                "unitPriceMinor": {
+                  "type": "integer",
+                  "description": "unit price minor units (field)."
+                },
+                "lineTotalMinor": {
+                  "type": "integer",
+                  "description": "line total in minor currency units (field)."
+                }
+              },
+              "description": "lines."
+            },
+            "description": "lines (field)."
+          },
+          "basis": {
+            "type": "object",
+            "properties": {
+              "pricesSource": {
+                "enum": [
+                  {
+                    "value": "server-catalog",
+                    "description": "Enum value server-catalog."
+                  }
+                ],
+                "description": "prices source (field)."
+              },
+              "clientPricesIgnored": {
+                "type": "boolean",
+                "description": "client prices ignored (field)."
+              },
+              "limitSetBy": {
+                "enum": [
+                  {
+                    "value": "shopper-policy",
+                    "description": "Enum value shopper-policy."
+                  }
+                ],
+                "description": "limit set by (field)."
+              }
+            },
+            "description": "basis."
+          },
+          "mandate": {
+            "type": "object",
+            "properties": {
+              "maxPerPurchaseMinor": {
+                "type": "integer",
+                "description": "max per-purchase minor units (field)."
+              },
+              "approvalThresholdMinor": {
+                "type": "integer",
+                "description": "approval threshold minor units (field)."
+              },
+              "cartMinor": {
+                "type": "integer",
+                "description": "cart minor units (field)."
+              },
+              "remainingMinor": {
+                "type": "integer",
+                "description": "Negative when the cart is over the limit."
+              },
+              "usedPercent": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "used percent (field)."
+              },
+              "dailyRemainingMinor": {
+                "type": "integer",
+                "description": "daily remaining minor units (field)."
+              },
+              "aiCanChangeLimit": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ],
+                "description": "AI can change limit (field)."
+              }
+            },
+            "description": "mandate."
+          },
+          "control": {
+            "type": "object",
+            "properties": {
+              "decision": {
+                "enum": [
+                  {
+                    "value": "AUTO_ALLOW",
+                    "description": "Enum value AUTO_ALLOW."
+                  },
+                  {
+                    "value": "REQUIRE_CONFIRMATION",
+                    "description": "Enum value REQUIRE_CONFIRMATION."
+                  },
+                  {
+                    "value": "BLOCK",
+                    "description": "Enum value BLOCK."
+                  }
+                ],
+                "description": "final policy decision (field)."
+              },
+              "withinLimit": {
+                "type": "boolean",
+                "description": "within limit (field)."
+              },
+              "requiresShopperApproval": {
+                "type": "boolean",
+                "description": "requires shopper approval (field)."
+              },
+              "paymentAuthority": {
+                "enum": [
+                  {
+                    "value": "shopper",
+                    "description": "Enum value shopper."
+                  }
+                ],
+                "description": "payment authority (field)."
+              },
+              "agentCanPay": {
+                "type": "boolean",
+                "enum": [
+                  false
+                ],
+                "description": "agent can pay (field)."
+              }
+            },
+            "description": "control."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PolicyCheck"
+            },
+            "description": "checks (field)."
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "key",
+                "state",
+                "actor"
+              ],
+              "properties": {
+                "key": {
+                  "enum": [
+                    {
+                      "value": "prepared",
+                      "description": "Enum value prepared."
+                    },
+                    {
+                      "value": "prices",
+                      "description": "Enum value prices."
+                    },
+                    {
+                      "value": "limit",
+                      "description": "Enum value limit."
+                    },
+                    {
+                      "value": "approval",
+                      "description": "Enum value approval."
+                    },
+                    {
+                      "value": "paypal",
+                      "description": "Enum value paypal."
+                    },
+                    {
+                      "value": "verify",
+                      "description": "Enum value verify."
+                    }
+                  ],
+                  "description": "key (field)."
+                },
+                "state": {
+                  "enum": [
+                    {
+                      "value": "done",
+                      "description": "Enum value done."
+                    },
+                    {
+                      "value": "pending",
+                      "description": "Enum value pending."
+                    },
+                    {
+                      "value": "blocked",
+                      "description": "Enum value blocked."
+                    }
+                  ],
+                  "description": "state (field)."
+                },
+                "actor": {
+                  "enum": [
+                    {
+                      "value": "ai",
+                      "description": "Enum value ai."
+                    },
+                    {
+                      "value": "server",
+                      "description": "Enum value server."
+                    },
+                    {
+                      "value": "shopper",
+                      "description": "Enum value shopper."
+                    },
+                    {
+                      "value": "paypal",
+                      "description": "Enum value paypal."
+                    }
+                  ],
+                  "description": "actor (field)."
+                }
+              },
+              "description": "steps."
+            },
+            "description": "steps (field)."
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "enum": [
+                {
+                  "value": "sample-menu-data",
+                  "description": "Enum value sample-menu-data."
+                },
+                {
+                  "value": "allergen-unverified",
+                  "description": "Enum value allergen-unverified."
+                },
+                {
+                  "value": "sandbox-only",
+                  "description": "Enum value sandbox-only."
+                }
+              ]
+            },
+            "description": "notices (field)."
           }
         }
       }
@@ -972,7 +1965,7 @@
         "tags": [
           "Sessions"
         ],
-        "summary": "Liveness/readiness",
+        "summary": "Health and readiness check",
         "security": [],
         "responses": {
           "200": {
@@ -981,16 +1974,38 @@
               "application/json": {
                 "schema": {
                   "type": "object"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "status": "ok",
+                  "timestamp": "2026-11-03T10:00:00Z",
+                  "service": "paypal-commerce-agent-backend",
+                  "version": "1.0.0",
+                  "buildCommit": "unknown",
+                  "environment": "development",
+                  "uptime": 120.5,
+                  "paypal": {
+                    "enabled": true,
+                    "environment": "sandbox"
+                  },
+                  "storage": {
+                    "mode": "memory",
+                    "durable": false
+                  },
+                  "mandates": {
+                    "keyPersistence": "memory"
+                  },
+                  "automation": {
+                    "enabled": false,
+                    "configured": false,
+                    "signed": false
+                  },
+                  "ai": {
+                    "enabled": true,
+                    "providers": [
+                      "groq",
+                      "gemini"
+                    ]
+                  }
                 }
               }
             }
@@ -1006,7 +2021,8 @@
             }
           }
         },
-        "operationId": "getHealth"
+        "operationId": "getHealth",
+        "description": "Health and readiness check."
       }
     },
     "/api/sessions": {
@@ -1023,6 +2039,11 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/IssuedSession"
+                },
+                "example": {
+                  "sessionId": "s_01HZX",
+                  "sessionToken": "tok_...",
+                  "expiresAt": "2026-11-03T11:00:00Z"
                 }
               }
             }
@@ -1038,7 +2059,8 @@
             }
           }
         },
-        "operationId": "postSessions"
+        "operationId": "postSessions",
+        "description": "Mint a server-side session."
       }
     },
     "/api/sessions/current": {
@@ -1069,7 +2091,8 @@
             }
           }
         },
-        "operationId": "deleteSessionsCurrent"
+        "operationId": "deleteSessionsCurrent",
+        "description": "End the current session."
       }
     },
     "/api/catalog": {
@@ -1101,7 +2124,8 @@
             }
           }
         },
-        "operationId": "getCatalog"
+        "operationId": "getCatalog",
+        "description": "List all products."
       }
     },
     "/api/catalog/{id}": {
@@ -1118,7 +2142,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "coffee",
+            "description": "Value for the id parameter."
           }
         ],
         "responses": {
@@ -1133,10 +2159,18 @@
             }
           },
           "404": {
-            "description": "Not found"
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "getCatalogId"
+        "operationId": "getCatalogId",
+        "description": "Get a product by id."
       }
     },
     "/api/catalog/search": {
@@ -1144,7 +2178,7 @@
         "tags": [
           "Catalog"
         ],
-        "summary": "Search the catalog (server-side filtering)",
+        "summary": "Search the catalog server-side filtering",
         "security": [],
         "parameters": [
           {
@@ -1152,14 +2186,18 @@
             "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "flat white",
+            "description": "Value for the query parameter."
           },
           {
             "name": "category",
             "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "drinks",
+            "description": "Value for the category parameter."
           },
           {
             "name": "tags",
@@ -1167,7 +2205,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "Comma-separated"
+            "description": "Comma-separated",
+            "example": "coffee"
           },
           {
             "name": "dietary",
@@ -1175,32 +2214,35 @@
             "schema": {
               "type": "string"
             },
-            "description": "Comma-separated; e.g. vegan,gluten-free"
+            "description": "Comma-separated; e.g. vegan,gluten-free",
+            "example": "vegetarian"
           },
           {
             "name": "occasion",
             "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "morning",
+            "description": "Value for the occasion parameter."
           },
           {
             "name": "maxPriceMinor",
             "in": "query",
             "schema": {
               "type": "integer"
-            }
+            },
+            "example": 1000,
+            "description": "Value for the maxPriceMinor parameter."
           },
           {
             "name": "matchMode",
             "in": "query",
             "schema": {
-              "type": "string",
-              "enum": [
-                "all",
-                "any"
-              ]
-            }
+              "$ref": "#/components/schemas/MatchMode"
+            },
+            "example": "all",
+            "description": "Value for the matchMode parameter."
           }
         ],
         "responses": {
@@ -1225,7 +2267,8 @@
             }
           }
         },
-        "operationId": "getCatalogSearch"
+        "operationId": "getCatalogSearch",
+        "description": "Search the catalog (server-side filtering)."
       }
     },
     "/api/ai/chat": {
@@ -1233,7 +2276,7 @@
         "tags": [
           "AI Agent"
         ],
-        "summary": "Chat with the shopping agent (builds a cart)",
+        "summary": "Chat with the shopping agent builds a cart",
         "requestBody": {
           "required": true,
           "content": {
@@ -1242,7 +2285,8 @@
                 "$ref": "#/components/schemas/AIChatRequest"
               }
             }
-          }
+          },
+          "description": "The user's chat message plus optional shopper preferences used to prepare a cart."
         },
         "responses": {
           "200": {
@@ -1251,6 +2295,41 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AIChatResponse"
+                },
+                "example": {
+                  "sessionId": "s_01HZX",
+                  "response": "Here is your cart.",
+                  "preparedCart": {
+                    "items": [
+                      {
+                        "productId": "p1",
+                        "name": "Flat White",
+                        "quantity": 2,
+                        "unitPriceMinor": 350,
+                        "unitPriceFormatted": "€3.50",
+                        "lineTotalMinor": 700,
+                        "lineTotalFormatted": "€7.00"
+                      }
+                    ],
+                    "totalMinor": 700,
+                    "totalFormatted": "€7.00",
+                    "currency": "EUR",
+                    "cartId": "c_abc",
+                    "message": "Cart prepared with 1 item(s).",
+                    "policyDecision": "AUTO_ALLOW",
+                    "policyViolations": [],
+                    "requiresExplicitApproval": false,
+                    "retrySuggested": false,
+                    "reason": null
+                  },
+                  "checkoutReady": true,
+                  "toolRounds": 1,
+                  "messageCount": 4,
+                  "mode": "ai",
+                  "provider": "groq",
+                  "model": "llama-3.1-8b",
+                  "modelCalls": 1,
+                  "fallback": false
                 }
               }
             }
@@ -1276,10 +2355,18 @@
             }
           },
           "503": {
-            "description": "AI provider not configured"
+            "description": "AI provider not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postAiChat"
+        "operationId": "postAiChat",
+        "description": "Chat with the shopping agent (builds a cart)."
       }
     },
     "/api/ai/chat/{sessionId}": {
@@ -1295,7 +2382,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "s_01HZX",
+            "description": "Value for the sessionId parameter."
           }
         ],
         "responses": {
@@ -1310,10 +2399,18 @@
             }
           },
           "403": {
-            "description": "Not your session"
+            "description": "Not your session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "deleteAiChatSessionId"
+        "operationId": "deleteAiChatSessionId",
+        "description": "Clear conversation history for this session."
       }
     },
     "/api/ai/cart/{sessionId}": {
@@ -1329,7 +2426,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "s_01HZX",
+            "description": "Value for the sessionId parameter."
           }
         ],
         "responses": {
@@ -1344,10 +2443,18 @@
             }
           },
           "403": {
-            "description": "Not your session"
+            "description": "Not your session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "deleteAiCartSessionId"
+        "operationId": "deleteAiCartSessionId",
+        "description": "Clear the AI-prepared cart for this session."
       }
     },
     "/api/policy/preview": {
@@ -1355,7 +2462,7 @@
         "tags": [
           "Policy"
         ],
-        "summary": "Preview the authoritative policy decision for a cart (side-effect free)",
+        "summary": "Preview the authoritative policy decision for a cart side-effect free",
         "requestBody": {
           "required": true,
           "content": {
@@ -1364,7 +2471,8 @@
                 "$ref": "#/components/schemas/PolicyPreviewRequest"
               }
             }
-          }
+          },
+          "description": "The cart items whose policy decision should be previewed (side-effect free)."
         },
         "responses": {
           "200": {
@@ -1378,13 +2486,28 @@
             }
           },
           "400": {
-            "description": "Invalid items"
+            "description": "Invalid items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "Rate limit exceeded (policy preview 120/min per session and 600/min per IP; order create and capture 30/min per session and 120/min per IP). Retry-After header gives the wait in seconds."
+            "description": "Rate limit exceeded (policy preview 120/min per session and 600/min per IP; order create and capture 30/min per session and 120/min per IP). Retry-After header gives the wait in seconds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postPolicyPreview"
+        "operationId": "postPolicyPreview",
+        "description": "Preview the authoritative policy decision for a cart (side-effect free)."
       }
     },
     "/api/orders/create": {
@@ -1392,7 +2515,7 @@
         "tags": [
           "Orders"
         ],
-        "summary": "Create an order from items (server re-prices; policy enforced)",
+        "summary": "Create an order from items server re-prices; policy enforced",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -1400,7 +2523,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "Client key; server hashes it with the session and reuses as PayPal-Request-Id."
+            "description": "Client key; server hashes it with the session and reuses as PayPal-Request-Id.",
+            "example": "idem_01HZX"
           }
         ],
         "requestBody": {
@@ -1411,7 +2535,8 @@
                 "$ref": "#/components/schemas/CreateOrderRequest"
               }
             }
-          }
+          },
+          "description": "The items to order. The server re-prices authoritatively and enforces policy."
         },
         "responses": {
           "201": {
@@ -1420,6 +2545,26 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CreateOrderResponse"
+                },
+                "example": {
+                  "orderId": "ord_01HZX",
+                  "paypalOrderId": "5O190127TN364715T",
+                  "status": "CREATED",
+                  "origin": "AI_ASSISTED",
+                  "totalMinor": 700,
+                  "totalFormatted": "€7.00",
+                  "currency": "EUR",
+                  "approvalUrl": "https://www.sandbox.paypal.com/checkoutnow?token=..."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input (quantity must be a JSON integer 1-100, unknown product, order total above the limit). Validated before PayPal configuration is checked.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -1434,17 +2579,29 @@
               }
             }
           },
-          "503": {
-            "description": "PayPal not configured, refund status could not be verified, or storage is unavailable; no blind retry is sent"
-          },
           "429": {
-            "description": "Rate limit exceeded (policy preview 120/min per session and 600/min per IP; order create and capture 30/min per session and 120/min per IP). Retry-After header gives the wait in seconds."
+            "description": "Rate limit exceeded (policy preview 120/min per session and 600/min per IP; order create and capture 30/min per session and 120/min per IP). Retry-After header gives the wait in seconds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
-          "400": {
-            "description": "Invalid input (quantity must be a JSON integer 1-100, unknown product, order total above the limit). Validated before PayPal configuration is checked."
+          "503": {
+            "description": "PayPal not configured, refund status could not be verified, or storage is unavailable; no blind retry is sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postOrdersCreate"
+        "operationId": "postOrdersCreate",
+        "description": "Create an order from items (server re-prices; policy enforced)."
       }
     },
     "/api/orders/{orderId}/capture": {
@@ -1452,7 +2609,7 @@
         "tags": [
           "Orders"
         ],
-        "summary": "Capture the PayPal order (after human approval)",
+        "summary": "Capture the PayPal order after human approval",
         "parameters": [
           {
             "name": "orderId",
@@ -1460,7 +2617,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "ord_01HZX",
+            "description": "Value for the orderId parameter."
           }
         ],
         "responses": {
@@ -1475,28 +2634,78 @@
             }
           },
           "400": {
-            "description": "Not approved yet / not payable"
+            "description": "Not approved yet / not payable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "402": {
-            "description": "Payment declined"
+            "description": "Payment declined",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Order not found"
+            "description": "Order not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "409": {
-            "description": "Already captured / in progress"
-          },
-          "502": {
-            "description": "PayPal transport error"
-          },
-          "503": {
-            "description": "PayPal not configured"
+            "description": "Already captured / in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "Rate limit exceeded (policy preview 120/min per session and 600/min per IP; order create and capture 30/min per session and 120/min per IP). Retry-After header gives the wait in seconds."
+            "description": "Rate limit exceeded (policy preview 120/min per session and 600/min per IP; order create and capture 30/min per session and 120/min per IP). Retry-After header gives the wait in seconds.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "PayPal transport error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PayPal not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postOrdersOrderIdCapture"
+        "operationId": "postOrdersOrderIdCapture",
+        "description": "Capture the PayPal order (after human approval)."
       }
     },
     "/api/orders/{orderId}/cancel": {
@@ -1512,7 +2721,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "ord_01HZX",
+            "description": "Value for the orderId parameter."
           }
         ],
         "responses": {
@@ -1527,13 +2738,28 @@
             }
           },
           "404": {
-            "description": "Order not found"
+            "description": "Order not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "409": {
-            "description": "Already captured / capture in progress"
+            "description": "Already captured / capture in progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postOrdersOrderIdCancel"
+        "operationId": "postOrdersOrderIdCancel",
+        "description": "Cancel a not-yet-captured checkout."
       }
     },
     "/api/orders": {
@@ -1541,7 +2767,7 @@
         "tags": [
           "Orders"
         ],
-        "summary": "List orders (public, read-only)",
+        "summary": "List orders public, read-only",
         "parameters": [
           {
             "name": "origin",
@@ -1552,14 +2778,18 @@
                 "AI_AGENT",
                 "HUMAN"
               ]
-            }
+            },
+            "example": "AI_ASSISTED",
+            "description": "Value for the origin parameter."
           },
           {
             "name": "status",
             "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "CREATED",
+            "description": "Value for the status parameter."
           },
           {
             "name": "limit",
@@ -1568,7 +2798,9 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100
-            }
+            },
+            "example": 20,
+            "description": "Value for the limit parameter."
           }
         ],
         "responses": {
@@ -1583,7 +2815,14 @@
             }
           },
           "400": {
-            "description": "Invalid filter"
+            "description": "Invalid filter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "Private mode: missing or wrong X-Ops-Key.",
@@ -1643,16 +2882,6 @@
               }
             }
           },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          },
           "401": {
             "description": "Private mode: missing or wrong X-Ops-Key.",
             "content": {
@@ -1699,7 +2928,7 @@
         "tags": [
           "Orders"
         ],
-        "summary": "PayPal return redirect (deep-links to app / web storefront)",
+        "summary": "PayPal return redirect",
         "security": [],
         "parameters": [
           {
@@ -1708,7 +2937,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "5O190127TN364715T",
+            "description": "PayPal approval token returned when the order was created."
           }
         ],
         "responses": {
@@ -1726,7 +2957,8 @@
             }
           }
         },
-        "operationId": "getCheckoutReturn"
+        "operationId": "getCheckoutReturn",
+        "description": "PayPal return redirect."
       }
     },
     "/api/checkout/cancel": {
@@ -1743,7 +2975,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "5O190127TN364715T",
+            "description": "PayPal approval token returned when the order was created."
           }
         ],
         "responses": {
@@ -1761,7 +2995,8 @@
             }
           }
         },
-        "operationId": "getCheckoutCancel"
+        "operationId": "getCheckoutCancel",
+        "description": "PayPal cancel redirect."
       }
     },
     "/api/ops/status": {
@@ -1793,7 +3028,8 @@
             }
           }
         },
-        "operationId": "getOpsStatus"
+        "operationId": "getOpsStatus",
+        "description": "Ops Copilot capability status."
       }
     },
     "/api/ops/ask": {
@@ -1801,7 +3037,7 @@
         "tags": [
           "Ops Copilot"
         ],
-        "summary": "Ask the merchant copilot (read-only PayPal access; may only propose refunds)",
+        "summary": "Ask the merchant copilot read-only PayPal access; may only propose refunds",
         "parameters": [
           {
             "name": "X-Ops-Key",
@@ -1809,7 +3045,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "Required when Ops Copilot is enabled."
+            "description": "Required when Ops Copilot is enabled.",
+            "example": "ops_key_demo"
           }
         ],
         "requestBody": {
@@ -1820,7 +3057,8 @@
                 "$ref": "#/components/schemas/OpsAskRequest"
               }
             }
-          }
+          },
+          "description": "A natural-language question for the merchant Copilot (read-only; may only propose refunds)."
         },
         "responses": {
           "200": {
@@ -1834,16 +3072,38 @@
             }
           },
           "401": {
-            "description": "Missing/invalid X-Ops-Key"
+            "description": "Missing/invalid X-Ops-Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "Rate limited"
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Ops Copilot disabled"
+            "description": "Ops Copilot disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postOpsAsk"
+        "operationId": "postOpsAsk",
+        "description": "Ask the merchant copilot (read-only PayPal access; may only propose refunds)."
       }
     },
     "/api/policy-events": {
@@ -1863,20 +3123,19 @@
             "name": "decision",
             "in": "query",
             "schema": {
-              "type": "string",
-              "enum": [
-                "AUTO_ALLOW",
-                "REQUIRE_CONFIRMATION",
-                "BLOCK"
-              ]
-            }
+              "$ref": "#/components/schemas/PolicyDecision"
+            },
+            "example": "AUTO_ALLOW",
+            "description": "Value for the decision parameter."
           },
           {
             "name": "userId",
             "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "demo",
+            "description": "Value for the userId parameter."
           },
           {
             "name": "limit",
@@ -1885,7 +3144,9 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 100
-            }
+            },
+            "example": 20,
+            "description": "Value for the limit parameter."
           }
         ],
         "responses": {
@@ -1900,7 +3161,14 @@
             }
           },
           "400": {
-            "description": "Invalid decision/limit"
+            "description": "Invalid decision/limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
             "description": "Private mode: missing or wrong X-Ops-Key.",
@@ -1942,7 +3210,7 @@
         "tags": [
           "Audit"
         ],
-        "summary": "Counts of allowed/blocked decisions and confirmed spend",
+        "summary": "Policy decision statistics",
         "security": [
           {},
           {
@@ -1955,7 +3223,9 @@
             "in": "query",
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "demo",
+            "description": "Value for the userId parameter."
           }
         ],
         "responses": {
@@ -1965,16 +3235,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PolicyEventsStats"
-                }
-              }
-            }
-          },
-          "4XX": {
-            "description": "Client error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -2019,17 +3279,25 @@
         "tags": [
           "Orders"
         ],
-        "summary": "PayPal webhook receiver (signature-verified)",
+        "summary": "PayPal webhook receiver signature-verified",
         "security": [],
         "responses": {
           "200": {
             "description": "Processed / duplicate acknowledged"
           },
           "401": {
-            "description": "Invalid signature / missing headers"
+            "description": "Invalid signature / missing headers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         },
-        "operationId": "postWebhooksPaypal"
+        "operationId": "postWebhooksPaypal",
+        "description": "PayPal webhook receiver (signature-verified)."
       }
     },
     "/api/mcp": {
@@ -2038,7 +3306,7 @@
           "MCP (Agentic Commerce)"
         ],
         "operationId": "mcpRpc",
-        "summary": "MCP Streamable-HTTP endpoint (JSON-RPC 2.0)",
+        "summary": "MCP Streamable-HTTP endpoint JSON-RPC 2.0",
         "description": "Tools: `search_menu`, `prepare_cart`, `check_policy`, `start_checkout`, `get_order_status`. There is deliberately NO capture/pay/refund tool: `start_checkout` returns a PayPal sandbox approval URL that a human must approve. Call `initialize` first and send the returned `Mcp-Session-Id` header on every later request. A GET on this path returns 405 (the optional SSE stream is not offered).",
         "parameters": [
           {
@@ -2048,7 +3316,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "Returned by `initialize`."
+            "description": "Returned by `initialize`.",
+            "example": "mcp_s_01HZX"
           }
         ],
         "requestBody": {
@@ -2072,7 +3341,9 @@
                         "version": "1.0"
                       }
                     }
-                  }
+                  },
+                  "summary": "MCP handshake",
+                  "description": "Example: initialize."
                 },
                 "startCheckout": {
                   "value": {
@@ -2090,11 +3361,14 @@
                         ]
                       }
                     }
-                  }
+                  },
+                  "summary": "Start a checkout via tools/call",
+                  "description": "Example: startCheckout."
                 }
               }
             }
-          }
+          },
+          "description": "An MCP JSON-RPC 2.0 request (initialize, tools/list, or tools/call)."
         },
         "responses": {
           "200": {
@@ -2104,7 +3378,8 @@
                 "schema": {
                   "type": "string"
                 },
-                "description": "Only on initialize"
+                "description": "Only on initialize",
+                "example": "mcp_s_01HZX"
               }
             },
             "content": {
@@ -2119,13 +3394,34 @@
             "description": "Notification accepted (no body)"
           },
           "403": {
-            "description": "Origin not allowed"
+            "description": "Origin not allowed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Unknown session — send initialize again"
+            "description": "Unknown session — send initialize again",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "Rate limit"
+            "description": "Rate limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       },
@@ -2142,7 +3438,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "mcp_s_01HZX",
+            "description": "Session header returned by MCP initialize; required for tools/call."
           }
         ],
         "responses": {
@@ -2150,9 +3448,17 @@
             "description": "Ended"
           },
           "404": {
-            "description": "Unknown session"
+            "description": "Unknown session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
-        }
+        },
+        "description": "End an MCP session."
       }
     },
     "/api/refunds": {
@@ -2161,7 +3467,7 @@
           "Refunds"
         ],
         "operationId": "listRefunds",
-        "summary": "List refund requests (newest first)",
+        "summary": "List refund requests newest first",
         "security": [
           {
             "opsKey": []
@@ -2175,7 +3481,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "Merchant key."
+            "description": "Merchant key.",
+            "example": "ops_key_demo"
           }
         ],
         "responses": {
@@ -2199,20 +3506,57 @@
                       }
                     }
                   }
+                },
+                "example": {
+                  "sandbox": true,
+                  "paypalEnabled": true,
+                  "refunds": [
+                    {
+                      "id": "r_01HZX",
+                      "orderId": "ord_01HZX",
+                      "currency": "EUR",
+                      "reason": "wrong item",
+                      "proposedBy": "CUSTOMER",
+                      "status": "UNDER_REVIEW",
+                      "createdAt": "2026-11-03T10:00:00Z"
+                    }
+                  ]
                 }
               }
             }
           },
           "401": {
-            "description": "Missing/invalid X-Ops-Key"
+            "description": "Missing/invalid X-Ops-Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "429": {
-            "description": "Rate limited"
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "503": {
-            "description": "Refund queue disabled (no OPS_COPILOT_KEY)"
+            "description": "Refund queue disabled (no OPS_COPILOT_KEY)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
-        }
+        },
+        "description": "List refund requests (newest first)."
       }
     },
     "/api/refunds/propose": {
@@ -2221,7 +3565,7 @@
           "Refunds"
         ],
         "operationId": "proposeRefund",
-        "summary": "Propose a refund (moves no money)",
+        "summary": "Propose a refund moves no money",
         "security": [
           {
             "opsKey": []
@@ -2235,7 +3579,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "Merchant key."
+            "description": "Merchant key.",
+            "example": "ops_key_demo"
           }
         ],
         "requestBody": {
@@ -2246,7 +3591,8 @@
                 "$ref": "#/components/schemas/ProposeRefundRequest"
               }
             }
-          }
+          },
+          "description": "Details of the refund request to propose. Proposing moves no money."
         },
         "responses": {
           "201": {
@@ -2260,21 +3606,57 @@
             }
           },
           "400": {
-            "description": "Invalid input"
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "401": {
-            "description": "Missing/invalid X-Ops-Key"
+            "description": "Missing/invalid X-Ops-Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Order not found"
+            "description": "Order not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "409": {
-            "description": "Order not paid, fully refunded, or already has an open request"
+            "description": "Order not paid, fully refunded, or already has an open request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "422": {
-            "description": "Amount exceeds the refundable amount"
+            "description": "Amount exceeds the refundable amount",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
-        }
+        },
+        "description": "Propose a refund (moves no money)."
       }
     },
     "/api/refunds/{id}/approve": {
@@ -2283,7 +3665,7 @@
           "Refunds"
         ],
         "operationId": "approveRefund",
-        "summary": "Approve and issue the refund via PayPal (sandbox)",
+        "summary": "Approve and issue the refund via PayPal sandbox",
         "description": "The only endpoint that calls PayPal's refund API. Uses a stable PayPal-Request-Id (`aicafe-refund-<id>`), but does not rely on its unverified retention window alone: an ambiguous outcome must be reconciled against the PayPal refund or capture before another request.",
         "security": [
           {
@@ -2298,7 +3680,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "Merchant key."
+            "description": "Merchant key.",
+            "example": "ops_key_demo"
           },
           {
             "name": "id",
@@ -2306,7 +3689,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "coffee",
+            "description": "Value for the id parameter."
           }
         ],
         "responses": {
@@ -2331,13 +3716,34 @@
             }
           },
           "401": {
-            "description": "Missing/invalid X-Ops-Key"
+            "description": "Missing/invalid X-Ops-Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Unknown refund request"
+            "description": "Unknown refund request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "409": {
-            "description": "Not in PROPOSED state or PayPal refund status is indeterminate"
+            "description": "Not in PROPOSED state or PayPal refund status is indeterminate",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "502": {
             "description": "PayPal returned a definitive failure or the refund outcome is unknown; request remains PROPOSED and is reconciled before retry",
@@ -2350,7 +3756,14 @@
             }
           },
           "503": {
-            "description": "PayPal not configured"
+            "description": "PayPal not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -2375,7 +3788,8 @@
             "schema": {
               "type": "string"
             },
-            "description": "Merchant key."
+            "description": "Merchant key.",
+            "example": "ops_key_demo"
           },
           {
             "name": "id",
@@ -2383,7 +3797,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "coffee",
+            "description": "Value for the id parameter."
           }
         ],
         "responses": {
@@ -2398,15 +3814,37 @@
             }
           },
           "401": {
-            "description": "Missing/invalid X-Ops-Key"
+            "description": "Missing/invalid X-Ops-Key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Unknown refund request"
+            "description": "Unknown refund request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "409": {
-            "description": "Not in PROPOSED state"
+            "description": "Not in PROPOSED state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
-        }
+        },
+        "description": "Reject a proposed refund."
       }
     },
     "/api/orders/{orderId}/mandate": {
@@ -2429,7 +3867,9 @@
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "ord_01HZX",
+            "description": "Value for the orderId parameter."
           }
         ],
         "responses": {
@@ -2444,10 +3884,24 @@
             }
           },
           "401": {
-            "description": "Missing or invalid session"
+            "description": "Missing or invalid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
-            "description": "Order not found"
+            "description": "Order not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "503": {
             "description": "Mandate key configuration is invalid (reported, never a 500)",
@@ -2459,7 +3913,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "getOrderMandate"
       }
     },
     "/api/mandates/verify": {
@@ -2467,7 +3922,7 @@
         "tags": [
           "Mandates"
         ],
-        "summary": "Verify a Cart Mandate (no session needed)",
+        "summary": "Verify a Cart Mandate no session needed",
         "description": "Checks the key id, the Ed25519 signature, the expiry window and, when the order is still known, that the mandate still matches it. Expiry is informational: a genuine but expired mandate stays valid.",
         "security": [],
         "requestBody": {
@@ -2478,7 +3933,8 @@
                 "$ref": "#/components/schemas/SignedCartMandate"
               }
             }
-          }
+          },
+          "description": "The signed Cart Mandate to verify against the published signing key."
         },
         "responses": {
           "200": {
@@ -2501,7 +3957,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "postMandatesVerify"
       }
     },
     "/.well-known/mandate-keys.json": {
@@ -2509,7 +3966,7 @@
         "tags": [
           "Agent discovery"
         ],
-        "summary": "Public signing keys (JWK set)",
+        "summary": "Public signing keys JWK set",
         "security": [],
         "responses": {
           "200": {
@@ -2533,7 +3990,8 @@
             }
           }
         },
-        "description": "Active and previous Ed25519 PUBLIC keys (status: active|previous), keyPersistence (configured|ephemeral) and the canonicalization label. 503 if the key configuration is invalid."
+        "description": "Active and previous Ed25519 PUBLIC keys (status: active|previous), keyPersistence (configured|ephemeral) and the canonicalization label. 503 if the key configuration is invalid.",
+        "operationId": "getMandateKeys"
       }
     },
     "/.well-known/agent.json": {
@@ -2541,7 +3999,7 @@
         "tags": [
           "Agent discovery"
         ],
-        "summary": "Agent card (generated from the manifest)",
+        "summary": "Agent card generated from the manifest",
         "description": "Compact card generated from /.well-known/agent-commerce.json; cannot disagree with it.",
         "security": [],
         "responses": {
@@ -2565,7 +4023,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "getAgentCard"
       }
     },
     "/llms.txt": {
@@ -2573,7 +4032,7 @@
         "tags": [
           "Agent discovery"
         ],
-        "summary": "llms.txt (generated from the manifest)",
+        "summary": "llms.txt generated from the manifest",
         "description": "Plain-text summary generated from /.well-known/agent-commerce.json.",
         "security": [],
         "responses": {
@@ -2597,7 +4056,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "getLlmsTxt"
       }
     },
     "/.well-known/agent-commerce.json": {
@@ -2629,7 +4089,8 @@
               }
             }
           }
-        }
+        },
+        "operationId": "getAgentCommerceManifest"
       }
     },
     "/api/feed/products": {
@@ -2637,7 +4098,7 @@
         "tags": [
           "Agent discovery"
         ],
-        "summary": "Product feed (schema.org-style ItemList)",
+        "summary": "Product feed schema.org-style ItemList",
         "description": "Custom schema.org-style JSON-LD ItemList of Product/Offer entries with server catalog prices (price decimal string, additionalProperty priceMinor/dietary). Not an official PayPal Store Sync feed. Read-only, ETag-revalidatable.",
         "security": [],
         "responses": {
@@ -2657,6 +4118,80 @@
               "application/json": {
                 "schema": {
                   "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getFeedProducts"
+      }
+    },
+    "/api/discover/take-home": {
+      "post": {
+        "operationId": "postTakeHomeSuggestions",
+        "tags": [
+          "Policy"
+        ],
+        "summary": "Take-it-home suggestions Channel3",
+        "description": "Read-only product discovery through Channel3. The query is built on the server from the catalog category of the cart items; no client text is forwarded. Results are outbound retailer links: not part of the PayPal cart, not covered by the spending allowance, never paid through this API. Returns enabled=false when no Channel3 key is configured.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeHomeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Suggestions (possibly empty or disabled)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TakeHomeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid items",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limited",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Channel3 unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }

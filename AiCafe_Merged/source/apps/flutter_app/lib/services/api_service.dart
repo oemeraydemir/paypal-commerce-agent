@@ -12,6 +12,7 @@ import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/chat_message.dart';
 import 'package:flutter_app/models/evidence_package.dart';
+import 'package:flutter_app/models/allowance_scope.dart';
 import 'package:flutter_app/models/pickup.dart';
 import 'package:flutter_app/models/refund.dart';
 import 'package:flutter_app/models/take_home.dart';
@@ -476,6 +477,83 @@ class ApiService {
     });
     _ensureOk(res, 'updatePolicy');
     return PolicyAllowance.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// Lists the shopper's own scoped allowances (`GET /api/policy/scopes`).
+  Future<List<AllowanceScope>> getScopes() async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.get(_url('/api/policy/scopes'), headers: headers);
+    });
+    _ensureOk(res, 'getScopes');
+    final body = jsonDecode(res.body) as Map<String, dynamic>;
+    final list = body['scopes'] is List ? body['scopes'] as List : <dynamic>[];
+    return list
+        .whereType<Map<String, dynamic>>()
+        .map(AllowanceScope.fromJson)
+        .toList();
+  }
+
+  /// Creates a scoped allowance (`POST /api/policy/scopes`). Non-negative limit
+  /// parameters are only sent when provided; the server is authoritative.
+  Future<AllowanceScope> createScope({
+    required String label,
+    String currency = 'EUR',
+    int? maxPerPurchaseMinor,
+    int? dailySpendLimitMinor,
+  }) async {
+    final body = <String, dynamic>{
+      'label': label,
+      'currency': currency,
+    };
+    if (maxPerPurchaseMinor != null) body['maxPerPurchaseMinor'] = maxPerPurchaseMinor;
+    if (dailySpendLimitMinor != null) body['dailySpendLimitMinor'] = dailySpendLimitMinor;
+    final res = await _executeWithAuth((headers) async {
+      return _client.post(
+        _url('/api/policy/scopes'),
+        headers: headers,
+        body: jsonEncode(body),
+      );
+    });
+    _ensureOk(res, 'createScope');
+    final body2 = jsonDecode(res.body) as Map<String, dynamic>;
+    return AllowanceScope.fromJson(body2['scope'] as Map<String, dynamic>);
+  }
+
+  /// Approves a pending (agent-proposed) scope. Optional limit increases are
+  /// validated against the policy ceiling server-side (non-escalation).
+  Future<AllowanceScope> approveScope(
+    String scopeId, {
+    int? maxPerPurchaseMinor,
+    int? dailySpendLimitMinor,
+  }) async {
+    final body = <String, dynamic>{};
+    if (maxPerPurchaseMinor != null) body['maxPerPurchaseMinor'] = maxPerPurchaseMinor;
+    if (dailySpendLimitMinor != null) body['dailySpendLimitMinor'] = dailySpendLimitMinor;
+    final res = await _executeWithAuth((headers) async {
+      return _client.post(
+        _url('/api/policy/scopes/${Uri.encodeComponent(scopeId)}/approve'),
+        headers: headers,
+        body: jsonEncode(body),
+      );
+    });
+    _ensureOk(res, 'approveScope');
+    final body2 = jsonDecode(res.body) as Map<String, dynamic>;
+    return AllowanceScope.fromJson(body2['scope'] as Map<String, dynamic>);
+  }
+
+  /// Revokes an active scope. Revocation is fail-closed: the scope may no
+  /// longer be used for new checkout reservations.
+  Future<AllowanceScope> revokeScope(String scopeId) async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.post(
+        _url('/api/policy/scopes/${Uri.encodeComponent(scopeId)}/revoke'),
+        headers: headers,
+        body: '{}',
+      );
+    });
+    _ensureOk(res, 'revokeScope');
+    final body2 = jsonDecode(res.body) as Map<String, dynamic>;
+    return AllowanceScope.fromJson(body2['scope'] as Map<String, dynamic>);
   }
 
   Future<OrderCreateResult> createOrder({

@@ -783,6 +783,170 @@ if (result.ok) {
 > Source: [Policy](src/resources/policy.ts)
 
 <details>
+<summary><code>getPolicyScope(request: Policy.GetPolicyScopeRequest, options?: RequestOptions): ApiPromise&lt;AllowanceScopeDetailResponse, Policy.GetPolicyScopeError&gt;</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Returns the scope plus its event trail. Only the owning session may read it.
+
+</dd>
+</dl>
+
+### Direct Usage
+
+<dl>
+<dd>
+
+```ts
+try {
+  const response = await client.policy.getPolicyScope({ scopeId: "some example string" });
+  // TODO: Handle 'response' of type AllowanceScopeDetailResponse
+} catch (err) {
+  // TODO: Handle 'err' of type Policy.GetPolicyScopeError, discriminated with 'err.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Usage as ApiResult
+
+<dl>
+<dd>
+
+```ts
+const result = await client.policy.getPolicyScope({ scopeId: "some example string" }).asApiResult();
+// TODO: Use 'result.status' and 'result.headers' to read the raw response status and headers
+if (result.ok) {
+  // TODO: Use 'result.value' of type AllowanceScopeDetailResponse
+} else {
+  // TODO: Handle 'result', discriminated with 'result.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>scopeId</code> | <code>string</code> | - |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**Direct**: `await client.policy.getPolicyScope(request)`
+
+- **OnSuccess**: <code>[AllowanceScopeDetailResponse](src/models/allowance-scope-detail-response.ts)</code>
+- **OnError**: throws <code>[Policy.GetPolicyScopeError](src/resources/policy.ts)</code>, with `err.payload` discriminated on `kind`
+
+**As ApiResult**: `await client.policy.getPolicyScope(request).asApiResult()`
+
+- **OnSuccess**: <code>[ApiResult](src/core/api-promise.ts)&lt;AllowanceScopeDetailResponse, Policy.GetPolicyScopeError&gt;</code>, with `result.value` of type <code>[AllowanceScopeDetailResponse](src/models/allowance-scope-detail-response.ts)</code>
+- **OnError**: `result.payload` discriminated on `kind`, with `result.message`
+
+**Thrown**: <code>[AiCafPayPalCommerceAgentApiError](src/core/errors.ts)</code> on any operational failure — a caller abort and a programmer error stay outside the family and reach you raw
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>getPolicyScopes(options?: RequestOptions): ApiPromise&lt;AllowanceScopeListResponse, Policy.GetPolicyScopesError&gt;</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Returns all scopes owned by the authenticated session.
+
+</dd>
+</dl>
+
+### Direct Usage
+
+<dl>
+<dd>
+
+```ts
+try {
+  const response = await client.policy.getPolicyScopes();
+  // TODO: Handle 'response' of type AllowanceScopeListResponse
+} catch (err) {
+  // TODO: Handle 'err' of type Policy.GetPolicyScopesError, discriminated with 'err.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Usage as ApiResult
+
+<dl>
+<dd>
+
+```ts
+const result = await client.policy.getPolicyScopes().asApiResult();
+// TODO: Use 'result.status' and 'result.headers' to read the raw response status and headers
+if (result.ok) {
+  // TODO: Use 'result.value' of type AllowanceScopeListResponse
+} else {
+  // TODO: Handle 'result', discriminated with 'result.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**Direct**: `await client.policy.getPolicyScopes()`
+
+- **OnSuccess**: <code>[AllowanceScopeListResponse](src/models/allowance-scope-list-response.ts)</code>
+- **OnError**: throws <code>[Policy.GetPolicyScopesError](src/resources/policy.ts)</code>, with `err.payload` discriminated on `kind`
+
+**As ApiResult**: `await client.policy.getPolicyScopes().asApiResult()`
+
+- **OnSuccess**: <code>[ApiResult](src/core/api-promise.ts)&lt;AllowanceScopeListResponse, Policy.GetPolicyScopesError&gt;</code>, with `result.value` of type <code>[AllowanceScopeListResponse](src/models/allowance-scope-list-response.ts)</code>
+- **OnError**: `result.payload` discriminated on `kind`, with `result.message`
+
+**Thrown**: <code>[AiCafPayPalCommerceAgentApiError](src/core/errors.ts)</code> on any operational failure — a caller abort and a programmer error stay outside the family and reach you raw
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
 <summary><code>postPolicyPreview(request: Policy.PostPolicyPreviewRequest, options?: RequestOptions): ApiPromise&lt;PolicyPreviewResponse, Policy.PostPolicyPreviewError&gt;</code></summary>
 
 <dl>
@@ -858,6 +1022,370 @@ if (result.ok) {
 **As ApiResult**: `await client.policy.postPolicyPreview(request).asApiResult()`
 
 - **OnSuccess**: <code>[ApiResult](src/core/api-promise.ts)&lt;PolicyPreviewResponse, Policy.PostPolicyPreviewError&gt;</code>, with `result.value` of type <code>[PolicyPreviewResponse](src/models/policy-preview-response.ts)</code>
+- **OnError**: `result.payload` discriminated on `kind`, with `result.message`
+
+**Thrown**: <code>[AiCafPayPalCommerceAgentApiError](src/core/errors.ts)</code> on any operational failure — a caller abort and a programmer error stay outside the family and reach you raw
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>postPolicyScopeApprove(request: Policy.PostPolicyScopeApproveRequest, options?: RequestOptions): ApiPromise&lt;AllowanceScope, Policy.PostPolicyScopeApproveError&gt;</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Activates a PENDING scope, or records a fresh shopper approval for a limit increase. Limits remain capped by the global ceiling.
+
+</dd>
+</dl>
+
+### Direct Usage
+
+<dl>
+<dd>
+
+```ts
+try {
+  const response = await client.policy.postPolicyScopeApprove({ scopeId: "some example string", body: {} });
+  // TODO: Handle 'response' of type AllowanceScope
+} catch (err) {
+  // TODO: Handle 'err' of type Policy.PostPolicyScopeApproveError, discriminated with 'err.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Usage as ApiResult
+
+<dl>
+<dd>
+
+```ts
+const result = await client.policy.postPolicyScopeApprove({
+  scopeId: "some example string",
+  body: {},
+}).asApiResult();
+// TODO: Use 'result.status' and 'result.headers' to read the raw response status and headers
+if (result.ok) {
+  // TODO: Use 'result.value' of type AllowanceScope
+} else {
+  // TODO: Handle 'result', discriminated with 'result.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>scopeId</code> | <code>string</code> | - |
+| <code>body</code> | <code>[AllowanceScopeApproveInput](src/models/allowance-scope-approve-input.ts)</code> | - |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**Direct**: `await client.policy.postPolicyScopeApprove(request)`
+
+- **OnSuccess**: <code>[AllowanceScope](src/models/allowance-scope.ts)</code>
+- **OnError**: throws <code>[Policy.PostPolicyScopeApproveError](src/resources/policy.ts)</code>, with `err.payload` discriminated on `kind`
+
+**As ApiResult**: `await client.policy.postPolicyScopeApprove(request).asApiResult()`
+
+- **OnSuccess**: <code>[ApiResult](src/core/api-promise.ts)&lt;AllowanceScope, Policy.PostPolicyScopeApproveError&gt;</code>, with `result.value` of type <code>[AllowanceScope](src/models/allowance-scope.ts)</code>
+- **OnError**: `result.payload` discriminated on `kind`, with `result.message`
+
+**Thrown**: <code>[AiCafPayPalCommerceAgentApiError](src/core/errors.ts)</code> on any operational failure — a caller abort and a programmer error stay outside the family and reach you raw
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>postPolicyScopeRevoke(request: Policy.PostPolicyScopeRevokeRequest, options?: RequestOptions): ApiPromise&lt;AllowanceScope, Policy.PostPolicyScopeRevokeError&gt;</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Revokes a scope. Subsequent checkouts bound to it fail closed.
+
+</dd>
+</dl>
+
+### Direct Usage
+
+<dl>
+<dd>
+
+```ts
+try {
+  const response = await client.policy.postPolicyScopeRevoke({ scopeId: "some example string" });
+  // TODO: Handle 'response' of type AllowanceScope
+} catch (err) {
+  // TODO: Handle 'err' of type Policy.PostPolicyScopeRevokeError, discriminated with 'err.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Usage as ApiResult
+
+<dl>
+<dd>
+
+```ts
+const result = await client.policy.postPolicyScopeRevoke({ scopeId: "some example string" }).asApiResult();
+// TODO: Use 'result.status' and 'result.headers' to read the raw response status and headers
+if (result.ok) {
+  // TODO: Use 'result.value' of type AllowanceScope
+} else {
+  // TODO: Handle 'result', discriminated with 'result.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>scopeId</code> | <code>string</code> | - |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**Direct**: `await client.policy.postPolicyScopeRevoke(request)`
+
+- **OnSuccess**: <code>[AllowanceScope](src/models/allowance-scope.ts)</code>
+- **OnError**: throws <code>[Policy.PostPolicyScopeRevokeError](src/resources/policy.ts)</code>, with `err.payload` discriminated on `kind`
+
+**As ApiResult**: `await client.policy.postPolicyScopeRevoke(request).asApiResult()`
+
+- **OnSuccess**: <code>[ApiResult](src/core/api-promise.ts)&lt;AllowanceScope, Policy.PostPolicyScopeRevokeError&gt;</code>, with `result.value` of type <code>[AllowanceScope](src/models/allowance-scope.ts)</code>
+- **OnError**: `result.payload` discriminated on `kind`, with `result.message`
+
+**Thrown**: <code>[AiCafPayPalCommerceAgentApiError](src/core/errors.ts)</code> on any operational failure — a caller abort and a programmer error stay outside the family and reach you raw
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>postPolicyScopes(request: Policy.PostPolicyScopesRequest, options?: RequestOptions): ApiPromise&lt;AllowanceScope, Policy.PostPolicyScopesError&gt;</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Creates a scope. A HUMAN issuer yields an ACTIVE scope; an AI-prepared session yields a PENDING (agent-proposed) scope awaiting shopper approval.
+
+</dd>
+</dl>
+
+### Direct Usage
+
+<dl>
+<dd>
+
+```ts
+try {
+  const response = await client.policy.postPolicyScopes({
+    body: { label: "some example string", currency: "some example string" },
+  });
+  // TODO: Handle 'response' of type AllowanceScope
+} catch (err) {
+  // TODO: Handle 'err' of type Policy.PostPolicyScopesError, discriminated with 'err.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Usage as ApiResult
+
+<dl>
+<dd>
+
+```ts
+const result = await client.policy.postPolicyScopes({
+  body: { label: "some example string", currency: "some example string" },
+}).asApiResult();
+// TODO: Use 'result.status' and 'result.headers' to read the raw response status and headers
+if (result.ok) {
+  // TODO: Use 'result.value' of type AllowanceScope
+} else {
+  // TODO: Handle 'result', discriminated with 'result.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>body</code> | <code>[AllowanceScopeCreateInput](src/models/allowance-scope-create-input.ts)</code> | - |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**Direct**: `await client.policy.postPolicyScopes(request)`
+
+- **OnSuccess**: <code>[AllowanceScope](src/models/allowance-scope.ts)</code>
+- **OnError**: throws <code>[Policy.PostPolicyScopesError](src/resources/policy.ts)</code>, with `err.payload` discriminated on `kind`
+
+**As ApiResult**: `await client.policy.postPolicyScopes(request).asApiResult()`
+
+- **OnSuccess**: <code>[ApiResult](src/core/api-promise.ts)&lt;AllowanceScope, Policy.PostPolicyScopesError&gt;</code>, with `result.value` of type <code>[AllowanceScope](src/models/allowance-scope.ts)</code>
+- **OnError**: `result.payload` discriminated on `kind`, with `result.message`
+
+**Thrown**: <code>[AiCafPayPalCommerceAgentApiError](src/core/errors.ts)</code> on any operational failure — a caller abort and a programmer error stay outside the family and reach you raw
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>postTakeHomeSuggestions(request: Policy.PostTakeHomeSuggestionsRequest, options?: RequestOptions): ApiPromise&lt;TakeHomeResponse, Policy.PostTakeHomeSuggestionsError&gt;</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Read-only product discovery through Channel3. The query is built on the server from the catalog category of the cart items; no client text is forwarded. Results are outbound retailer links: not part of the PayPal cart, not covered by the spending allowance, never paid through this API. Returns enabled=false when no Channel3 key is configured.
+
+</dd>
+</dl>
+
+### Direct Usage
+
+<dl>
+<dd>
+
+```ts
+try {
+  const response = await client.policy.postTakeHomeSuggestions({
+    body: { items: [{ productId: "some example string" }] },
+  });
+  // TODO: Handle 'response' of type TakeHomeResponse
+} catch (err) {
+  // TODO: Handle 'err' of type Policy.PostTakeHomeSuggestionsError, discriminated with 'err.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Usage as ApiResult
+
+<dl>
+<dd>
+
+```ts
+const result = await client.policy.postTakeHomeSuggestions({
+  body: { items: [{ productId: "some example string" }] },
+}).asApiResult();
+// TODO: Use 'result.status' and 'result.headers' to read the raw response status and headers
+if (result.ok) {
+  // TODO: Use 'result.value' of type TakeHomeResponse
+} else {
+  // TODO: Handle 'result', discriminated with 'result.payload.kind'
+}
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>body</code> | <code>[TakeHomeRequest](src/models/take-home-request.ts)</code> | - |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**Direct**: `await client.policy.postTakeHomeSuggestions(request)`
+
+- **OnSuccess**: <code>[TakeHomeResponse](src/models/take-home-response.ts)</code>
+- **OnError**: throws <code>[Policy.PostTakeHomeSuggestionsError](src/resources/policy.ts)</code>, with `err.payload` discriminated on `kind`
+
+**As ApiResult**: `await client.policy.postTakeHomeSuggestions(request).asApiResult()`
+
+- **OnSuccess**: <code>[ApiResult](src/core/api-promise.ts)&lt;TakeHomeResponse, Policy.PostTakeHomeSuggestionsError&gt;</code>, with `result.value` of type <code>[TakeHomeResponse](src/models/take-home-response.ts)</code>
 - **OnError**: `result.payload` discriminated on `kind`, with `result.message`
 
 **Thrown**: <code>[AiCafPayPalCommerceAgentApiError](src/core/errors.ts)</code> on any operational failure — a caller abort and a programmer error stay outside the family and reach you raw

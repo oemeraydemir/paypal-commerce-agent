@@ -2254,6 +2254,167 @@ Mapped in first-match order -- an earlier row wins over a later range that also 
 > Source: [Policy](ai_caf_pay_pal_commerce_agent_api/apis/policy.py)
 
 <details>
+<summary><code>def get_policy_scope(scope_id: str, *, request_options: RequestOptionsOrDict | None = None) -> AllowanceScopeDetailResponse</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Returns the scope plus its event trail. Only the owning session may read it.
+
+</dd>
+</dl>
+
+### Usage
+
+<dl>
+<dd>
+
+**Sync**
+
+```python
+try:
+    response = client.policy.get_policy_scope("some example string")
+    # TODO: Handle 'response' of type AllowanceScopeDetailResponse
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type GetPolicyScopeErrorBody
+```
+
+**Async**
+
+```python
+try:
+    response = await async_client.policy.get_policy_scope("some example string")
+    # TODO: Handle 'response' of type AllowanceScopeDetailResponse
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type GetPolicyScopeErrorBody
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>scope_id</code> | <code>str</code> | Value sent with the request. |
+| <code>request_options</code> | <code>[RequestOptionsOrDict](ai_caf_pay_pal_commerce_agent_api/core/request_options.py) \| None</code> | Per-call overrides for this one request, such as a timeout, extra headers, or its retry count and statuses. |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**OnSuccess**: <code>[AllowanceScopeDetailResponse](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope_detail_response.py)</code> -- Scope with audit
+
+**OnError**: <code>[ApiError](ai_caf_pay_pal_commerce_agent_api/core/exceptions.py)&#91;[GetPolicyScopeErrorBody](ai_caf_pay_pal_commerce_agent_api/errors/get_policy_scope_error.py)&#93;</code>
+
+Mapped in first-match order -- an earlier row wins over a later range that also covers the status:
+
+| Status | `error` is |
+| --- | --- |
+| 401, 404 | <code>[Error](ai_caf_pay_pal_commerce_agent_api/models/error.py)</code> |
+| anything unmapped | <code>[RawError](ai_caf_pay_pal_commerce_agent_api/core/results.py)</code> |
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>def get_policy_scopes(*, request_options: RequestOptionsOrDict | None = None) -> AllowanceScopeListResponse</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Returns all scopes owned by the authenticated session.
+
+</dd>
+</dl>
+
+### Usage
+
+<dl>
+<dd>
+
+**Sync**
+
+```python
+try:
+    response = client.policy.get_policy_scopes()
+    # TODO: Handle 'response' of type AllowanceScopeListResponse
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type GetPolicyScopesErrorBody
+```
+
+**Async**
+
+```python
+try:
+    response = await async_client.policy.get_policy_scopes()
+    # TODO: Handle 'response' of type AllowanceScopeListResponse
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type GetPolicyScopesErrorBody
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>request_options</code> | <code>[RequestOptionsOrDict](ai_caf_pay_pal_commerce_agent_api/core/request_options.py) \| None</code> | Per-call overrides for this one request, such as a timeout, extra headers, or its retry count and statuses. |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**OnSuccess**: <code>[AllowanceScopeListResponse](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope_list_response.py)</code> -- Scopes
+
+**OnError**: <code>[ApiError](ai_caf_pay_pal_commerce_agent_api/core/exceptions.py)&#91;[GetPolicyScopesErrorBody](ai_caf_pay_pal_commerce_agent_api/errors/get_policy_scopes_error.py)&#93;</code>
+
+Mapped in first-match order -- an earlier row wins over a later range that also covers the status:
+
+| Status | `error` is |
+| --- | --- |
+| 400, 401 | <code>[Error](ai_caf_pay_pal_commerce_agent_api/models/error.py)</code> |
+| anything unmapped | <code>[RawError](ai_caf_pay_pal_commerce_agent_api/core/results.py)</code> |
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
 <summary><code>def post_policy_preview(body: PolicyPreviewRequest | PolicyPreviewRequestDict, *, request_options: RequestOptionsOrDict | None = None) -> PolicyPreviewResponse</code></summary>
 
 <dl>
@@ -2324,6 +2485,339 @@ Mapped in first-match order -- an earlier row wins over a later range that also 
 | Status | `error` is |
 | --- | --- |
 | 400, 429 | <code>[Error](ai_caf_pay_pal_commerce_agent_api/models/error.py)</code> |
+| anything unmapped | <code>[RawError](ai_caf_pay_pal_commerce_agent_api/core/results.py)</code> |
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>def post_policy_scope_approve(scope_id: str, body: AllowanceScopeApproveInput | AllowanceScopeApproveInputDict, *, request_options: RequestOptionsOrDict | None = None) -> AllowanceScope</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Activates a PENDING scope, or records a fresh shopper approval for a limit increase. Limits remain capped by the global ceiling.
+
+</dd>
+</dl>
+
+### Usage
+
+<dl>
+<dd>
+
+**Sync**
+
+```python
+try:
+    response = client.policy.post_policy_scope_approve("some example string", AllowanceScopeApproveInput())
+    # TODO: Handle 'response' of type AllowanceScope
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type PostPolicyScopeApproveErrorBody
+```
+
+**Async**
+
+```python
+try:
+    response = await async_client.policy.post_policy_scope_approve("some example string", AllowanceScopeApproveInput())
+    # TODO: Handle 'response' of type AllowanceScope
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type PostPolicyScopeApproveErrorBody
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>scope_id</code> | <code>str</code> | Value sent with the request. |
+| <code>body</code> | <code>[AllowanceScopeApproveInput](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope_approve_input.py) \| [AllowanceScopeApproveInputDict](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope_approve_input.py)</code> | The request body. |
+| <code>request_options</code> | <code>[RequestOptionsOrDict](ai_caf_pay_pal_commerce_agent_api/core/request_options.py) \| None</code> | Per-call overrides for this one request, such as a timeout, extra headers, or its retry count and statuses. |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**OnSuccess**: <code>[AllowanceScope](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope.py)</code> -- Approved
+
+**OnError**: <code>[ApiError](ai_caf_pay_pal_commerce_agent_api/core/exceptions.py)&#91;[PostPolicyScopeApproveErrorBody](ai_caf_pay_pal_commerce_agent_api/errors/post_policy_scope_approve_error.py)&#93;</code>
+
+Mapped in first-match order -- an earlier row wins over a later range that also covers the status:
+
+| Status | `error` is |
+| --- | --- |
+| 401, 404, 409, 422 | <code>[Error](ai_caf_pay_pal_commerce_agent_api/models/error.py)</code> |
+| anything unmapped | <code>[RawError](ai_caf_pay_pal_commerce_agent_api/core/results.py)</code> |
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>def post_policy_scope_revoke(scope_id: str, *, request_options: RequestOptionsOrDict | None = None) -> AllowanceScope</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Revokes a scope. Subsequent checkouts bound to it fail closed.
+
+</dd>
+</dl>
+
+### Usage
+
+<dl>
+<dd>
+
+**Sync**
+
+```python
+try:
+    response = client.policy.post_policy_scope_revoke("some example string")
+    # TODO: Handle 'response' of type AllowanceScope
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type PostPolicyScopeRevokeErrorBody
+```
+
+**Async**
+
+```python
+try:
+    response = await async_client.policy.post_policy_scope_revoke("some example string")
+    # TODO: Handle 'response' of type AllowanceScope
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type PostPolicyScopeRevokeErrorBody
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>scope_id</code> | <code>str</code> | Value sent with the request. |
+| <code>request_options</code> | <code>[RequestOptionsOrDict](ai_caf_pay_pal_commerce_agent_api/core/request_options.py) \| None</code> | Per-call overrides for this one request, such as a timeout, extra headers, or its retry count and statuses. |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**OnSuccess**: <code>[AllowanceScope](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope.py)</code> -- Revoked
+
+**OnError**: <code>[ApiError](ai_caf_pay_pal_commerce_agent_api/core/exceptions.py)&#91;[PostPolicyScopeRevokeErrorBody](ai_caf_pay_pal_commerce_agent_api/errors/post_policy_scope_revoke_error.py)&#93;</code>
+
+Mapped in first-match order -- an earlier row wins over a later range that also covers the status:
+
+| Status | `error` is |
+| --- | --- |
+| 401, 404 | <code>[Error](ai_caf_pay_pal_commerce_agent_api/models/error.py)</code> |
+| anything unmapped | <code>[RawError](ai_caf_pay_pal_commerce_agent_api/core/results.py)</code> |
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>def post_policy_scopes(body: AllowanceScopeCreateInput | AllowanceScopeCreateInputDict, *, request_options: RequestOptionsOrDict | None = None) -> AllowanceScope</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Creates a scope. A HUMAN issuer yields an ACTIVE scope; an AI-prepared session yields a PENDING (agent-proposed) scope awaiting shopper approval.
+
+</dd>
+</dl>
+
+### Usage
+
+<dl>
+<dd>
+
+**Sync**
+
+```python
+try:
+    response = client.policy.post_policy_scopes(
+        AllowanceScopeCreateInput(label="some example string", currency="some example string")
+    )
+    # TODO: Handle 'response' of type AllowanceScope
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type PostPolicyScopesErrorBody
+```
+
+**Async**
+
+```python
+try:
+    response = await async_client.policy.post_policy_scopes(
+        AllowanceScopeCreateInput(label="some example string", currency="some example string")
+    )
+    # TODO: Handle 'response' of type AllowanceScope
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type PostPolicyScopesErrorBody
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>body</code> | <code>[AllowanceScopeCreateInput](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope_create_input.py) \| [AllowanceScopeCreateInputDict](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope_create_input.py)</code> | The request body. |
+| <code>request_options</code> | <code>[RequestOptionsOrDict](ai_caf_pay_pal_commerce_agent_api/core/request_options.py) \| None</code> | Per-call overrides for this one request, such as a timeout, extra headers, or its retry count and statuses. |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**OnSuccess**: <code>[AllowanceScope](ai_caf_pay_pal_commerce_agent_api/models/allowance_scope.py)</code> -- Created
+
+**OnError**: <code>[ApiError](ai_caf_pay_pal_commerce_agent_api/core/exceptions.py)&#91;[PostPolicyScopesErrorBody](ai_caf_pay_pal_commerce_agent_api/errors/post_policy_scopes_error.py)&#93;</code>
+
+Mapped in first-match order -- an earlier row wins over a later range that also covers the status:
+
+| Status | `error` is |
+| --- | --- |
+| 400, 401, 422 | <code>[Error](ai_caf_pay_pal_commerce_agent_api/models/error.py)</code> |
+| anything unmapped | <code>[RawError](ai_caf_pay_pal_commerce_agent_api/core/results.py)</code> |
+
+</dd>
+</dl>
+
+</dd>
+</dl>
+
+</details>
+
+<details>
+<summary><code>def post_take_home_suggestions(body: TakeHomeRequest | TakeHomeRequestDict, *, request_options: RequestOptionsOrDict | None = None) -> TakeHomeResponse</code></summary>
+
+<dl>
+<dd>
+
+### Description
+
+<dl>
+<dd>
+
+Read-only product discovery through Channel3. The query is built on the server from the catalog category of the cart items; no client text is forwarded. Results are outbound retailer links: not part of the PayPal cart, not covered by the spending allowance, never paid through this API. Returns enabled=false when no Channel3 key is configured.
+
+</dd>
+</dl>
+
+### Usage
+
+<dl>
+<dd>
+
+**Sync**
+
+```python
+try:
+    response = client.policy.post_take_home_suggestions(
+        TakeHomeRequest(items=[Item1(product_id="some example string")])
+    )
+    # TODO: Handle 'response' of type TakeHomeResponse
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type PostTakeHomeSuggestionsErrorBody
+```
+
+**Async**
+
+```python
+try:
+    response = await async_client.policy.post_take_home_suggestions(
+        TakeHomeRequest(items=[Item1(product_id="some example string")])
+    )
+    # TODO: Handle 'response' of type TakeHomeResponse
+except ApiError as e:
+    ...  # TODO: Handle 'e.error' of type PostTakeHomeSuggestionsErrorBody
+```
+
+</dd>
+</dl>
+
+### Parameters
+
+<dl>
+<dd>
+
+| Name | Type | Description |
+| --- | --- | --- |
+| <code>body</code> | <code>[TakeHomeRequest](ai_caf_pay_pal_commerce_agent_api/models/take_home_request.py) \| [TakeHomeRequestDict](ai_caf_pay_pal_commerce_agent_api/models/take_home_request.py)</code> | The request body. |
+| <code>request_options</code> | <code>[RequestOptionsOrDict](ai_caf_pay_pal_commerce_agent_api/core/request_options.py) \| None</code> | Per-call overrides for this one request, such as a timeout, extra headers, or its retry count and statuses. |
+
+</dd>
+</dl>
+
+### Response
+
+<dl>
+<dd>
+
+**OnSuccess**: <code>[TakeHomeResponse](ai_caf_pay_pal_commerce_agent_api/models/take_home_response.py)</code> -- Suggestions (possibly empty or disabled)
+
+**OnError**: <code>[ApiError](ai_caf_pay_pal_commerce_agent_api/core/exceptions.py)&#91;[PostTakeHomeSuggestionsErrorBody](ai_caf_pay_pal_commerce_agent_api/errors/post_take_home_suggestions_error.py)&#93;</code>
+
+Mapped in first-match order -- an earlier row wins over a later range that also covers the status:
+
+| Status | `error` is |
+| --- | --- |
+| 400, 401, 429, 502 | <code>[Error](ai_caf_pay_pal_commerce_agent_api/models/error.py)</code> |
 | anything unmapped | <code>[RawError](ai_caf_pay_pal_commerce_agent_api/core/results.py)</code> |
 
 </dd>

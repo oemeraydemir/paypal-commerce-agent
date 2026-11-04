@@ -64,6 +64,8 @@ export interface PolicyAppliedLimits {
   confirmationThresholdMinor: number;
   enabled: boolean;
   validUntil: string | null;
+  /** Stage 2: the scoped-allowance id that governed this order (server-set). */
+  appliedScopeId?: string;
 }
 
 export interface Order {
@@ -86,6 +88,8 @@ export interface Order {
   reservationId?: string;
   // Stage 2: the allowance snapshot that was enforced for this order (server-set).
   policyAppliedLimits?: PolicyAppliedLimits;
+  // Stage 2: the scoped-allowance id that governed this order (server-set).
+  appliedScopeId?: string;
   // Write-ahead marker: set and PERSISTED before the capture call goes to PayPal.
   // If the process dies mid-capture, startup reconciliation asks PayPal for the truth.
   captureStartedAt?: Date;

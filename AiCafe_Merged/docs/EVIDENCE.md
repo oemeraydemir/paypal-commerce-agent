@@ -2,6 +2,7 @@
 
 > **Backend counts re-measured on 2026-10-25 (audit pass, commands run in that session):** `tsc --noEmit` clean;
 > `npm test` **83 suites / 928 tests pass on 2026-10-27** (commit 364824d; six regression tests were added afterwards, so the next run should show 85 / 934);
+> **Backend re-measured on 2026-11-04 (hackathon readiness):** `npm test` **137 suites / 1320 tests pass** (includes the scope fail-closed, evidence, checkout-rescue and web-scopes regressions); `flutter analyze` reports no issues.
 > `newman` against a local keyless server, public and private dashboard mode: **58 requests, 73 assertions, 0 failed**.
 > NOT re-run in that session: Flutter (no SDK there; the owner's 2026-10-27 run, 163 tests, is row E14b and
 > `docs/PLATFORM_STATUS.md`), the real-Chrome AG Grid test, `test:smoke` against a real PostgreSQL. The older rows below keep
@@ -17,7 +18,7 @@ PayPal Sandbox or real AI providers unless a row says so.
 
 | Kind | What it proves | Result in this pass |
 |---|---|---|
-| Unit / integration, PayPal and AI **mocked**, pg-mem | application logic | 83 suites, 928 tests, all pass (`npm test`, measured 2026-10-27; was 79 / 883 on 2026-10-26; the 20 Oct snapshot was 60 / 636) |
+| Unit / integration, PayPal and AI **mocked**, pg-mem | application logic | 137 suites, 1320 tests, all pass (`npm test`, re-measured 2026-11-04; 83 suites / 928 on 2026-10-27; 79 / 883 on 2026-10-26; 60 / 636 on 20 Oct) |
 | **Real PostgreSQL 16** (local), PayPal mocked | durability, constraints, concurrency | 13 tests pass (`jest -c jest.smoke.config.js`: `pg-migrate`, `pg-durability`, `pg-capture-claim-route`) |
 | Local application over HTTP (`newman`), no PayPal or AI keys | API contract and rejections | public dashboard mode and private mode (`DASHBOARD_PUBLIC=false`) each: 58 requests, 73 assertions, 0 failed (measured 2026-10-25; the 20 Oct snapshot was 50 requests / 57 assertions) |
 | Real PayPal Sandbox | PayPal behaviour | BLOCKED |

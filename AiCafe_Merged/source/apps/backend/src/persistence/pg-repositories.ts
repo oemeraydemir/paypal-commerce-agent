@@ -40,6 +40,11 @@ import {
   ReservationResult,
   MandateBlockReason,
   MandateEventsRepo,
+  AllowanceScopeRepository,
+  AllowanceScopeRow,
+  AllowanceScopeAuditRow,
+  AllowanceScopeKind,
+  AllowanceScopeStatus,
 } from './types';
 
 const toDate = (value: unknown): Date | undefined =>
@@ -267,25 +272,27 @@ class PgReservationRepository implements ReservationRepository {
       settledAt: toDate(r.settled_at),
       mandateRevision: r.mandate_revision == null ? undefined : Number(r.mandate_revision),
       billMandateReservationId: r.bill_mandate_reservation_id ?? undefined,
+      scopeId: r.scope_id ?? undefined,
     }));
   }
 
   async save(row: ReservationRow): Promise<void> {
     await this.db.query(
       `INSERT INTO spend_reservations
-         (id, user_id, amount_minor, state, created_at, settled_at, mandate_revision, bill_mandate_reservation_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         (id, user_id, amount_minor, state, created_at, settled_at, mandate_revision, bill_mandate_reservation_id, scope_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        ON CONFLICT (id) DO UPDATE SET state = EXCLUDED.state, settled_at = EXCLUDED.settled_at,
          mandate_revision = COALESCE(EXCLUDED.mandate_revision, spend_reservations.mandate_revision),
-         bill_mandate_reservation_id = COALESCE(EXCLUDED.bill_mandate_reservation_id, spend_reservations.bill_mandate_reservation_id)`,
+         bill_mandate_reservation_id = COALESCE(EXCLUDED.bill_mandate_reservation_id, spend_reservations.bill_mandate_reservation_id),
+         scope_id = COALESCE(EXCLUDED.scope_id, spend_reservations.scope_id)`,
       [row.id, row.userId, row.amountMinor, row.state, row.createdAt, row.settledAt ?? null,
-        row.mandateRevision ?? null, row.billMandateReservationId ?? null]
+        row.mandateRevision ?? null, row.billMandateReservationId ?? null, row.scopeId ?? null]
     );
   }
 
   async reserveWithinMandate(input: {
     id: string; userId: string; amountMinor: number; currency: string; merchantId: string;
-    mandateRevision: number; billMandateReservationId?: string; createdAt: Date;
+    mandateRevision: number; billMandateReservationId?: string; scopeId?: string; createdAt: Date;
   }): Promise<ReservationResult> {
     return withTransaction(this.db, async (client) => {
       // Read the linked bill owner first, then lock both involved mandates in a
@@ -394,17 +401,73 @@ class PgReservationRepository implements ReservationRepository {
         return { ok: false, reason: 'DAILY_LIMIT_EXCEEDED' };
       }
 
+      // ---- Scoped AI Allowance (fail-closed) ------------------------------
+      // When the checkout explicitly binds a scope, the scope row is locked and
+      // re-validated INSIDE this same transaction, so a scope revoked between the
+      // pre-check and the reservation cannot be honoured. The scoped limits are
+      // enforced in addition to (never in place of) the global mandate, so a
+      // scope can only ever make the envelope tighter.
+      let scopeId: string | undefined = input.scopeId;
+      if (scopeId) {
+        const { rows: scopeRows } = await client.query(
+          `SELECT * FROM allowance_scopes WHERE id = $1 FOR UPDATE`, [scopeId]
+        );
+        const scopeRow = scopeRows[0];
+        if (!scopeRow || scopeRow.user_id !== input.userId) {
+          return { ok: false, reason: 'SCOPE_NOT_FOUND' };
+        }
+        if (scopeRow.status === 'PENDING_APPROVAL') return { ok: false, reason: 'SCOPE_PENDING' };
+        if (scopeRow.status === 'REVOKED') return { ok: false, reason: 'SCOPE_REVOKED' };
+        if (scopeRow.status === 'SPENT') return { ok: false, reason: 'SCOPE_SPENT' };
+        if (scopeRow.status === 'EXPIRED') return { ok: false, reason: 'SCOPE_EXPIRED' };
+        if (scopeRow.status !== 'ACTIVE') return { ok: false, reason: 'SCOPE_NOT_FOUND' };
+        if (scopeRow.expires_at && toDate(scopeRow.expires_at)!.getTime() <= now.getTime()) {
+          return { ok: false, reason: 'SCOPE_EXPIRED' };
+        }
+        if (scopeRow.currency !== input.currency) return { ok: false, reason: 'SCOPE_CURRENCY_MISMATCH' };
+        const scopeMerchants = scopeRow.allowed_merchant_ids ? parseJson(scopeRow.allowed_merchant_ids) : null;
+        if (Array.isArray(scopeMerchants) && scopeMerchants.length && !scopeMerchants.includes(input.merchantId)) {
+          return { ok: false, reason: 'SCOPE_MERCHANT_NOT_ALLOWED' };
+        }
+        if (scopeRow.max_per_purchase_minor != null && input.amountMinor > Number(scopeRow.max_per_purchase_minor)) {
+          return { ok: false, reason: 'MAX_PURCHASE_EXCEEDED' };
+        }
+        const scopeDayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const scopeTotals = this.pgmem
+          ? await this.pgmemScopeSpendTotals(client, input.userId, scopeId, scopeDayStart)
+          : await (async () => {
+              const { rows: scopeSpend } = await client.query(
+                `SELECT
+                   COALESCE(SUM(CASE WHEN r.state = 'PENDING' THEN r.amount_minor ELSE 0 END), 0) AS pending_minor,
+                   COALESCE(SUM(CASE WHEN r.state = 'CONFIRMED' AND r.settled_at >= $2 THEN r.amount_minor ELSE 0 END), 0) AS spent_minor
+                 FROM spend_reservations r
+                 WHERE r.user_id = $1 AND r.scope_id = $3
+                   AND (r.state = 'PENDING' OR (r.state = 'CONFIRMED' AND r.settled_at >= $2))`,
+                [input.userId, scopeDayStart, scopeId]
+              );
+              return {
+                pendingMinor: Number(scopeSpend[0]?.pending_minor ?? 0),
+                spentMinor: Number(scopeSpend[0]?.spent_minor ?? 0),
+              };
+            })();
+        if (scopeRow.daily_spend_limit_minor != null &&
+            scopeTotals.spentMinor + scopeTotals.pendingMinor + amountToAdd > Number(scopeRow.daily_spend_limit_minor)) {
+          return { ok: false, reason: 'SCOPE_SPENT' };
+        }
+      }
+
       const reservation: ReservationRow = {
         id: input.id, userId: input.userId, amountMinor: input.amountMinor,
         state: 'PENDING', createdAt: input.createdAt, mandateRevision: input.mandateRevision,
         billMandateReservationId: input.billMandateReservationId,
+        scopeId,
       };
       await client.query(
         `INSERT INTO spend_reservations
-           (id,user_id,amount_minor,state,created_at,mandate_revision,bill_mandate_reservation_id)
-         VALUES ($1,$2,$3,'PENDING',$4,$5,$6)`,
+           (id,user_id,amount_minor,state,created_at,mandate_revision,bill_mandate_reservation_id,scope_id)
+         VALUES ($1,$2,$3,'PENDING',$4,$5,$6,$7)`,
         [reservation.id, reservation.userId, reservation.amountMinor, reservation.createdAt,
-          reservation.mandateRevision, reservation.billMandateReservationId ?? null]
+          reservation.mandateRevision, reservation.billMandateReservationId ?? null, scopeId ?? null]
       );
       return { ok: true, reservation };
     });
@@ -435,6 +498,25 @@ class PgReservationRepository implements ReservationRepository {
     let spentMinor = 0;
     for (const r of rows) {
       if (r.bill_mandate_reservation_id && activeHoldIds.has(r.bill_mandate_reservation_id)) continue;
+      if (r.state === 'PENDING') pendingMinor += Number(r.amount_minor);
+      else if (r.state === 'CONFIRMED') spentMinor += Number(r.amount_minor);
+    }
+    return { pendingMinor, spentMinor };
+  }
+
+  /** pg-mem-only scoped spend aggregate (same shape as the production query). */
+  private async pgmemScopeSpendTotals(
+    client: Queryable, userId: string, scopeId: string, dayStart: Date
+  ): Promise<{ pendingMinor: number; spentMinor: number }> {
+    const { rows } = await client.query(
+      `SELECT amount_minor, state FROM spend_reservations
+        WHERE user_id = $1 AND scope_id = $2
+          AND (state = 'PENDING' OR (state = 'CONFIRMED' AND settled_at >= $3))`,
+      [userId, scopeId, dayStart]
+    );
+    let pendingMinor = 0;
+    let spentMinor = 0;
+    for (const r of rows) {
       if (r.state === 'PENDING') pendingMinor += Number(r.amount_minor);
       else if (r.state === 'CONFIRMED') spentMinor += Number(r.amount_minor);
     }
@@ -1935,6 +2017,88 @@ class PgMandateEventsRepository implements MandateEventsRepo {
   }
 }
 
+class PgAllowanceScopeRepository implements AllowanceScopeRepository {
+  constructor(private readonly db: Queryable) {}
+
+  async loadAll(): Promise<AllowanceScopeRow[]> {
+    const { rows } = await this.db.query('SELECT * FROM allowance_scopes');
+    return rows.map((r: any) => ({
+      id: r.id,
+      userId: r.user_id,
+      sessionRef: r.session_ref ?? null,
+      kind: r.kind as AllowanceScopeKind,
+      label: r.label,
+      originsAllowed: parseJson(r.origins_allowed),
+      currency: r.currency,
+      maxPerPurchaseMinor: r.max_per_purchase_minor == null ? null : Number(r.max_per_purchase_minor),
+      dailySpendLimitMinor: r.daily_spend_limit_minor == null ? null : Number(r.daily_spend_limit_minor),
+      categorySpendLimits: r.category_spend_limits ? parseJson(r.category_spend_limits) : null,
+      allowedMerchantIds: r.allowed_merchant_ids ? parseJson(r.allowed_merchant_ids) : null,
+      nightWindow: r.night_window ? parseJson(r.night_window) : null,
+      status: r.status as AllowanceScopeStatus,
+      issuedBy: r.issued_by,
+      approvedBy: r.approved_by ? parseJson(r.approved_by) : null,
+      createdAt: toDate(r.created_at)!,
+      expiresAt: toDate(r.expires_at) ?? null,
+      updatedAt: toDate(r.updated_at)!,
+    }));
+  }
+
+  async save(row: AllowanceScopeRow): Promise<void> {
+    await this.db.query(
+      `INSERT INTO allowance_scopes
+         (id, user_id, session_ref, kind, label, origins_allowed, currency,
+          max_per_purchase_minor, daily_spend_limit_minor, category_spend_limits,
+          allowed_merchant_ids, night_window, status, issued_by, approved_by,
+          created_at, expires_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+       ON CONFLICT (id) DO UPDATE SET
+         label = EXCLUDED.label,
+         origins_allowed = EXCLUDED.origins_allowed,
+         currency = EXCLUDED.currency,
+         max_per_purchase_minor = EXCLUDED.max_per_purchase_minor,
+         daily_spend_limit_minor = EXCLUDED.daily_spend_limit_minor,
+         category_spend_limits = EXCLUDED.category_spend_limits,
+         allowed_merchant_ids = EXCLUDED.allowed_merchant_ids,
+         night_window = EXCLUDED.night_window,
+         status = EXCLUDED.status,
+         approved_by = COALESCE(EXCLUDED.approved_by, allowance_scopes.approved_by),
+         expires_at = EXCLUDED.expires_at,
+         updated_at = EXCLUDED.updated_at`,
+      [row.id, row.userId, row.sessionRef, row.kind, row.label,
+        JSON.stringify(row.originsAllowed), row.currency,
+        row.maxPerPurchaseMinor ?? null, row.dailySpendLimitMinor ?? null,
+        row.categorySpendLimits ? JSON.stringify(row.categorySpendLimits) : null,
+        row.allowedMerchantIds ? JSON.stringify(row.allowedMerchantIds) : null,
+        row.nightWindow ? JSON.stringify(row.nightWindow) : null,
+        row.status, row.issuedBy,
+        row.approvedBy ? JSON.stringify(row.approvedBy) : null,
+        row.createdAt, row.expiresAt ?? null, row.updatedAt]
+    );
+  }
+
+  async appendAudit(event: AllowanceScopeAuditRow): Promise<void> {
+    await this.db.query(
+      `INSERT INTO allowance_scope_events (id, scope_id, user_id, event_type, actor, details, occurred_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
+      [event.id, event.scopeId, event.userId, event.eventType, event.actor,
+        JSON.stringify(event.details), event.occurredAt]
+    );
+  }
+
+  async loadAudit(scopeId: string): Promise<AllowanceScopeAuditRow[]> {
+    const { rows } = await this.db.query(
+      `SELECT * FROM allowance_scope_events WHERE scope_id = $1 ORDER BY occurred_at, id`,
+      [scopeId]
+    );
+    return rows.map((r: any) => ({
+      id: r.id, scopeId: r.scope_id, userId: r.user_id,
+      eventType: r.event_type, actor: r.actor,
+      details: parseJson(r.details), occurredAt: r.occurred_at,
+    }));
+  }
+}
+
 export function createPgRepositories(db: Queryable, close: () => Promise<void>): Repositories {
   // pg-mem compatibility (OPT-IN, emulator-only): the pg-mem SQL emulator's parser
   // only accepts a BARE `FOR UPDATE`. It rejects PostgreSQL's table-qualified lock
@@ -1972,6 +2136,7 @@ export function createPgRepositories(db: Queryable, close: () => Promise<void>):
     captureClaims: new PgCaptureClaimRepository(db),
     bills: new PgBillRepository(db, pgmem),
     pickup: new PgPickupRepository(db),
+    scopes: new PgAllowanceScopeRepository(db),
     ping: async () => {
       await db.query('SELECT 1');
     },

@@ -580,6 +580,72 @@
     }
     status.textContent = parts.length ? i18nT('profile.applied') + ' ' + parts.join(' · ') : i18nT('profile.none');
   }
+  function scopeStatusKey(s) {
+    if (s.status === 'ACTIVE') return 'scope.status.active';
+    if (s.status === 'PENDING_APPROVAL') return 'scope.status.pending';
+    if (s.status === 'REVOKED') return 'scope.status.revoked';
+    if (s.status === 'EXPIRED') return 'scope.status.expired';
+    if (s.status === 'SPENT') return 'scope.status.spent';
+    return s.status;
+  }
+  // Scoped allowances (Stage 2): list, approve, revoke, create. The profile
+  // panel mounts this read/manage surface for the shopper's own scopes.
+  function renderScopes() {
+    var box = $('scopes'); if (!box) return;
+    api('/api/policy/scopes').then(function (r) {
+      var scopes = r.scopes || [];
+      box.textContent = '';
+      if (!scopes.length) box.appendChild(el('p', 'mut', i18nT('scope.empty')));
+      scopes.forEach(function (s) {
+        var row = el('div', 'scope-row');
+        row.appendChild(el('b', '', s.label));
+        row.appendChild(document.createTextNode(' · ' + s.currency + ' — '));
+        row.appendChild(el('span', 'pill', i18nT(scopeStatusKey(s))));
+        if (s.dailySpendLimitMinor != null) {
+          row.appendChild(el('div', 'mut', i18nT('policy.dailyBudget') + eur(s.dailySpendLimitMinor)));
+        }
+        var actions = el('span', '');
+        if (s.status === 'PENDING_APPROVAL') {
+          var appBtn = el('button', 'secondary', i18nT('scope.approve')); appBtn.type = 'button';
+          appBtn.onclick = function () {
+            api('/api/policy/scopes/' + encodeURIComponent(s.id) + '/approve', { method: 'POST', body: '{}' })
+              .then(renderScopes)
+              .catch(function (e) { row.appendChild(el('div', 'policy BLOCK', e.message || i18nT('mandate.renewFailed'))); });
+          };
+          actions.appendChild(appBtn);
+        }
+        if (s.status === 'ACTIVE') {
+          var revBtn = el('button', 'primary', i18nT('scope.revoke')); revBtn.type = 'button';
+          revBtn.onclick = function () {
+            api('/api/policy/scopes/' + encodeURIComponent(s.id) + '/revoke', { method: 'POST', body: '{}' })
+              .then(renderScopes)
+              .catch(function (e) { row.appendChild(el('div', 'policy BLOCK', e.message || i18nT('mandate.renewFailed'))); });
+          };
+          actions.appendChild(revBtn);
+        }
+        row.appendChild(actions);
+        box.appendChild(row);
+      });
+      var form = el('form', 'scope-create');
+      var labelIn = el('input', ''); labelIn.placeholder = i18nT('scope.label'); labelIn.setAttribute('aria-label', i18nT('scope.label'));
+      var dailyIn = el('input', ''); dailyIn.type = 'number'; dailyIn.min = 1; dailyIn.step = '0.01'; dailyIn.placeholder = i18nT('scope.daily'); dailyIn.setAttribute('aria-label', i18nT('scope.daily'));
+      var btn = el('button', 'secondary', i18nT('scope.submit')); btn.type = 'submit';
+      form.appendChild(labelIn); form.appendChild(dailyIn); form.appendChild(btn);
+      form.onsubmit = function (ev) {
+        ev.preventDefault();
+        var dailyMinor = Math.round((parseFloat(dailyIn.value) || 0) * 100);
+        var body = { label: labelIn.value.trim() || 'Scoped allowance', currency: 'EUR' };
+        if (dailyMinor > 0) body.dailySpendLimitMinor = dailyMinor;
+        api('/api/policy/scopes', { method: 'POST', body: JSON.stringify(body) })
+          .then(function () { labelIn.value = ''; dailyIn.value = ''; renderScopes(); })
+          .catch(function (e) { form.appendChild(el('div', 'policy BLOCK', e.message || i18nT('scope.error'))); });
+      };
+      box.appendChild(form);
+    }).catch(function () {
+      box.textContent = '';
+      box.appendChild(el('p', 'mut', i18nT('scope.error')));
+    });
+  }
   function onProfileChange() {
     save(DKEY, prefs().dietary);
     quickReplyGeneration++;
@@ -1416,6 +1482,7 @@
     renderAllergyNote();
     updateStatusPills();
     renderProfileStatus();
+    renderScopes();
     refreshQuickReplies();
     renderSplitActive();
     if ($('split-modal') && !$('split-modal').hidden) { renderSplitPeople(); renderSplitPreview(); }
@@ -1457,6 +1524,7 @@
     renderAllergenChips();
     renderChips();
     renderProfileStatus();
+    renderScopes();
     $('chat-form').addEventListener('submit', function (e) { e.preventDefault(); ask($('msg').value); });
     $('diet').addEventListener('change', onProfileChange);
     $('budget').addEventListener('input', onProfileChange);

@@ -17,6 +17,8 @@ list is the pass/fail gate.
 - [ ] Server-owned truth: prices and policy verdict shown from the server, not the model.
 - [ ] Human-in-the-loop payment: PayPal **sandbox** approval by a person.
 - [ ] Merchant side: AG Grid dashboard (sort/filter/pin/CSV), refund queue.
+- [ ] Purchase impact: the allowance card shows limit, cart, remaining, the per-person amounts if split in 2 or 3, and (after a refund) what was refunded.
+- [ ] Agent Control Center: the Agent timeline lists what the AI did, what policy decided and where money moved.
 - [ ] Audit: Cart Mandate (`/api/orders/:id/mandate`) + MCP server with **no pay tool**.
 - [ ] Flutter: Coco avatar, "Why these items?" explanation, allergy warning labelled **unverified**.
 

@@ -6,6 +6,8 @@ import 'package:flutter_app/models/shopper_preferences.dart';
 import 'package:flutter_app/providers/locale_provider.dart';
 import 'package:flutter_app/providers/shopper_profile_provider.dart';
 import 'package:flutter_app/screens/profile_settings_screen.dart';
+import 'package:flutter_app/services/api_service.dart';
+import 'package:flutter_app/widgets/scopes_section.dart';
 
 /// A richer profile surface that ties the shopper's local preferences together
 /// with how AI + PayPal work together to make the café more efficient, and
@@ -86,6 +88,17 @@ class ProfileScreen extends StatelessWidget {
                   ],
                 );
               },
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // ---- Scoped AI Allowance (shopper-managed scopes) ----
+          _groupCard(
+            context,
+            child: ScopesSection(
+              api: context.read<ApiService>(),
+              lang: Provider.of<LocaleProvider>(context, listen: false)
+                  .languageCode,
             ),
           ),
           const SizedBox(height: 28),

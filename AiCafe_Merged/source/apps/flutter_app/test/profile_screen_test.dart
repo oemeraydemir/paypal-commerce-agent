@@ -1,11 +1,17 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:flutter_app/providers/locale_provider.dart';
 import 'package:flutter_app/providers/shopper_profile_provider.dart';
 import 'package:flutter_app/screens/profile_screen.dart';
+import 'package:flutter_app/services/api_service.dart';
+import 'package:flutter_app/services/session_service.dart';
 
 void main() {
   testWidgets(
@@ -14,12 +20,36 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final locale = LocaleProvider('en');
     final profile = ShopperProfileProvider();
+    // ProfileScreen embeds ScopesSection, which reads ApiService (and loads the
+    // shopper's scopes on init). Provide a mock that returns no scopes.
+    final api = ApiService(
+      baseUrl: 'http://localhost:3000',
+      storage: InMemorySessionStorage(),
+      client: MockClient((request) async {
+        if (request.method == 'POST' && request.url.path == '/api/sessions') {
+          return http.Response(
+            jsonEncode({
+              'sessionId': 'sess-abc',
+              'sessionToken': 'tok-xyz',
+              'expiresAt': '2099-01-01T00:00:00.000Z',
+            }),
+            201,
+          );
+        }
+        if (request.method == 'GET' &&
+            request.url.path == '/api/policy/scopes') {
+          return http.Response(jsonEncode({'scopes': <dynamic>[]}), 200);
+        }
+        return http.Response('{}', 404);
+      }),
+    );
 
     await tester.pumpWidget(
       MultiProvider(
         providers: [
           ChangeNotifierProvider<LocaleProvider>.value(value: locale),
           ChangeNotifierProvider<ShopperProfileProvider>.value(value: profile),
+          Provider<ApiService>.value(value: api),
         ],
         child: MaterialApp(home: const ProfileScreen()),
       ),

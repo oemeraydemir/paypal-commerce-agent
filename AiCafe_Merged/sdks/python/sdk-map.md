@@ -165,11 +165,11 @@ except ApiError as e:
         print(e.status_code, e.error.text())
 ```
 
-**Raw (`.with_raw_response`) variants: present on every operation** — the same call returns `ApiResult` instead of raising, with the same body on `Failure.error`. Of **35 operations**, **35 are Case A (typed)** and **0 are Case B (raw)**.
+**Raw (`.with_raw_response`) variants: present on every operation** — the same call returns `ApiResult` instead of raising, with the same body on `Failure.error`. Of **41 operations**, **41 are Case A (typed)** and **0 are Case B (raw)**.
 
 ---
 
-## Operations — by controller (11 pages, 35 operations)
+## Operations — by controller (11 pages, 41 operations)
 
 Each links to a sub-page with one block per operation, headed by its full accessor path: the HTTP verb and route (for a mock, a raw request or a provider-side log — never reconstruct it from the method name), the sync parsed signature with its required positional parameters, each parameter's role and — where it differs — wire name, both return types, and its error case — **Case A** names the alias and the status each arm maps from, **Case B** names `RawError`. Every block also carries a **Type sources** table — every *generated* type it names, with the module that declares it. A runtime type — a file alias, a date/time or byte converter — is not listed there.
 
@@ -199,7 +199,7 @@ Sub-pages chunk per `###` block: each block is self-contained given the table ab
 | `client.mandates` | `Mandates` / `AsyncMandates` | 2 | [map/operations/mandates.md](map/operations/mandates.md) |
 | `client.ops_copilot` | `OpsCopilot` / `AsyncOpsCopilot` | 2 | [map/operations/ops_copilot.md](map/operations/ops_copilot.md) |
 | `client.orders` | `Orders` / `AsyncOrders` | 8 | [map/operations/orders.md](map/operations/orders.md) |
-| `client.policy` | `Policy` / `AsyncPolicy` | 1 | [map/operations/policy.md](map/operations/policy.md) |
+| `client.policy` | `Policy` / `AsyncPolicy` | 7 | [map/operations/policy.md](map/operations/policy.md) |
 | `client.refunds` | `Refunds` / `AsyncRefunds` | 4 | [map/operations/refunds.md](map/operations/refunds.md) |
 | `client.sessions` | `Sessions` / `AsyncSessions` | 3 | [map/operations/sessions.md](map/operations/sessions.md) |
 
@@ -211,14 +211,14 @@ Sub-pages chunk per `###` block: each block is self-contained given the table ab
 
 | Group | Count | Directory (module = `<type_name>.py`) |
 | --- | --- | --- |
-| Models (`SdkBaseModel` pydantic classes) | 37 | `ai_caf_pay_pal_commerce_agent_api/models/` |
-| Enums (`Enum` over `str`) — Python member names + wire values | 22 | `ai_caf_pay_pal_commerce_agent_api/models/enums/` |
+| Models (`SdkBaseModel` pydantic classes) | 52 | `ai_caf_pay_pal_commerce_agent_api/models/` |
+| Enums (`Enum` over `str`) — Python member names + wire values | 32 | `ai_caf_pay_pal_commerce_agent_api/models/enums/` |
 | Unions (plain) — `TypeAlias` over the arms | 1 | `ai_caf_pay_pal_commerce_agent_api/models/unions/` |
-| Error aliases (one per Case A operation) | 35 | `ai_caf_pay_pal_commerce_agent_api/errors/` |
+| Error aliases (one per Case A operation) | 41 | `ai_caf_pay_pal_commerce_agent_api/errors/` |
 
 Conventions: a model is a `SdkBaseModel` (pydantic) class; a field whose wire name differs from its Python name carries it as `Field(alias=…)` (`session_id` ↔ `"sessionId"`) — read the alias off the field rather than deriving it. An omittable field is annotated `Optional[T]` and defaults to `UNSET`, and one that may also be explicitly null is `OptionalNullable[T]`; both come from `core` and neither is `typing.Optional` — there is no `None` arm unless the spec declared the property nullable, so passing `None` to the first is a type error rather than a value that serializes.
 
-Every model, enum and union also has an **input companion**, exported beside it from the same package (`AiChatRequest` ↔ `AiChatRequestDict`). Wherever a signature names the companion you may pass either the model instance or a plain dict with the same keys, whichever reads better at the call site. An enum is a real `Enum` subclass over `str`; its companion is spelled `<Name>OrStr` or `<Name>OrInt` (`AiMode` ↔ `AiModeOrStr`) and additionally accepts a wire value this SDK version does not know. A union is a `TypeAlias` over its arms.
+Every model, enum and union also has an **input companion**, exported beside it from the same package (`AiChatRequest` ↔ `AiChatRequestDict`). Wherever a signature names the companion you may pass either the model instance or a plain dict with the same keys, whichever reads better at the call site. An enum is a real `Enum` subclass over `str`; its companion is spelled `<Name>OrStr` or `<Name>OrInt` (`Actor` ↔ `ActorOrStr`) and additionally accepts a wire value this SDK version does not know. A union is a `TypeAlias` over its arms.
 
 Import paths by content type (`from <package> import <Name>`):
 

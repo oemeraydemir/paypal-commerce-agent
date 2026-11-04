@@ -82,4 +82,6 @@ test('shopper requests a refund from the receipt and sees the merchant decision'
   (await waitFor(() => btn(/Check status/i), 'check status')).click();
   await waitFor(() => /Refunded/.test(doc.body.textContent || ''), 'refunded status');
   expect(q('#receipt')).not.toBeNull();
+  // Purchase impact: the existing mandate card now reports what came back, from the server's refund status.
+  await waitFor(() => /Refunded so far\s*€3\.00 of €3\.00 paid/.test((q('#policy')?.textContent) || ''), 'refunded amount in mandate card');
 });
