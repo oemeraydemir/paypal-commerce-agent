@@ -1,0 +1,81 @@
+/* AI Café — storefront shell (Home / Barista / Cart / Profile). Colours come from tokens.css only. */
+main.shell { display: block; max-width: 760px; margin: 18px auto 110px; padding: 0 16px; }
+main.shell .tab-panel { display: grid; gap: 18px; }
+main.shell .tab-panel[hidden] { display: none; }
+@media (min-width: 1000px) { main.shell { max-width: 1080px; } #panel-barista { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- tab bar: bottom on phones (like the Flutter NavigationBar), top pills on desktop ---- */
+.tabbar { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-around; gap: 4px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: var(--glass); border-top: 1px solid var(--line);
+  -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px); }
+.tabbar button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 52px;
+  border: 0; background: transparent; color: var(--mut); font-size: 12px; font-weight: 700; border-radius: var(--ac-radius-control); box-shadow: none; }
+.tabbar button .ti { font-size: 20px; line-height: 1; }
+.tabbar button[aria-selected="true"] { background: var(--ac-coral-soft); color: var(--ink); }
+.tabbar .badge { position: absolute; top: 2px; right: calc(50% - 24px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px;
+  background: var(--ac-coral-strong); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+@media (min-width: 820px) {
+  .tabbar { position: sticky; top: 61px; bottom: auto; justify-content: center; border-top: 0; border-bottom: 1px solid var(--line); padding: 8px 12px; }
+  .tabbar button { flex: 0 0 auto; flex-direction: row; gap: 8px; padding: 8px 20px; border-radius: var(--ac-radius-pill); min-height: 44px; font-size: 14px; }
+  .tabbar .badge { position: static; }
+  main.shell { margin-bottom: 40px; }
+}
+
+/* ---- Home ---- */
+.hero { padding: 30px 26px; border-radius: 32px; background: var(--ac-grad); color: var(--on-grad); border: 0; box-shadow: var(--shadow-2); }
+.hero .eyebrow { margin: 0 0 6px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+.hero .hero-title { margin: 0 0 10px; font-size: clamp(26px, 5.4vw, 40px); line-height: 1.1; letter-spacing: -.03em; font-weight: 800; }
+.hero .hero-lead { margin: 0 0 18px; max-width: 54ch; font-size: 15.5px; }
+.hero-cta { display: flex; flex-wrap: wrap; gap: 10px; }
+.hero-cta button { border-radius: var(--ac-radius-pill); padding: 12px 22px; font-weight: 800; }
+.hero-cta button.primary { background: var(--ac-ink); color: var(--ac-canvas); box-shadow: none; }
+.hero-cta button:not(.primary) { background: rgba(255,255,255,.65); color: var(--ac-ink); border-color: transparent; }
+.how3 { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.how-card { display: grid; gap: 6px; padding: 16px; border-radius: var(--ac-radius-card); font-size: 14px; }
+.how-card b { font-size: 16px; }
+.how-n { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; background: rgba(255,255,255,.7); color: var(--ac-ink); }
+.c-mint { background: var(--ac-mint); color: var(--ac-mint-ink); }
+.c-lavender { background: var(--ac-lavender); color: var(--ac-lavender-ink); }
+.c-sky { background: var(--ac-sky); color: var(--ac-sky-ink); }
+@media (prefers-color-scheme: dark) { .hero-cta button:not(.primary) { background: rgba(0,0,0,.3); color: var(--ac-ink); } .hero .eyebrow, .hero .hero-title, .hero .hero-lead { color: var(--ac-canvas); } .hero-cta button.primary { background: var(--ac-canvas); color: var(--ac-ink); } }
+
+/* ---- pastel product cards (same category tints as Flutter) ---- */
+#catalog { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 12px; }
+#catalog .prod { border: 0; border-radius: var(--ac-radius-card); padding: 14px; background: var(--ac-surface-alt); color: var(--ac-ink); box-shadow: none; }
+#catalog .prod .art { width: 100%; height: 110px; object-fit: contain; border-radius: 18px; }
+#catalog .prod small { color: inherit; opacity: .78; }
+#catalog .prod .row b { color: var(--ac-coral-strong); }
+#catalog .prod[data-cat="breakfast"] { background: var(--ac-cat-breakfast); } #catalog .prod[data-cat="drinks"] { background: var(--ac-cat-drinks); }
+#catalog .prod[data-cat="desserts"] { background: var(--ac-cat-desserts); } #catalog .prod[data-cat="gifts"] { background: var(--ac-cat-gifts); }
+#catalog .prod[data-cat="lunch"] { background: var(--ac-cat-lunch); } #catalog .prod[data-cat="snacks"] { background: var(--ac-cat-snacks); }
+#catalog .prod[data-cat="catering"] { background: var(--ac-cat-catering); }
+@media (prefers-color-scheme: dark) { #catalog .prod[data-cat] { background: color-mix(in srgb, var(--ac-surface) 78%, var(--ac-cat-snacks)); } #catalog .prod .row b { color: var(--ac-coral); } }
+
+/* ---- floating cart pill on the Barista tab ("View cart · 3 · €24.50") ---- */
+.cart-pill { position: fixed; z-index: 25; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom)); min-width: 240px; border-radius: var(--ac-radius-pill); padding: 14px 24px; font-weight: 800; box-shadow: var(--shadow-2); }
+.cart-pill[hidden] { display: none; }
+@media (min-width: 820px) { .cart-pill { bottom: 24px; } }
+
+/* ---- Profile ---- */
+.history { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.history li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 16px; background: var(--ac-surface-alt); }
+.guide { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+/* ---- AI Transaction Passport: who does what ---- */
+.pp-flow li { align-items: center; }
+.pp-actor { flex: none; font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 99px; margin-left: auto; }
+.pp-actor.ai { background: var(--ac-lavender); color: var(--ac-lavender-ink); }
+.pp-actor.server { background: var(--ac-sky); color: var(--ac-sky-ink); }
+.pp-actor.shopper { background: var(--ac-peach); color: var(--ac-peach-ink); }
+.pp-actor.paypal { background: var(--ac-mint); color: var(--ac-mint-ink); }
+.pp-bar { position: relative; overflow: visible; height: 12px; }
+.pp-bar i { border-radius: 99px; }
+.pp-bar .pp-mark { position: absolute; top: -4px; bottom: -4px; width: 3px; border-radius: 2px; background: var(--ink); }
+.pp-lock { display: flex; gap: 8px; align-items: center; margin: 8px 0; padding: 10px 12px; border-radius: 16px; background: var(--ac-mint); color: var(--ac-mint-ink); font-weight: 700; font-size: 13px; }
+
+/* ---- compact header on phones: the links live in Profile, the tagline lives in Home ---- */
+@media (max-width: 819px) {
+  header { padding: 10px 14px; gap: 6px 10px; }
+  header .tagline, header a { display: none; }
+  header .lang span { display: none; }
+}

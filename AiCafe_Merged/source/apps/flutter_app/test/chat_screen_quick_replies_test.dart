@@ -91,6 +91,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    // Home is the default landing tab; switch to Barista where the chat (and
+    // its quick replies) live.
+    await tester.tap(find.text('Barista'));
+    await tester.pumpAndSettle();
     final choice = find.byKey(const ValueKey('quick-reply-2'));
     await tester.ensureVisible(choice);
     final staleCallback = tester.widget<ActionChip>(choice).onPressed!;

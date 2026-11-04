@@ -63,3 +63,29 @@ webhook-result.json
 audit-dry-run.log
 .pg_local/
 source/apps/flutter_app/coverage/
+
+# ── Python SDK caches & generated packaging artifacts ──
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# ── Emulator / UI accessibility dumps (transient) ──
+ui_*.xml
+
+# ── Known temporary AI Café archive snapshots (specific files, not all *.zip) ──
+AiCafe_KontroldenGecen.zip
+AiCafe_SuperApp.zip
+AiCafe_Merged.zip
+AiCafe_Merged0311.zip
+AiCafe_Merged_v2_flutter_channel3.zip
+
+# ── Version snapshots, generated staging, raw audit output ──
+_versions/
+.artgen/
+audit/
+

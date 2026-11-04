@@ -30,6 +30,7 @@ import refundRequestRoutes from './routes/refund-requests';
 import disputeRoutes from './routes/disputes';
 import billAuditRoutes from './routes/bill-audit';
 import guardRoutes from './routes/guard';
+import takeHomeRoutes from './routes/take-home';
 import { currentBusiness } from './config/business-config';
 import { rejectClientTenantOverride } from './config/tenant';
 import fs from 'fs';
@@ -143,6 +144,7 @@ export function createApp() {
   app.use('/api', disputeRoutes);
   app.use('/api', billAuditRoutes);
   app.use('/api', guardRoutes);
+  app.use('/api', takeHomeRoutes);
   app.use('/', wellKnownMandateKeys);
 
   app.use(errorHandler);

@@ -6,7 +6,9 @@
 
 ## One-liner
 
-AI Café is a conversational coffee-shop assistant: you chat in natural language,  
+**AI Café is a trust-first agentic commerce platform for cafés. AI prepares the order, users control spending, and PayPal securely completes the payment.**
+
+In more detail: AI Café is a conversational coffee-shop assistant: you chat in natural language,  
 it proposes a basket within your budget and dietary preferences, shows you why it  
 picked each item, and hands the approved basket to PayPal — while an AI agent can  
 **never** move money on its own.

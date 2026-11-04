@@ -354,7 +354,12 @@ function originAllowed(req: Request): boolean {
   const origin = req.headers.origin;
   if (!origin) return true; // non-browser agents send no Origin
   try {
-    return new URL(origin).host === req.headers.host || origin === env.CORS_ORIGIN;
+    if (origin === env.CORS_ORIGIN) return true;
+    // Host-header equality is attacker-controllable under DNS rebinding (evil.com can send
+    // Origin: evil.com AND Host: evil.com), so it is only a convenience for local development.
+    // In production only the configured origin is accepted.
+    if (env.NODE_ENV === 'production') return false;
+    return new URL(origin).host === req.headers.host;
   } catch {
     return false;
   }

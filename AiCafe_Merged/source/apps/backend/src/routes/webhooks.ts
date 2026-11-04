@@ -3,6 +3,7 @@ import { webhookService, WebhookEvent, WebhookHeaders } from '../paypal/webhook-
 import { OrderService } from '../orders/service';
 import { OrderStatus } from '../orders/domain';
 import { rawBodyMiddleware } from '../middleware/raw-body';
+import { ipRateLimit } from '../middleware/rate-limit';
 import { env } from '../config/environment';
 import { markOrderPaid, markOrderPaymentFailed } from '../orders/payment-lifecycle';
 import { extractCaptureResource, validateCompletedCapture } from '../paypal/capture-amount';
@@ -13,7 +14,7 @@ const orderService = OrderService.getInstance();
 // PayPal webhook endpoint — public, NO auth (PayPal signs every request).
 // IMPORTANT: rawBodyMiddleware MUST run before express.json() (see app.ts) so
 // the exact request bytes are preserved for signature verification.
-router.post('/webhooks/paypal', rawBodyMiddleware, async (req: Request, res: Response) => {
+router.post('/webhooks/paypal', ipRateLimit(300), rawBodyMiddleware, async (req: Request, res: Response) => {
   try {
     const headers: WebhookHeaders = {
       'paypal-transmission-id': req.headers['paypal-transmission-id'] as string,

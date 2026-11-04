@@ -75,3 +75,23 @@ export function sessionRateLimit(perSessionPerMin: number, perIpPerMin: number) 
     next();
   };
 }
+
+/**
+ * Per-IP limiter for UNAUTHENTICATED routes (public verifiers, PayPal webhook receiver). Without it
+ * anyone can burn CPU on signature checks or make the server call PayPal's verify API in a loop.
+ * Keys are pruned once the table grows large so rotating source addresses cannot exhaust memory.
+ */
+export function ipRateLimit(perIpPerMin: number) {
+  const perIp = new SlidingWindowLimiter(perIpPerMin, 60_000);
+  limiters.add(perIp);
+  let calls = 0;
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (++calls % 500 === 0) perIp.prune();
+    const result = perIp.hit(req.ip || 'unknown');
+    if (!result.allowed) {
+      res.setHeader('Retry-After', String(result.retryAfter));
+      return res.status(429).json({ error: 'Rate limit exceeded', retryAfter: result.retryAfter });
+    }
+    next();
+  };
+}

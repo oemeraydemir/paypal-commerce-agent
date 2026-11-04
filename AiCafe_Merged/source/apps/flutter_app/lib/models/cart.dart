@@ -1,3 +1,5 @@
+import 'package:flutter_app/models/transaction_passport.dart';
+
 /// An order line item sent to `POST /api/orders/create`.
 ///
 /// The backend validates the product id against the catalog and computes the
@@ -192,6 +194,9 @@ class PolicyPreview {
   final String? updatedAt;
   final List<String> violations;
 
+  /// Server-sent transaction passport (older servers omit it → null).
+  final TransactionPassport? passport;
+
   const PolicyPreview({
     required this.empty,
     required this.decision,
@@ -203,6 +208,7 @@ class PolicyPreview {
     this.validUntil,
     this.updatedAt,
     this.violations = const <String>[],
+    this.passport,
   });
 
   factory PolicyPreview.fromJson(Map<String, dynamic> json) {
@@ -223,6 +229,7 @@ class PolicyPreview {
       violations: json['violations'] is List
           ? (json['violations'] as List).whereType<Map>().map((v) => v['type']).whereType<String>().toList()
           : const <String>[],
+      passport: TransactionPassport.tryParse(json['passport']),
     );
   }
 }

@@ -73,7 +73,7 @@ class MyApp extends StatelessWidget {
             GlobalWidgetsLocalizations.delegate,
           ],
           supportedLocales: const [Locale('en', 'IE'), Locale('tr', 'TR')],
-          theme: buildBrightFusionTheme(),
+          theme: buildPremiumCafeTheme(),
           home: const ChatScreen(),
         ),
       ),

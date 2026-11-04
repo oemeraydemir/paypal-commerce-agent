@@ -1,0 +1,47 @@
+{
+ "tint": {
+  "breakfast": "#FFD9B3",
+  "drinks": "#BFE3FF",
+  "desserts": "#D9C8F5",
+  "gifts": "#FFC2B8",
+  "lunch": "#BFEBD3",
+  "snacks": "#FFF0B3",
+  "catering": "#C6EDEA"
+ },
+ "categoryEmoji": {
+  "breakfast": "🥐",
+  "drinks": "🥤",
+  "desserts": "🍰",
+  "gifts": "🎁",
+  "lunch": "🥪",
+  "snacks": "🍪",
+  "catering": "🍱"
+ },
+ "productEmoji": {
+  "veg_breakfast": "🍳",
+  "coffee": "☕",
+  "orange_juice": "🍊",
+  "premium_cake": "🍰",
+  "gift_box": "🎁",
+  "flowers_bouquet": "💐",
+  "pancakes": "🥞",
+  "latte": "🥛",
+  "avocado_toast": "🥑",
+  "oat_porridge": "🥣",
+  "croissant": "🥐",
+  "club_sandwich": "🥪",
+  "caprese_panini": "🧀",
+  "lentil_soup": "🍲",
+  "quinoa_bowl": "🥗",
+  "espresso": "☕",
+  "matcha_latte": "🍵",
+  "iced_tea": "🧋",
+  "mulled_wine": "🍷",
+  "craft_beer": "🍺",
+  "cheesecake_slice": "🍰",
+  "brownie": "🍫",
+  "energy_bites": "🌰",
+  "biscotti_box": "🍪",
+  "office_pastry_box": "📦"
+ }
+}

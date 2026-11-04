@@ -1,4 +1,5 @@
 // Split Bill routes — P1 (read-only group) + P2 (per-share payment).
+import { sessionRateLimit } from '../middleware/rate-limit';
 //
 // P1: create a bill from a server-priced cart, mint/verify signed invite
 // tokens, join, and read group state/progress.
@@ -47,6 +48,8 @@ import {
   ShareStatus,
 } from '../bills/domain';
 
+// Bill writes are cheap to script and each one allocates server state: cap them per session and per IP.
+const billWriteLimiter = sessionRateLimit(30, 120);
 const router = Router();
 const billService = BillService.getInstance();
 const catalogService = new CatalogService();
@@ -188,7 +191,7 @@ function serializeGroup(group: BillGroup, viewerId?: string) {
 
 // ---- P1: group lifecycle ----------------------------------------------------
 
-router.post('/bills', requireSession, async (req, res, next) => {
+router.post('/bills', requireSession, billWriteLimiter, async (req, res, next) => {
   try {
     const { userId, sessionId } = req.session!;
     const { items, participantCount } = req.body ?? {};
@@ -276,7 +279,7 @@ router.post('/bills', requireSession, async (req, res, next) => {
   }
 });
 
-router.post('/bills/:id/invite', requireSession, (req, res, next) => {
+router.post('/bills/:id/invite', requireSession, billWriteLimiter, (req, res, next) => {
   try {
     const { userId } = req.session!;
     const group = billService.getById(req.params.id);
@@ -288,7 +291,7 @@ router.post('/bills/:id/invite', requireSession, (req, res, next) => {
   }
 });
 
-router.post('/bills/:id/cancel', requireSession, async (req, res, next) => {
+router.post('/bills/:id/cancel', requireSession, billWriteLimiter, async (req, res, next) => {
   try {
     const { userId } = req.session!;
     const repos = getRepos();
@@ -308,7 +311,7 @@ router.post('/bills/:id/cancel', requireSession, async (req, res, next) => {
 // Explicit owner confirmation re-establishes the full-cart spending permission
 // after a mandate revision/expiry. This is separate from each participant's
 // PayPal payment authorization.
-router.post('/bills/:id/mandate/renew', requireSession, async (req, res, next) => {
+router.post('/bills/:id/mandate/renew', requireSession, billWriteLimiter, async (req, res, next) => {
   try {
     const { userId, sessionId } = req.session!;
     const group = billService.getById(req.params.id);
@@ -340,7 +343,7 @@ router.post('/bills/:id/mandate/renew', requireSession, async (req, res, next) =
   } catch (err) { next(err); }
 });
 
-router.post('/bills/join', requireSession, async (req, res, next) => {
+router.post('/bills/join', requireSession, billWriteLimiter, async (req, res, next) => {
   try {
     const { userId } = req.session!;
     const token = req.body?.token;
@@ -373,7 +376,7 @@ router.get('/bills/:id', requireSession, (req, res, next) => {
 // Create the (normal) PayPal order for a share. Capture is performed via the
 // existing audited route `POST /orders/:orderId/capture`, which already handles
 // locks, reconciliation, webhooks and reservations.
-router.post('/bills/:id/shares/:shareId/pay', requireSession, async (req, res, next) => {
+router.post('/bills/:id/shares/:shareId/pay', requireSession, billWriteLimiter, async (req, res, next) => {
   try {
     if (!env.isPayPalEnabled()) throw new AppError(503, 'PayPal not configured');
     const { userId, sessionId } = req.session!;

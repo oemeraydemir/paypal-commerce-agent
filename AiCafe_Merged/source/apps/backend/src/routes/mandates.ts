@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Router } from 'express';
 import { requireSession } from '../middleware/session-auth';
 import { OrderService } from '../orders/service';
+import { ipRateLimit } from '../middleware/rate-limit';
 import { AppError } from '../middleware/error-handler';
 import { MandateConfigError, publicKeyDocument, signCartMandate, verifyCartMandate } from '../mandate/mandate-service';
 
@@ -27,7 +28,7 @@ router.get('/orders/:orderId/mandate', requireSession, (req, res, next) => {
 });
 
 // Anyone (a merchant, an auditor, another agent) can check a mandate: it needs no session.
-router.post('/mandates/verify', (req, res, next) => {
+router.post('/mandates/verify', ipRateLimit(60), (req, res, next) => {
   try {
     res.json(verifyCartMandate(req.body ?? {}, (id) => orderService.getById(id)));
   } catch (err) {
@@ -41,7 +42,7 @@ router.post('/mandates/verify', (req, res, next) => {
 // about the order can be read. A wrong pair is indistinguishable from an unknown order.
 const SIGNATURE_RE = /^[A-Za-z0-9_-]{20,200}$/;
 // POST (not GET) so the signature travels in the body and never lands in request logs or proxies.
-router.post('/mandates/public', (req, res, next) => {
+router.post('/mandates/public', ipRateLimit(60), (req, res, next) => {
   try {
     const { orderId, signature } = (req.body ?? {}) as { orderId?: unknown; signature?: unknown };
     const order =

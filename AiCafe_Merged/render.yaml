@@ -86,6 +86,11 @@ services:
         sync: false
       - key: OPS_COPILOT_KEY
         sync: false
+      # Channel3 "Take it home" (read-only product discovery, outbound links). Optional;
+      # off by default when unset. Enter the key in the Render dashboard (sync:false) so no
+      # secret is ever committed.
+      - key: CHANNEL3_API_KEY
+        sync: false
       # Public https URL used inside the discovery documents (/.well-known/agent-commerce.json, agent.json,
       # llms.txt, /api/feed/products). Required in production; Render's own RENDER_EXTERNAL_URL is accepted when this
       # is unset (set it only for a custom domain). It is never derived from the Host / X-Forwarded-* headers.

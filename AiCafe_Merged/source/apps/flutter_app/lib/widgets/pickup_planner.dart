@@ -72,6 +72,9 @@ class _PickupPlannerSheetState extends State<PickupPlannerSheet> {
       if (!mounted) return;
       setState(() => _booking = booking);
       widget.onBookingChanged(booking);
+      // Return to the checkout/payment screen now that a slot is held, matching
+      // the Web storefront where the planner lives inline in checkout.
+      Navigator.of(context).pop();
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);

@@ -3,6 +3,7 @@ import { env } from '../config/environment';
 import { isPersistent } from '../persistence/registry';
 import { mandateKeyStatus } from '../mandate/mandate-service';
 import { automationStats } from '../automation/emitter';
+import { channel3Enabled } from '../channel3/client';
 
 const router = Router();
 
@@ -36,6 +37,8 @@ router.get('/health', (_req: Request, res: Response) => {
       // Provider NAMES only (never keys or base URLs). Order = AI_PROVIDER_ORDER.
       providers: env.ai ? env.ai.providers.map((provider) => provider.id) : [],
     },
+    // Optional Channel3 product discovery (outbound links only; never part of checkout).
+    channel3: { enabled: channel3Enabled() },
   });
 });
 

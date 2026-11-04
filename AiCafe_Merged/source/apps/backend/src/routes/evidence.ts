@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireSession } from '../middleware/session-auth';
 import { OrderService } from '../orders/service';
 import { AppError } from '../middleware/error-handler';
+import { ipRateLimit } from '../middleware/rate-limit';
 import { buildEvidencePackage, verifyEvidencePackage } from '../evidence/service';
 
 const router = Router();
@@ -26,7 +27,7 @@ router.get('/orders/:orderId/evidence', requireSession, (req, res, next) => {
 });
 
 // Anyone can verify a package; it is self-contained and signed.
-router.post('/evidence/verify', (req, res, next) => {
+router.post('/evidence/verify', ipRateLimit(60), (req, res, next) => {
   try {
     res.json(verifyEvidencePackage(req.body ?? {}));
   } catch (err) {

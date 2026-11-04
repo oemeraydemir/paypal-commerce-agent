@@ -163,8 +163,27 @@
       status: o.status,
       itemCount: o.itemCount,
       totalMinor: o.totalMinor,
-      currency: o.currency
+      currency: o.currency,
+      payment: paymentState(o.status),
+      summary: orderSummary(o.items)
     };
+  }
+
+  // Payment lens on the order status (derived from the server's status, never computed from money).
+  function paymentState(status) {
+    switch (status) {
+      case 'PAID': case 'ORDER_CONFIRMED': return 'Paid';
+      case 'PAYMENT_PENDING': return 'Awaiting PayPal';
+      case 'AWAITING_CONFIRMATION': return 'Awaiting approval';
+      case 'PAYMENT_FAILED': return 'Failed';
+      case 'ORDER_CANCELLED': return 'Cancelled';
+      default: return 'Not started';
+    }
+  }
+  // One-line order summary generated from the line items ("2× Latte, 1× Brownie"). Deterministic, no model call.
+  function orderSummary(items) {
+    if (!items || !items.length) return '';
+    return items.map(function (i) { return i.quantity + '× ' + i.name; }).join(', ');
   }
 
   function normalizeEvent(e) {
@@ -509,7 +528,9 @@
     { headerName: 'Order ID', field: 'id', pinned: 'left', minWidth: 200, cellRenderer: shortIdRenderer },
     { headerName: 'Created', field: 'createdAt', filter: 'agDateColumnFilter', valueFormatter: dateFormatter, sort: 'desc', minWidth: 170 },
     { headerName: 'Origin', field: 'origin', cellRenderer: withCellLabel(originBadge, originLabel), filter: 'agTextColumnFilter', minWidth: 120 },
-    { headerName: 'Status', field: 'status', cellRenderer: withCellLabel(statusChip, statusLabel), filter: 'agTextColumnFilter', minWidth: 130 },
+    { headerName: 'Status', field: 'status', cellRenderer: withCellLabel(statusChip, statusLabel), filter: 'agTextColumnFilter', minWidth: 200 },
+    { headerName: 'Payment', field: 'payment', filter: 'agTextColumnFilter', minWidth: 160 },
+    { headerName: 'Summary', field: 'summary', filter: 'agTextColumnFilter', minWidth: 260, tooltipField: 'summary' },
     { headerName: 'Items', field: 'itemCount', filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 100 },
     { headerName: 'Total', field: 'totalMinor', valueFormatter: currencyFormatter, filter: 'agNumberColumnFilter', type: 'numericColumn', minWidth: 130 },
     { headerName: 'Currency', field: 'currency', filter: 'agTextColumnFilter', minWidth: 110 }
@@ -553,7 +574,7 @@
     { headerName: 'Capacity', field: 'capacity', type: 'numericColumn', filter: 'agNumberColumnFilter', minWidth: 100 },
     { headerName: 'Reserved', field: 'reservedCount', type: 'numericColumn', filter: 'agNumberColumnFilter', minWidth: 110 },
     { headerName: 'Remaining', field: 'remaining', type: 'numericColumn', filter: 'agNumberColumnFilter', minWidth: 110 },
-    { headerName: 'Status', field: 'status', cellRenderer: withCellLabel(pickupStatusChip, pickupStatusLabel), filter: 'agTextColumnFilter', minWidth: 130 },
+    { headerName: 'Status', field: 'status', cellRenderer: withCellLabel(pickupStatusChip, pickupStatusLabel), filter: 'agTextColumnFilter', minWidth: 200 },
     { headerName: 'Order Ref', field: 'orderId', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 },
     { headerName: 'Booking ID', field: 'id', cellRenderer: shortIdRenderer, filter: 'agTextColumnFilter', minWidth: 160 }
   ];
@@ -609,6 +630,16 @@
     }
   }
 
+  // Quick status groups for the orders grid (AG Grid Community external filter, no Enterprise features).
+  var ORDER_GROUPS = {
+    all: [],
+    approval: ['AWAITING_CONFIRMATION', 'PAYMENT_PENDING'],
+    paid: ['PAID', 'ORDER_CONFIRMED'],
+    problem: ['PAYMENT_FAILED', 'ORDER_CANCELLED'],
+    open: ['DISCOVERING', 'CART_READY']
+  };
+  var orderGroup = 'all';
+
   var ordersApi = agGrid.createGrid(el('ordersGrid'), {
     columnDefs: ordersColumnDefs,
     defaultColDef: defaultColDef,
@@ -628,6 +659,8 @@
     loading: true,
     overlayNoRowsTemplate: NO_ROWS_TEMPLATE,
     overlayLoadingTemplate: LOADING_TEMPLATE,
+    isExternalFilterPresent: function () { return orderGroup !== 'all'; },
+    doesExternalFilterPass: function (node) { return ORDER_GROUPS[orderGroup].indexOf(node.data.status) >= 0; },
     onRowClicked: function (params) { openSidePanel(params.data, 'orders'); },
     onCellKeyDown: makeCellOpenHandler('orders')
   });
@@ -706,6 +739,37 @@
       return {};
     }
   }
+
+  // "Today" strip: counts what the server already reported. Paid = PAID / ORDER_CONFIRMED only.
+  function renderTodaySummary(rows) {
+    var box = el('todaySummary'); if (!box) return;
+    var start = new Date(); start.setHours(0, 0, 0, 0);
+    var today = rows.filter(function (o) { return new Date(o.createdAt) >= start; });
+    var paid = today.filter(function (o) { return ORDER_GROUPS.paid.indexOf(o.status) >= 0; });
+    var cur = (rows[0] && rows[0].currency) || 'EUR';
+    var sum = paid.reduce(function (a, o) { return a + (o.totalMinor || 0); }, 0);
+    var fmt = function (m) { try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur }).format(m / 100); } catch (e) { return (m / 100).toFixed(2) + ' ' + cur; } };
+    var needs = rows.filter(function (o) { return ORDER_GROUPS.approval.indexOf(o.status) >= 0; }).length;
+    var problems = rows.filter(function (o) { return ORDER_GROUPS.problem.indexOf(o.status) >= 0; }).length;
+    box.textContent = 'Today: ' + today.length + ' orders · ' + paid.length + ' paid · sales ' + fmt(sum) +
+      (paid.length ? ' · avg ' + fmt(Math.round(sum / paid.length)) : '') +
+      ' | Waiting for approval or PayPal: ' + needs + ' | Failed or cancelled: ' + problems;
+  }
+
+  function groupButtons() {
+    return typeof document.querySelectorAll === 'function' ? Array.prototype.slice.call(document.querySelectorAll('#orderGroups button')) : [];
+  }
+
+  function setOrderGroup(group) {
+    orderGroup = ORDER_GROUPS[group] ? group : 'all';
+    groupButtons().forEach(function (b) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-group') === orderGroup ? 'true' : 'false');
+    });
+    ordersApi.onFilterChanged();
+  }
+  groupButtons().forEach(function (b) {
+    b.addEventListener('click', function () { setOrderGroup(b.getAttribute('data-group')); });
+  });
 
   async function refreshData() {
     // Clear any previous error announcement at the start of each cycle.
@@ -796,6 +860,7 @@
     });
 
     applyDiff('orders', ordersRaw);
+    renderTodaySummary(oJson.orders || []);
     applyDiff('events', eventsRaw);
     applyDiff('pickup', pickupRaw);
 

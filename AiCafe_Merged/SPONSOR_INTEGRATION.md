@@ -38,10 +38,12 @@ APIMatic consumes an OpenAPI spec to generate client SDKs across languages.
 1. Import `openapi.json` into the APIMatic dashboard (File → Import OpenAPI).
 2. The platform will validate the spec and produce SDKs (e.g. Dart, Python,
    Java) for the documented endpoints.
-3. **Important:** no SDK has been generated in this repository and no APIMatic
-   deployment has been set up. `openapi.json` is the single input a judge or
-   sponsor can feed to APIMatic themselves to produce an SDK; this repo only
-   offers the verified spec (and the Postman collection) as the source material.
+3. **Status:** TypeScript and Python SDKs **have been generated** locally from
+   `openapi.json` and are committed under `sdks/` (the APIMatic portal config is
+   in `apimatic/`). Nothing has been uploaded to the APIMatic cloud dashboard, so
+   a judge/sponsor can still import `openapi.json` there to regenerate/produce SDKs
+   for other languages; this repo also offers the verified spec (and the Postman
+   collection) as the source material.
 
 ## Honest limitations
 

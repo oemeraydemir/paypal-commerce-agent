@@ -12,6 +12,7 @@ import { policyService } from '../policy/service';
 import { policyStorage } from '../policy/storage';
 import { shopperGuardStore } from '../policy/shopper-guard';
 import { formatMoney } from '../utils/money';
+import { buildTransactionPassport } from '../passport/builder';
 
 // 120 previews per minute per session, 600 per IP.
 const previewLimiter = sessionRateLimit(120, 600);
@@ -163,6 +164,18 @@ router.post('/policy/preview', requireSession, previewLimiter, (req, res, next) 
       checks,
       violations: outcome.violations,
       limits,
+      // Additive, derived-only explanation of this cart (see src/passport/builder.ts).
+      passport: buildTransactionPassport({
+        items,
+        totalMinor,
+        currency: currentBusiness.currency,
+        decision: outcome.decision as 'AUTO_ALLOW' | 'REQUIRE_CONFIRMATION' | 'BLOCK',
+        maxPerPurchaseMinor: policy.maxPerPurchaseMinor,
+        confirmationThresholdMinor: policy.confirmationThresholdMinor,
+        dailyRemainingMinor: limits.dailyRemainingMinor,
+        checks,
+        hasWellbeingGuard: !!previewGuard,
+      }),
       enforcedBy: 'server',
     });
   } catch (err) {

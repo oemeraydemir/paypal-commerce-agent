@@ -6,6 +6,7 @@ import 'package:flutter_app/models/cart.dart';
 import 'package:flutter_app/models/order.dart';
 import 'package:flutter_app/models/paid_receipt.dart';
 import 'package:flutter_app/models/pickup.dart';
+import 'package:flutter_app/models/take_home.dart';
 import 'package:flutter_app/providers/chat_provider.dart';
 import 'package:flutter_app/providers/locale_provider.dart';
 import 'package:flutter_app/services/api_service.dart';
@@ -491,6 +492,11 @@ class CheckoutProvider extends ChangeNotifier {
     _busy = false;
     notifyListeners();
   }
+
+  /// Loads "Take it home" (Channel3) suggestions for the current cart. Read-only:
+  /// results never affect the cart, allowance or payment. Loads only on tap so
+  /// idle carts do not spend search quota (see `TakeHomeCard`).
+  Future<TakeHomeResult> loadTakeHome() => api.fetchTakeHome(_resolveItems());
 
   List<OrderItem> _resolveItems() {
     final items = cart.entries

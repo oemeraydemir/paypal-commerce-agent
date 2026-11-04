@@ -34,7 +34,7 @@ list is the pass/fail gate.
 
 - [ ] Warm the Render service shortly before judging starts (free tier needs about a minute) and say so in the testing instructions.
 - [ ] Repository: set the About description and topics on GitHub; keep the license visible in the About box.
-- [ ] APIMatic: generate an SDK from `openapi.json` and link it. Claim that prize only if you did.
+- [x] APIMatic: SDK generated from `openapi.json` (TypeScript + Python, committed under `sdks/`); portal config is in `apimatic/`. Generated locally via the APIMatic CLI; nothing has been uploaded to the APIMatic cloud portal.
 - [ ] Postman (optional): add requests for the three mandate endpoints, then update every quoted newman count together.
 - [ ] Render: **redeploy the current source** (the deployed app was found one version behind: order creation answered 200 instead of 201), then check `/api/health` and that order creation answers 201; `MANDATE_SIGNING_KEY` and `PUBLIC_BASE_URL` must be set in production.
 - [ ] Local demo: confirm `http://localhost:3000/api/health` returns JSON (another project's server can occupy port 3000); otherwise start the backend on another port and set `BASE`.

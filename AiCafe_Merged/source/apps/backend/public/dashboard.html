@@ -172,10 +172,10 @@
       .ops-muted { color: var(--muted); font-size: 0.92rem; margin: 6px 0 12px; max-width: 80ch; line-height: 1.5; }
       .ops-row { display: flex; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
       .ops input[type=text], .ops input[type=password] { flex: 1 1 260px; min-width: 0; padding: 10px 12px; font: inherit; color: inherit; background: var(--bg, transparent); border: 1px solid var(--border); border-radius: 10px; }
-      .ops input:focus-visible, .ops button:focus-visible { outline: 2px solid #0070ba; outline-offset: 2px; }
+      .ops input:focus-visible, .ops button:focus-visible { outline: 2px solid #C93D24; outline-offset: 2px; }
       .ops button { font: inherit; cursor: pointer; padding: 9px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: inherit; }
       .ops button:disabled { opacity: .55; cursor: not-allowed; }
-      .ops-btn { background: #0070ba !important; border-color: #0070ba !important; color: #fff !important; font-weight: 600; }
+      .ops-btn { background: #C93D24 !important; border-color: #C93D24 !important; color: #fff !important; font-weight: 600; }
       .ops-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
       .ops-chip { font-size: 0.86rem; border-radius: 999px !important; padding: 6px 12px !important; }
       .ops-out { margin-top: 10px; }
@@ -361,6 +361,7 @@
         #ordersGrid, #eventsGrid, #pickupGrid { height: 380px; }
       }
     </style>
+<link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/theme.css">
   </head>
   <body>
@@ -482,6 +483,14 @@
 
       <section class="grid-section" role="region" aria-label="Orders data grid">
         <h2 id="ordersHeading">Orders</h2>
+        <p class="ops-muted" id="todaySummary" role="status" aria-live="polite"></p>
+        <div class="grid-toolbar" id="orderGroups" role="group" aria-label="Filter orders by status">
+          <button type="button" data-group="all" aria-pressed="true">All</button>
+          <button type="button" data-group="approval" aria-pressed="false">Needs approval / PayPal</button>
+          <button type="button" data-group="paid" aria-pressed="false">Paid</button>
+          <button type="button" data-group="problem" aria-pressed="false">Failed / cancelled</button>
+          <button type="button" data-group="open" aria-pressed="false">Open carts</button>
+        </div>
         <div class="grid-toolbar">
           <input type="text" id="ordersQuickFilter" placeholder="Quick filter orders…" aria-label="Quick filter orders" />
           <button type="button" id="ordersCsvBtn">Export CSV</button>
@@ -535,7 +544,7 @@
       <div id="sideBody" class="side-body"></div>
     </aside>
 
-    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.0.0/dist/ag-grid-community.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@33.0.0/dist/ag-grid-community.min.js" integrity="sha384-AQTqEt1uzH4jfkbkNGQ+Gt8QqZCz+C6p7Tn81uP/bVlyuFKxEhxaFigGNswqHT4g" crossorigin="anonymous"></script>
     <script src="/dashboard.js"></script>
     <script src="/acs-panels.js" defer></script>
     <script src="/ops-copilot.js" defer></script>

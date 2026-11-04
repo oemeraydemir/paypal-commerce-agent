@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:http/http.dart' as http;
 
+import 'package:flutter_app/models/bill.dart';
 import 'package:flutter_app/models/order.dart';
 import 'package:flutter_app/models/paid_receipt.dart';
 import 'package:flutter_app/models/product.dart';
@@ -13,6 +14,7 @@ import 'package:flutter_app/models/chat_message.dart';
 import 'package:flutter_app/models/evidence_package.dart';
 import 'package:flutter_app/models/pickup.dart';
 import 'package:flutter_app/models/refund.dart';
+import 'package:flutter_app/models/take_home.dart';
 import 'package:flutter_app/services/error_body.dart';
 import 'package:flutter_app/services/session_service.dart';
 
@@ -406,6 +408,21 @@ class ApiService {
     return PolicyPreview.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
+  /// Channel3 "Take it home" suggestions — read-only product discovery with
+  /// outbound retailer links (never part of the cart or the spending allowance).
+  /// The server builds the search query; the client only forwards product ids.
+  Future<TakeHomeResult> fetchTakeHome(List<OrderItem> items) async {
+    final res = await _executeWithAuth((headers) async {
+      return _client.post(
+        _url('/api/discover/take-home'),
+        headers: headers,
+        body: jsonEncode({'items': items.map((e) => e.toJson()).toList()}),
+      );
+    });
+    _ensureOk(res, 'fetchTakeHome');
+    return TakeHomeResult.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
   /// Sends the shopper's diet + allergen concerns to the server's Wellbeing Guard
   /// (`PUT /api/guard`). Best effort: returns false instead of throwing, because the
   /// server keeps enforcing its last known guard and a failed sync must never block
@@ -713,6 +730,108 @@ class ApiService {
       );
     });
     _ensureOk(res, 'releasePickupBooking');
+  }
+
+  // ---- Split Bill (parity with Web `split.js`; backend `routes/bills.ts`) ----
+
+  /// The server requires a saved wellbeing profile before a bill is created or
+  /// a share is paid (HTTP 428 otherwise), so the client sends it first, exactly
+  /// like the Web room does.
+  Future<void> _saveWellbeing(Map<String, dynamic>? preferences) async {
+    if (preferences == null) return;
+    final res = await _executeWithAuth((headers) => _client.put(
+      _url('/api/wellbeing/preferences'),
+      headers: headers,
+      body: jsonEncode({'preferences': preferences}),
+    ));
+    _ensureOk(res, 'saveWellbeingPreferences');
+  }
+
+  /// `POST /api/bills` — creates a bill from a server-priced cart.
+  Future<BillView> createBill({
+    required List<OrderItem> items,
+    required int participantCount,
+    Map<String, dynamic>? wellbeingPreferences,
+  }) async {
+    await _saveWellbeing(wellbeingPreferences);
+    final res = await _executeWithAuth((headers) => _client.post(
+      _url('/api/bills'),
+      headers: headers,
+      body: jsonEncode({
+        'items': items.map((e) => e.toJson()).toList(),
+        'participantCount': participantCount,
+      }),
+    ));
+    _ensureOk(res, 'createBill');
+    return BillView.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// `POST /api/bills/:id/invite` (owner only).
+  Future<BillInvite> mintBillInvite(String billId) async {
+    final res = await _executeWithAuth((headers) => _client.post(
+      _url('/api/bills/${Uri.encodeComponent(billId)}/invite'),
+      headers: headers,
+      body: '{}',
+    ));
+    _ensureOk(res, 'mintBillInvite');
+    return BillInvite.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// `POST /api/bills/join` with an invite token.
+  Future<BillJoinResult> joinBill(String token) async {
+    final res = await _executeWithAuth((headers) => _client.post(
+      _url('/api/bills/join'),
+      headers: headers,
+      body: jsonEncode({'token': token}),
+    ));
+    _ensureOk(res, 'joinBill');
+    return BillJoinResult.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// `GET /api/bills/:id` (participants only).
+  Future<BillView> getBill(String billId) async {
+    final res = await _executeWithAuth((headers) => _client.get(
+      _url('/api/bills/${Uri.encodeComponent(billId)}'),
+      headers: headers,
+    ));
+    _ensureOk(res, 'getBill');
+    return BillView.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
+  }
+
+  /// `POST /api/bills/:id/shares/:shareId/pay` — starts PayPal checkout for the
+  /// caller's own share. Capture then uses [captureOrder] with the returned
+  /// `orderId`.
+  Future<BillSharePayStart> payBillShare({
+    required String billId,
+    required String shareId,
+    Map<String, dynamic>? wellbeingPreferences,
+  }) async {
+    await _saveWellbeing(wellbeingPreferences);
+    final res = await _executeWithAuth((headers) => _client.post(
+      _url(
+        '/api/bills/${Uri.encodeComponent(billId)}'
+        '/shares/${Uri.encodeComponent(shareId)}/pay',
+      ),
+      headers: headers,
+      body: '{}',
+    ));
+    _ensureOk(res, 'payBillShare');
+    return BillSharePayStart.fromJson(
+      jsonDecode(res.body) as Map<String, dynamic>,
+    );
+  }
+
+  /// `POST /api/bills/:id/cancel` (owner only).
+  Future<BillView> cancelBill(String billId) async {
+    final res = await _executeWithAuth((headers) => _client.post(
+      _url('/api/bills/${Uri.encodeComponent(billId)}/cancel'),
+      headers: headers,
+      body: '{}',
+    ));
+    _ensureOk(res, 'cancelBill');
+    return BillView.fromJson(jsonDecode(res.body) as Map<String, dynamic>);
   }
 
   void _ensureOk(http.Response res, String op) {

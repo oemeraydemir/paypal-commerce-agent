@@ -3,6 +3,8 @@
 **Shop by intent. Review every item. Approve every payment.**
 **Niyete göre alışveriş · Her ürünü incele · Her ödemeyi onayla.**
 
+> AI Café is a trust-first agentic commerce platform for cafés. AI prepares the order, users control spending, and PayPal securely completes the payment.
+>
 An agentic-commerce prototype for the *PayPal + AI hackathon*. A shopper describes what they want and
 what they can spend. An AI agent searches the catalog and prepares a cart, but **it can never move
 money**: prices come from the server, a spending policy is enforced on the server, and only the human

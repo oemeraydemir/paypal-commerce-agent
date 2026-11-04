@@ -314,6 +314,7 @@
   function cartTotal() { return Object.keys(cart).reduce(function (s, id) { return s + (catalog[id] ? catalog[id].priceMinor * cart[id] : 0); }, 0); }
   function setQty(id, q) { if (q <= 0) delete cart[id]; else cart[id] = Math.min(q, 99); save(CKEY, cart); renderCart(); }
   function renderCart() {
+    try { renderTakeHome(); } catch (e) { /* optional panel must never break the cart */ }
     var box = $('cart'); box.textContent = '';
     var ids = Object.keys(cart);
     if (!ids.length) box.appendChild(el('p', 'mut', i18nT('cart.empty')));
@@ -436,7 +437,82 @@
     } else {
       wrap.appendChild(el('div', 'mut', i18nT('policy.dailyBudget') + eur(L.dailySpendLimitMinor) + ' (' + eur(L.dailyRemainingMinor) + i18nT('policy.dailyLeft')));
     }
+    if (p.passport) wrap.appendChild(renderPassport(p.passport));
     box.appendChild(wrap);
+  }
+
+  // "Take it home" (Channel3): read-only suggestions that open the RETAILER's page. Never part of the PayPal cart,
+  // never covered by the spending allowance. Requested only on click so a free-tier search quota is not spent on idle carts.
+  function renderTakeHome() {
+    var box = $('takehome'); if (!box) return; box.textContent = '';
+    var ids = Object.keys(cart); if (!ids.length) return;
+    var wrap = el('div', 'passport');
+    wrap.appendChild(el('b', '', '🛍️ ' + i18nT('takehome.title')));
+    var out = el('div', ''); var btn = el('button', 'secondary', i18nT('takehome.btn')); btn.type = 'button';
+    btn.onclick = function () {
+      btn.disabled = true; out.textContent = i18nT('takehome.loading');
+      api('/api/discover/take-home', { method: 'POST', body: JSON.stringify({ items: ids.map(function (id) { return { productId: id }; }) }) }).then(function (r) {
+        out.textContent = '';
+        if (!r.enabled) { out.appendChild(el('div', 'mut', i18nT('takehome.off'))); return; }
+        if (!r.items || !r.items.length) out.appendChild(el('div', 'mut', i18nT('takehome.none')));
+        (r.items || []).forEach(function (it) {
+          var card = el('div', 'card'); card.appendChild(el('div', 'card-t', it.title));
+          var meta = [it.brand, it.merchantDomain, it.price != null ? (it.price + ' ' + (it.currency || '')).trim() : null].filter(Boolean).join(' · ');
+          if (meta) card.appendChild(el('div', 'mut', meta));
+          var a = document.createElement('a'); a.href = it.url; a.target = '_blank'; a.rel = 'noopener noreferrer nofollow sponsored'; a.textContent = i18nT('takehome.open') + ' ↗';
+          card.appendChild(a); out.appendChild(card);
+        });
+        out.appendChild(el('div', 'mut pp-note', i18nT('takehome.disclosure')));
+      }).catch(function () { out.textContent = ''; out.appendChild(el('div', 'mut', i18nT('takehome.error'))); }).then(function () { btn.disabled = false; });
+    };
+    wrap.appendChild(btn); wrap.appendChild(out); box.appendChild(wrap);
+  }
+
+  // AI Transaction Passport: a derived, read-only explanation of the cart the server just evaluated.
+  // Every number comes from /api/policy/preview (server prices and limits); nothing is computed or trusted here.
+  function renderPassport(pp) {
+    var d = document.createElement('details'); d.className = 'passport'; d.open = true;
+    var sum = document.createElement('summary');
+    sum.appendChild(el('b', '', '🛂 ' + i18nT('passport.title')));
+    sum.appendChild(el('span', 'pill', eur(pp.totalMinor)));
+    d.appendChild(sum);
+    d.appendChild(el('div', 'mut', i18nT('passport.sub')));
+    d.appendChild(el('div', 'pp-h', i18nT('passport.why')));
+    var why = el('ul', 'pp-list');
+    ['passport.why1', 'passport.why2', 'passport.why3'].forEach(function (k) { why.appendChild(el('li', '', i18nT(k))); });
+    d.appendChild(why);
+    var lines = el('ul', 'pp-lines');
+    pp.lines.forEach(function (l) {
+      var li = el('li', ''); li.appendChild(el('span', '', l.quantity + ' × ' + l.name));
+      li.appendChild(el('span', 'v', eur(l.lineTotalMinor))); lines.appendChild(li);
+    });
+    d.appendChild(lines);
+    d.appendChild(el('div', 'pp-h', i18nT('passport.control')));
+    var m = pp.mandate, c = pp.control;
+    var bar = el('div', 'pp-bar' + (c.withinLimit ? '' : ' over')); bar.setAttribute('role', 'img');
+    bar.setAttribute('aria-label', m.usedPercent + '% ' + i18nT('passport.used'));
+    var fill = el('i', ''); fill.style.width = m.usedPercent + '%'; bar.appendChild(fill);
+    if (m.thresholdPercent > 0 && m.thresholdPercent < 100) { var mk = el('span', 'pp-mark'); mk.style.left = m.thresholdPercent + '%'; mk.title = i18nT('passport.threshold') + ': ' + eur(m.approvalThresholdMinor); bar.appendChild(mk); }
+    d.appendChild(bar);
+    d.appendChild(el('div', 'mut', m.usedPercent + '% ' + i18nT('passport.used') + ' (' + eur(m.cartMinor) + ' / ' + eur(m.maxPerPurchaseMinor) + ')'));
+    var ctl = el('ul', 'pp-list');
+    ctl.appendChild(el('li', c.withinLimit ? 'ok' : 'bad', i18nT(c.withinLimit ? 'passport.within' : 'passport.over')));
+    ctl.appendChild(el('li', 'ok', i18nT('passport.nochange')));
+    if (c.requiresShopperApproval) ctl.appendChild(el('li', 'ok', i18nT('passport.wait')));
+    ctl.appendChild(el('li', 'ok', i18nT('passport.authority') + ': ' + i18nT('passport.you')));
+    d.appendChild(ctl);
+    d.appendChild(el('div', 'pp-lock', '🔒 ' + i18nT('passport.nochange') + ' · ' + i18nT('passport.authority') + ': ' + i18nT('passport.you')));
+    d.appendChild(el('div', 'pp-h', i18nT('passport.flow')));
+    var flow = el('ol', 'pp-flow');
+    pp.steps.forEach(function (s) {
+      var li = el('li', s.state); li.appendChild(el('span', 'ic', s.state === 'done' ? '✓' : s.state === 'blocked' ? '✕' : '○'));
+      li.appendChild(document.createTextNode(i18nT('passport.s.' + s.key))); li.appendChild(el('span', 'pp-actor ' + s.actor, i18nT('passport.actor.' + s.actor))); flow.appendChild(li);
+    });
+    d.appendChild(flow);
+    var map = { 'sample-menu-data': 'passport.n.sample', 'allergen-unverified': 'passport.n.allergen', 'sandbox-only': 'passport.n.sandbox' };
+    pp.notices.forEach(function (n) { if (map[n]) d.appendChild(el('div', 'mut pp-note', map[n] && i18nT(map[n]))); });
+    d.appendChild(el('div', 'mut pp-note', i18nT('passport.preview')));
+    return d;
   }
 
   // ---- Catalog ------------------------------------------------------------------------------
@@ -451,7 +527,12 @@
     });
     var box = $('catalog'); box.textContent = '';
     list.filter(function (p) { return activeCat === 'all' || p.category === activeCat; }).forEach(function (p) {
-      var card = el('div', 'prod'); card.appendChild(el('span', 'emo', CATEGORY_EMOJI[p.category] || '🛒')); card.appendChild(el('b', '', p.name)); card.appendChild(el('small', '', p.description));
+      var card = el('div', 'prod'); card.setAttribute('data-cat', p.category);
+      // Same artwork the Flutter app bundles (assets/products/<id>.png): one source of truth for product visuals.
+      var art = document.createElement('img'); art.className = 'art'; art.alt = ''; art.loading = 'lazy'; art.width = 96; art.height = 96;
+      art.src = '/art/' + encodeURIComponent(p.id) + '.jpg';
+      art.onerror = function () { art.onerror = null; art.src = '/art/cat_' + encodeURIComponent(p.category) + '.jpg'; art.onerror = function () { art.replaceWith(el('span', 'emo', CATEGORY_EMOJI[p.category] || '🛒')); }; };
+      card.appendChild(art); card.appendChild(el('b', '', p.name)); card.appendChild(el('small', '', p.description));
       var tags = el('div', 'tags'); p.dietary.forEach(function (d) { tags.appendChild(el('span', 'tag' + (d === 'alcohol' ? ' warn' : ''), d)); }); card.appendChild(tags);
       var row = el('div', 'row'); row.appendChild(el('span', '', eur(p.priceMinor)));
       var add = el('button', '', i18nT('add')); add.onclick = function () { setQty(p.id, (cart[p.id] || 0) + 1); };
@@ -1177,6 +1258,16 @@
     if (d.orderId) { try { box.appendChild(refundBlock(d.orderId)); } catch (e) { /* receipt still shown */ } }
     var link = el('a', 'rlink', i18nT('receipt.controlCenter')); link.href = '/dashboard.html'; link.setAttribute('rel', 'noopener');
     box.appendChild(link);
+    // Notify the app shell so it can record the paid order in this-browser history
+    // (read-only mirror; the receipt itself does not depend on it).
+    if (d.orderId) {
+      try {
+        var histItems = (d.items || []).map(function (it) { return { qty: it.qty, name: it.name }; });
+        window.dispatchEvent(new CustomEvent('aicafe:receipt', {
+          detail: { at: Date.now(), orderId: d.orderId, totalText: d.totalText || '', items: histItems }
+        }));
+      } catch (e) { /* history is best-effort */ }
+    }
     setCartChrome(false);
   }
   function reset() {

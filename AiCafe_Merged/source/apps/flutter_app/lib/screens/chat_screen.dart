@@ -24,8 +24,16 @@ import 'package:flutter_app/widgets/evidence_package_section.dart';
 import 'package:flutter_app/widgets/paid_receipt_card.dart';
 import 'package:flutter_app/widgets/refund_section.dart';
 import 'package:flutter_app/widgets/pickup_planner.dart';
+import 'package:flutter_app/widgets/split_bill_sheet.dart';
+import 'package:flutter_app/screens/profile_settings_screen.dart';
+import 'package:flutter_app/screens/profile_screen.dart';
+import 'package:flutter_app/theme/app_theme.dart';
+import 'package:flutter_app/utils/product_art.dart';
 import 'package:flutter_app/widgets/barista_avatar.dart';
+import 'package:flutter_app/widgets/brand_mark.dart';
 import 'package:flutter_app/widgets/assistant_quick_replies.dart';
+import 'package:flutter_app/widgets/take_home_card.dart';
+import 'package:flutter_app/widgets/transaction_passport_card.dart';
 import 'package:flutter_app/widgets/typing_indicator.dart';
 
 /// Minimal, safe Markdown rendering for assistant chat bubbles (parity with the
@@ -197,6 +205,13 @@ class _ChatScreenState extends State<ChatScreen> {
   late final StreamSubscription<Uri> _linkSubscription;
   List<Product> _catalog = <Product>[];
 
+  // Bottom navigation destinations. Home is the default landing tab; it
+  // introduces the app and the café and routes into Café/Barista.
+  static const int _tabHome = 0;
+  static const int _tabCafe = 1;
+  static const int _tabBarista = 2;
+  int _activeTab = _tabHome;
+
   @override
   void initState() {
     super.initState();
@@ -334,10 +349,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _editPreferences() async {
     final profile = context.read<ShopperProfileProvider>();
-    final preferences = await showDialog<ShopperPreferences>(
-      context: context,
-      builder: (_) =>
-          _ShopperPreferencesDialog(initialPreferences: profile.preferences),
+    final preferences = await Navigator.of(context).push<ShopperPreferences>(
+      MaterialPageRoute(
+        builder: (_) =>
+            ProfileSettingsScreen(initialPreferences: profile.preferences),
+      ),
     );
     if (preferences == null || !mounted) return;
 
@@ -486,273 +502,416 @@ class _ChatScreenState extends State<ChatScreen> {
     final timeFormat = AppStrings.timeFormat(lang);
 
     return Scaffold(
-      appBar: AppBar(
-        // The toolbar is shared with five action buttons, which leaves only
-        // ~139dp for the title on a 411dp-wide phone (Pixel emulator:
-        // 1080px / 2.625). The subtitle needs ~190dp on a single line, so the
-        // Row overflowed by ~84dp and Flutter painted its yellow/black
-        // "OVERFLOWED BY 84 PIXELS" stripe straight across the header — a real
-        // visual defect observed on the emulator (render tree: RenderFlex
-        // OVERFLOWING, size 139.4 vs child 189.8). The title now adapts: the
-        // subtitle is only shown when it fits at the current text scale, and
-        // both lines ellipsize as a hard guarantee.
-        title: LayoutBuilder(
-          builder: (context, constraints) {
-            final textScale = MediaQuery.textScalerOf(context).scale(11) / 11;
-            final showSubtitle = constraints.maxWidth >= 190 * textScale;
-            return Row(
-              children: [
-                const Icon(Icons.local_cafe_outlined),
-                const SizedBox(width: 10),
-                Flexible(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'AI Café',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (showSubtitle)
-                        Text(
-                          t(context, 'app.subtitle'),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.normal,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-        actions: [
-          // Profile editing is available via the "Edit" link in the profile row
-          // below, so the duplicate tune icon is omitted to keep the header calm.
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: t(context, 'action.clear'),
-            onPressed: _clearConversation,
-          ),
-          IconButton(
-            icon: const Icon(Icons.help_outline),
-            tooltip: t(context, 'action.help'),
-            onPressed: _showOnboarding,
-          ),
-          Consumer<LocaleProvider>(
-            builder: (ctx, loc, _) => IconButton(
-              icon: Text(
-                loc.languageCode == 'tr' ? 'EN' : 'TR',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              tooltip: t(context, 'lang.switch'),
-              onPressed: () =>
-                  loc.setLanguage(loc.languageCode == 'tr' ? 'en' : 'tr'),
-            ),
-          ),
-          Consumer<CheckoutProvider>(
-            builder: (ctx, checkout, _) => Stack(
-              alignment: Alignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.shopping_cart_outlined),
-                  tooltip: t(context, 'action.cart'),
-                  onPressed: _openCartSheet,
-                ),
-                if (checkout.cart.isNotEmpty)
-                  // IgnorePointer: the badge is painted above the IconButton, so
-                  // without this it swallowed taps in that corner and the cart
-                  // simply did not open (observed on web: clicking the badge
-                  // did nothing, clicking 14dp to its left opened the sheet).
-                  Positioned(
-                    right: 8,
-                    top: 8,
-                    child: IgnorePointer(
-                      child: Container(
-                        padding: const EdgeInsets.all(2),
-                        decoration: const BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                        constraints: const BoxConstraints(
-                          minWidth: 16,
-                          minHeight: 16,
-                        ),
-                        child: Text(
-                          '${checkout.cart.values.fold<int>(0, (total, quantity) => total + quantity)}',
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ],
-      ),
+      appBar: _buildAppBar(),
       body: Column(
         children: [
           _serviceStatus(),
           _profileStatus(),
-          _catalogChips(),
           Expanded(
-            child: Consumer<ChatProvider>(
-              builder: (ctx, chat, _) {
-                // The AI answer arrives seconds after [_send] already scrolled,
-                // so keep the newest bubble in view whenever content changes.
-                _autoScrollOnNewContent(chat.messages.length, chat.loading);
-                if (chat.messages.isEmpty) {
-                  // Empty state: center the welcome card so the space above and
-                  // below is balanced instead of leaving a large dead band under
-                  // a top-pinned card (the earlier top-heavy look).
-                  return Center(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _WelcomePanel(
-                            onPromptSelected: (prompt) {
-                              _controller.text = prompt;
-                              _send();
-                            },
-                          ),
-                          if (chat.loading)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 12),
-                              child: _AssistantTypingBubble(),
-                            ),
-                        ],
-                      ),
+            child: _activeTab == _tabHome
+                ? _buildHomeTab()
+                : _activeTab == _tabCafe
+                    ? _buildCafeHome()
+                    : _buildBaristaBody(timeFormat),
+          ),
+        ],
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  AppBar _buildAppBar() {
+    return AppBar(
+      titleSpacing: 4,
+      title: LayoutBuilder(
+        builder: (context, constraints) {
+          final textScale = MediaQuery.textScalerOf(context).scale(11) / 11;
+          final showSubtitle = constraints.maxWidth >= 200 * textScale;
+          return Row(
+            children: [
+              const BrandMark(size: 36),
+              const SizedBox(width: 12),
+              Flexible(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'AI Café',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  );
-                }
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                  itemCount: chat.messages.length + (chat.loading ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (chat.loading && index == chat.messages.length) {
-                      return const _AssistantTypingBubble();
-                    }
-                    final msg = chat.messages[index];
-                    return _MessageBubble(
-                      msg: msg,
-                      timeFormat: timeFormat,
-                      onQuickReply: index == chat.messages.length - 1 &&
-                              !chat.loading &&
-                              !context.watch<ShopperProfileProvider>().loading &&
-                              !_voice.isListening
-                          ? (reply) {
-                              if (chat.messages.isEmpty ||
-                                  !identical(chat.messages.last, msg)) {
-                                return;
-                              }
-                              _send(reply);
-                            }
-                          : null,
-                    );
-                  },
-                );
-              },
+                    if (showSubtitle)
+                      Text(
+                        t(context, 'app.subtitle'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.normal,
+                          color: Color(0xFF5B636C),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: t(context, 'action.clear'),
+          onPressed: _clearConversation,
+        ),
+        IconButton(
+          icon: const Icon(Icons.help_outline),
+          tooltip: t(context, 'action.help'),
+          onPressed: _showOnboarding,
+        ),
+        IconButton(
+          icon: const Icon(Icons.person_outline),
+          tooltip: t(context, 'action.profile'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ProfileScreen()),
+          ),
+        ),
+        Consumer<LocaleProvider>(
+          builder: (ctx, loc, _) => IconButton(
+            icon: Text(
+              loc.languageCode == 'tr' ? 'EN' : 'TR',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
+            tooltip: t(context, 'lang.switch'),
+            onPressed: () =>
+                loc.setLanguage(loc.languageCode == 'tr' ? 'en' : 'tr'),
           ),
-          Consumer<ChatProvider>(
-            builder: (ctx, chat, _) =>
-                chat.checkoutReady && chat.lastPreparedCart != null
-                    ? _PreparedCartCard(
-                        cart: chat.lastPreparedCart!,
-                        catalog: _catalog,
-                        mode: chat.lastPreparedCartMode,
-                      )
-                    : const SizedBox.shrink(),
-          ),
-          Consumer<CheckoutProvider>(
-            builder: (ctx, checkout, _) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _CheckoutStatus(checkout: checkout),
-                if (checkout.receipt != null)
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(ctx).size.height * 0.5,
-                    ),
-                    child: SingleChildScrollView(
-                      child: PaidReceiptCard(
-                        receipt: checkout.receipt!,
-                        lang: Provider.of<LocaleProvider>(
-                          ctx,
-                          listen: false,
-                        ).languageCode,
-                        catalogNames: {
-                          for (final p in _catalog) p.id: p.name,
-                        },
-                        onClose: checkout.dismissReceipt,
-                        evidenceSection: EvidencePackageSection(
-                          api: checkout.api,
-                          orderId: checkout.receipt!.orderId,
-                          lang: Provider.of<LocaleProvider>(
-                            ctx,
-                            listen: false,
-                          ).languageCode,
-                        ),
-                        refundSection: RefundSection(
-                          api: checkout.api,
-                          orderId: checkout.receipt!.orderId,
-                          lang: Provider.of<LocaleProvider>(
-                            ctx,
-                            listen: false,
-                          ).languageCode,
-                        ),
-                        pickupSection: checkout.pickupBooking != null
-                            ? PickupLinkSection(
-                                api: checkout.api,
-                                orderId: checkout.receipt!.orderId,
-                                lang: Provider.of<LocaleProvider>(
-                                  ctx,
-                                  listen: false,
-                                ).languageCode,
-                                booking: checkout.pickupBooking!,
-                              )
-                            : null,
-                      ),
-                    ),
-                  ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Consumer<CheckoutProvider>(
+      builder: (ctx, checkout, _) {
+        final int count = checkout.cart.values.fold<int>(0, (a, b) => a + b);
+        return NavigationBar(
+          selectedIndex: _activeTab == _tabBarista ? 1 : 0,
+          onDestinationSelected: (i) {
+            if (i == 0) {
+              _goToTab(_tabHome);
+            } else if (i == 1) {
+              _goToTab(_tabBarista);
+            } else if (i == 2) {
+              _openCartSheet();
+            } else {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              );
+            }
+          },
+          destinations: [
+            NavigationDestination(
+              icon: const Icon(Icons.home_outlined),
+              selectedIcon: const Icon(Icons.home),
+              label: t(context, 'nav.home'),
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.forum_outlined),
+              selectedIcon: const Icon(Icons.forum),
+              label: t(context, 'nav.barista'),
+            ),
+            NavigationDestination(
+              icon: Badge(
+                isLabelVisible: count > 0,
+                label: Text('$count'),
+                child: const Icon(Icons.shopping_bag_outlined),
+              ),
+              label: t(context, 'nav.cart'),
+            ),
+            NavigationDestination(
+              icon: const Icon(Icons.person_outline),
+              selectedIcon: const Icon(Icons.person),
+              label: t(context, 'nav.profile'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _cafePrompt(String prompt) {
+    setState(() => _activeTab = _tabBarista);
+    _controller.text = prompt;
+    _send();
+  }
+
+  void _goToTab(int tab) => setState(() => _activeTab = tab);
+
+  Widget _buildHomeTab() {
+    final scheme = Theme.of(context).colorScheme;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        // App + café intro hero.
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                scheme.primary,
+                scheme.primary.withValues(alpha: 0.75),
               ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(24),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.primary.withValues(alpha: 0.28),
+                blurRadius: 22,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                t(context, 'home.welcomeTitle'),
+                style: TextStyle(
+                  color: scheme.onPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                t(context, 'home.welcomeBody'),
+                style: TextStyle(
+                  color: scheme.onPrimary.withValues(alpha: 0.92),
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _homeBadge(
+                    context,
+                    Icons.auto_awesome_outlined,
+                    t(context, 'home.aiChip'),
+                  ),
+                  _homeBadge(
+                    context,
+                    Icons.lock_outline,
+                    t(context, 'home.ppChip'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 26),
+
+        Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: ListTile(
+            leading: Icon(Icons.person_outline, color: scheme.primary),
+            title: Text(
+              t(context, 'profile.sectionPrefs'),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            subtitle: Text(
+              t(context, 'profile.empty'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ProfileScreen()),
             ),
           ),
-          _inputRow(),
+        ),
+        const SizedBox(height: 26),
+
+        Text(
+          t(context, 'home.howTitle'),
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+              ),
+        ),
+        const SizedBox(height: 12),
+        _homeStep(
+            context, '1', t(context, 'home.step1'), t(context, 'home.step1Body')),
+        _homeStep(
+            context, '2', t(context, 'home.step2'), t(context, 'home.step2Body')),
+        _homeStep(
+            context, '3', t(context, 'home.step3'), t(context, 'home.step3Body')),
+        _homeStep(
+            context, '4', t(context, 'home.step4'), t(context, 'home.step4Body')),
+
+        const SizedBox(height: 26),
+
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: scheme.outlineVariant),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                t(context, 'home.cafeTitle'),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w800,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                t(context, 'home.cafeBody'),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      height: 1.4,
+                    ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 26),
+
+        FilledButton.icon(
+          onPressed: () => _goToTab(_tabBarista),
+          icon: const Icon(Icons.forum_outlined),
+          label: Text(t(context, 'home.startChat')),
+          style: FilledButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+          ),
+        ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () => _goToTab(_tabCafe),
+          icon: const Icon(Icons.storefront_outlined),
+          label: Text(t(context, 'home.browseMenu')),
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size.fromHeight(50),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _homeBadge(BuildContext context, IconData icon, String label) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: scheme.onPrimary.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: scheme.onPrimary),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: scheme.onPrimary,
+              fontWeight: FontWeight.w700,
+              fontSize: 13,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _catalogChips() {
+  Widget _homeStep(
+      BuildContext context, String number, String title, String body) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: scheme.primaryContainer,
+            child: Text(
+              number,
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                color: scheme.onPrimaryContainer,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  body,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        height: 1.3,
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCafeHome() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+      children: [
+        _HeroCard(onPromptSelected: _cafePrompt),
+        const SizedBox(height: 28),
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 12),
+          child: Text(
+            t(context, 'menu.title'),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                ),
+          ),
+        ),
+        _menuGrid(),
+      ],
+    );
+  }
+
+  Widget _menuGrid() {
     return FutureBuilder<List<Product>>(
       future: _catalogFuture,
       builder: (context, snap) {
         if (snap.hasError) {
-          return SizedBox(
-            height: 56,
+          return Card(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      t(context, 'catalog.error'),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: Text(t(context, 'catalog.error')),
                   ),
                   TextButton(
                     onPressed: _retryCatalog,
@@ -765,63 +924,161 @@ class _ChatScreenState extends State<ChatScreen> {
         }
         if (!snap.hasData) {
           return const SizedBox(
-            height: 56,
+            height: 120,
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
         final products = snap.data!;
-        final scheme = Theme.of(context).colorScheme;
-        return SizedBox(
-          height: 56,
-          child: Stack(
+        if (products.isEmpty) return const SizedBox.shrink();
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 0.78,
+          ),
+          itemCount: products.length,
+          itemBuilder: (context, i) {
+            return _ProductCard(product: products[i]);
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildBaristaBody(DateFormat timeFormat) {
+    return Consumer<ChatProvider>(
+      builder: (ctx, chat, _) {
+        _autoScrollOnNewContent(chat.messages.length, chat.loading);
+        if (chat.messages.isEmpty) {
+          return Column(
             children: [
-              ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: products.length,
-                separatorBuilder: (context, index) => const SizedBox(width: 8),
-                itemBuilder: (context, i) {
-              final p = products[i];
-              return Consumer<CheckoutProvider>(
-                builder: (ctx, checkout, _) => ActionChip(
-                  avatar: const Icon(Icons.add_shopping_cart, size: 16),
-                  label: Text('${p.name} · ${p.priceFormatted}'),
-                  onPressed: !p.available
-                      ? null
-                      : () {
-                          checkout.addProduct(p.id);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                t(context, 'catalog.added').replaceAll('%s', p.name),
-                              ),
-                            ),
-                          );
-                        },
-                ),
-              );
-            },
-              ),
-              // Trailing fade on the right edge so a partially visible chip reads
-              // as "more to scroll", not as something awkwardly cut off.
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.centerRight,
-                        end: Alignment.centerLeft,
-                        colors: [
-                          scheme.surface.withValues(alpha: 0.9),
-                          scheme.surface.withValues(alpha: 0.0),
-                        ],
-                      ),
+              Expanded(
+                child: Center(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _HeroCard(
+                          onPromptSelected: (prompt) {
+                            _controller.text = prompt;
+                            _send();
+                          },
+                        ),
+                        if (chat.loading)
+                          const Padding(
+                            padding: EdgeInsets.only(top: 12),
+                            child: _AssistantTypingBubble(),
+                          ),
+                      ],
                     ),
                   ),
                 ),
               ),
+              _inputRow(),
             ],
-          ),
+          );
+        }
+        return Column(
+          children: [
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                itemCount: chat.messages.length + (chat.loading ? 1 : 0),
+                itemBuilder: (context, index) {
+                  if (chat.loading && index == chat.messages.length) {
+                    return const _AssistantTypingBubble();
+                  }
+                  final msg = chat.messages[index];
+                  return _MessageBubble(
+                    msg: msg,
+                    timeFormat: timeFormat,
+                    onQuickReply: index == chat.messages.length - 1 &&
+                            !chat.loading &&
+                            !context.watch<ShopperProfileProvider>().loading &&
+                            !_voice.isListening
+                        ? (reply) {
+                            if (chat.messages.isEmpty ||
+                                !identical(chat.messages.last, msg)) {
+                              return;
+                            }
+                            _send(reply);
+                          }
+                        : null,
+                  );
+                },
+              ),
+            ),
+            Consumer<ChatProvider>(
+              builder: (ctx, chat, _) =>
+                  chat.checkoutReady && chat.lastPreparedCart != null
+                      ? _PreparedCartCard(
+                          cart: chat.lastPreparedCart!,
+                          catalog: _catalog,
+                          mode: chat.lastPreparedCartMode,
+                        )
+                      : const SizedBox.shrink(),
+            ),
+            Consumer<CheckoutProvider>(
+              builder: (ctx, checkout, _) => Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _CheckoutStatus(checkout: checkout),
+                  if (checkout.receipt != null)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: MediaQuery.of(ctx).size.height * 0.5,
+                      ),
+                      child: SingleChildScrollView(
+                        child: PaidReceiptCard(
+                          receipt: checkout.receipt!,
+                          lang: Provider.of<LocaleProvider>(
+                            ctx,
+                            listen: false,
+                          ).languageCode,
+                          catalogNames: {
+                            for (final p in _catalog) p.id: p.name,
+                          },
+                          onClose: checkout.dismissReceipt,
+                          evidenceSection: EvidencePackageSection(
+                            api: checkout.api,
+                            orderId: checkout.receipt!.orderId,
+                            lang: Provider.of<LocaleProvider>(
+                              ctx,
+                              listen: false,
+                            ).languageCode,
+                          ),
+                          refundSection: RefundSection(
+                            api: checkout.api,
+                            orderId: checkout.receipt!.orderId,
+                            lang: Provider.of<LocaleProvider>(
+                              ctx,
+                              listen: false,
+                            ).languageCode,
+                          ),
+                          pickupSection: checkout.pickupBooking != null
+                              ? PickupLinkSection(
+                                  api: checkout.api,
+                                  orderId: checkout.receipt!.orderId,
+                                  lang: Provider.of<LocaleProvider>(
+                                    ctx,
+                                    listen: false,
+                                  ).languageCode,
+                                  booking: checkout.pickupBooking!,
+                                )
+                              : null,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            _inputRow(),
+          ],
         );
       },
     );
@@ -1085,58 +1342,219 @@ class _ServiceStatusChip extends StatelessWidget {
       );
 }
 
-class _WelcomePanel extends StatelessWidget {
+/// Editorial hero card shown at the top of the Café home tab and the empty
+/// Barista state. It anchors the brand, headlines the value proposition and
+/// offers one-tap prompt starters that route into the chatbot.
+class _HeroCard extends StatelessWidget {
   final ValueChanged<String> onPromptSelected;
 
-  const _WelcomePanel({required this.onPromptSelected});
+  const _HeroCard({required this.onPromptSelected});
 
   @override
-  Widget build(BuildContext context) => Card(
-        margin: const EdgeInsets.only(top: 20),
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.greenTint, AppColors.white, AppColors.leafTint],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.outlineVariant),
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const BrandMark(size: 44),
+          const SizedBox(height: 14),
+          Text(
+            t(context, 'welcome.title'),
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: AppColors.ink,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.4,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            t(context, 'welcome.body'),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppColors.inkMuted,
+                  height: 1.35,
+                ),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
             children: [
-              Icon(
-                Icons.auto_awesome,
-                size: 32,
-                color: Theme.of(context).colorScheme.primary,
+              _PromptChip(
+                label: t(context, 'welcome.chip1'),
+                onTap: () => onPromptSelected(t(context, 'welcome.prompt1')),
               ),
-              const SizedBox(height: 12),
-              Text(
-                t(context, 'welcome.title'),
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                t(context, 'welcome.body'),
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 18),
-              Text(t(context, 'welcome.try'),
-                  style: Theme.of(context).textTheme.titleSmall),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: [
-                  ActionChip(
-                    label: Text(t(context, 'welcome.chip1')),
-                    onPressed: () =>
-                        onPromptSelected(t(context, 'welcome.prompt1')),
-                  ),
-                  ActionChip(
-                    label: Text(t(context, 'welcome.chip2')),
-                    onPressed: () =>
-                        onPromptSelected(t(context, 'welcome.prompt2')),
-                  ),
-                ],
+              _PromptChip(
+                label: t(context, 'welcome.chip2'),
+                onTap: () => onPromptSelected(t(context, 'welcome.prompt2')),
               ),
             ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromptChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _PromptChip({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: AppColors.outline),
         ),
-      );
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.auto_awesome, size: 14, color: AppColors.green),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.ink,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A visually weighted product card: realistic photo, name, price and a round
+/// add-to-cart control. Unavailable products are dimmed and non-interactive.
+class _ProductCard extends StatelessWidget {
+  final Product product;
+
+  const _ProductCard({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    final dimmed = !product.available;
+
+    return Container(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: categoryTint(product.category),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ColoredBox(
+                  color: categoryTint(product.category),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: productArtImage(product),
+                    ),
+                  ),
+                ),
+                if (dimmed)
+                  Positioned.fill(
+                    child: ColoredBox(
+                      color: AppColors.white.withValues(alpha: 0.55),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        product.priceFormatted,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.green,
+                        ),
+                      ),
+                    ),
+                    Consumer<CheckoutProvider>(
+                      builder: (context, checkout, _) {
+                        return IconButton(
+                          onPressed: dimmed || checkout.busy
+                              ? null
+                              : () {
+                                  checkout.addProduct(product.id);
+                                  ScaffoldMessenger.of(context)
+                                    ..hideCurrentSnackBar()
+                                    ..showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          t(context, 'catalog.added')
+                                              .replaceFirst('%s', product.name),
+                                        ),
+                                        duration: const Duration(seconds: 2),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                },
+                          icon: const Icon(Icons.add_circle),
+                          color: dimmed
+                              ? AppColors.outline
+                              : AppColors.green,
+                          iconSize: 26,
+                          visualDensity: VisualDensity.compact,
+                          tooltip: t(context, 'action.addToCart'),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Manual "add to cart anyway" offer under an over-budget rule-based reply.
@@ -1212,8 +1630,11 @@ class _MessageBubble extends StatelessWidget {
         maxWidth: MediaQuery.of(context).size.width * 0.78,
       ),
       decoration: BoxDecoration(
-        color: isUser ? scheme.primary : scheme.surfaceContainerHighest,
+        color: isUser ? AppColors.green : AppColors.white,
         borderRadius: BorderRadius.circular(14),
+        border: isUser
+            ? null
+            : Border.all(color: AppColors.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1259,7 +1680,7 @@ class _MessageBubble extends StatelessWidget {
           else
             _MarkdownText(
               msg.text,
-              style: TextStyle(color: scheme.onSurfaceVariant),
+              style: const TextStyle(color: AppColors.ink),
             ),
           if (msg.role == ChatRole.assistant)
             AssistantQuickReplies(
@@ -1381,8 +1802,9 @@ class _AssistantTypingBubble extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                color: AppColors.white,
                 borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.outlineVariant),
               ),
               child: const TypingIndicator(),
             ),
@@ -1682,6 +2104,28 @@ class _CartSheet extends StatelessWidget {
     );
   }
 
+  /// Opens the Split Bill room (parity with the Web `/split` page). Friends pay
+  /// their own share; every amount is computed by the server.
+  void _openSplitBill(BuildContext ctx, CheckoutProvider checkout) {
+    final lang = Provider.of<LocaleProvider>(ctx, listen: false).languageCode;
+    final items = checkout.cart.entries
+        .map((e) => OrderItem(id: e.key, quantity: e.value))
+        .toList();
+    final prefs = Provider.of<ShopperProfileProvider>(ctx, listen: false)
+        .preferences
+        .toWellbeingJson();
+    showModalBottomSheet<void>(
+      context: ctx,
+      isScrollControlled: true,
+      builder: (sheetCtx) => SplitBillSheet(
+        api: checkout.api,
+        lang: lang,
+        items: items,
+        wellbeingPreferences: prefs,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Listen (not just read) so an open cart sheet re-localises if the shopper
@@ -1770,6 +2214,12 @@ class _CartSheet extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
+                if (checkout.cartMandate?.passport != null) ...[
+                  const SizedBox(height: 8),
+                  TransactionPassportCard(passport: checkout.cartMandate!.passport!, lang: lang),
+                ],
+                const SizedBox(height: 8),
+                TakeHomeCard(lang: lang, load: checkout.loadTakeHome),
                 if (checkout.allowance != null) ...[
                   const SizedBox(height: 4),
                   Text(
@@ -1821,6 +2271,18 @@ class _CartSheet extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
               ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  key: const Key('split-bill'),
+                  icon: const Icon(Icons.groups_2_outlined, size: 18),
+                  label: Text(t(context, 'split.open')),
+                  onPressed: checkout.busy || checkout.hasPendingOrder
+                      ? null
+                      : () => _openSplitBill(ctx, checkout),
+                ),
+              ),
+              const SizedBox(height: 4),
               Row(
                 children: [
                   Expanded(
@@ -1941,151 +2403,3 @@ class _CartSheet extends StatelessWidget {
   }
 }
 
-class _ShopperPreferencesDialog extends StatefulWidget {
-  final ShopperPreferences initialPreferences;
-
-  const _ShopperPreferencesDialog({required this.initialPreferences});
-
-  @override
-  State<_ShopperPreferencesDialog> createState() =>
-      _ShopperPreferencesDialogState();
-}
-
-class _ShopperPreferencesDialogState extends State<_ShopperPreferencesDialog> {
-  late final TextEditingController _budgetController;
-  late final Set<String> _dietary;
-  late final Set<String> _allergens;
-  String? _validationError;
-
-  @override
-  void initState() {
-    super.initState();
-    _dietary = {...widget.initialPreferences.dietary};
-    _allergens = {...widget.initialPreferences.allergens};
-    final budget = widget.initialPreferences.maxBudgetMinor;
-    _budgetController = TextEditingController(
-      text: budget == null ? '' : (budget / 100).toStringAsFixed(2),
-    );
-  }
-
-  @override
-  void dispose() {
-    _budgetController.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final value = _budgetController.text.trim().replaceAll(',', '.');
-    int? budgetMinor;
-    if (value.isNotEmpty) {
-      final amount = double.tryParse(value);
-      if (amount == null || amount < 1 || amount > 100) {
-        setState(() {
-          _validationError = t(context, 'profile.budgetError');
-        });
-        return;
-      }
-      budgetMinor = (amount * 100).round();
-    }
-    Navigator.of(context).pop(
-      ShopperPreferences(
-        dietary: _dietary,
-        allergens: _allergens,
-        maxBudgetMinor: budgetMinor,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Listen (not just read) so the dialog re-localises on a language switch.
-    final lang = Provider.of<LocaleProvider>(context).languageCode;
-    return AlertDialog(
-      title: Text(t(context, 'profile.dialogTitle')),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              t(context, 'profile.dietary'),
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            ...ShopperPreferences.dietaryOptions.keys.map(
-              (key) => CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(ShopperPreferences.dietaryLabel(lang, key)),
-                value: _dietary.contains(key),
-                onChanged: (selected) {
-                  setState(() {
-                    if (selected ?? false) {
-                      _dietary.add(key);
-                    } else {
-                      _dietary.remove(key);
-                    }
-                  });
-                },
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              t(context, 'profile.allergenTitle'),
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-            ...ShopperPreferences.allergenOptions.keys.map(
-              (key) => CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(ShopperPreferences.allergenLabel(lang, key)),
-                value: _allergens.contains(key),
-                onChanged: (selected) {
-                  setState(() {
-                    if (selected ?? false) {
-                      _allergens.add(key);
-                    } else {
-                      _allergens.remove(key);
-                    }
-                  });
-                },
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _budgetController,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: t(context, 'profile.budgetLabel'),
-                hintText: t(context, 'profile.budgetHint'),
-                prefixText: '€ ',
-                border: const OutlineInputBorder(),
-              ),
-            ),
-            if (_validationError != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _validationError!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Text(
-              t(context, 'profile.disclaimer'),
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text(t(context, 'action.cancel')),
-        ),
-        FilledButton(
-          onPressed: _save,
-          child: Text(t(context, 'action.saveProfile')),
-        ),
-      ],
-    );
-  }
-}

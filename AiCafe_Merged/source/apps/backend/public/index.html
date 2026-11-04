@@ -7,7 +7,7 @@
 <meta name="description" content="An AI shopping agent prepares your cart. You approve the payment on PayPal. The agent never touches your money.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%E2%98%95%3C/text%3E%3C/svg%3E">
 <style>
-:root{--bg:#f7f3ee;--card:#fff;--ink:#241b14;--mut:#7a6c5f;--line:#e6ddd2;--brand:#0070ba;--brand-ink:#fff;--ok:#1f7a45;--warn:#a65b00;--bad:#b3261e;--r:14px}
+:root{--bg:#f7f3ee;--card:#fff;--ink:#241b14;--mut:#7a6c5f;--line:#e6ddd2;--brand:#C93D24;--brand-ink:#fff;--ok:#1f7a45;--warn:#a65b00;--bad:#b3261e;--r:14px}
 @media(prefers-color-scheme:dark){:root{--bg:#17120e;--card:#221b15;--ink:#f3ebe2;--mut:#a89888;--line:#3a2f26;--ok:#5fd18d;--warn:#f0b05a;--bad:#ff8a80}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -131,7 +131,7 @@ button.loading{opacity:.7;cursor:progress}
 .pickup-day-label{font-size:12.5px;color:var(--mut);margin:8px 0 4px;font-weight:600}
 .pickup-slot{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:10px;padding:9px 12px;margin:4px 0;cursor:pointer}
 .pickup-slot:disabled{opacity:.55;cursor:not-allowed}
-.pickup-slot.chosen{border-color:var(--brand);background:rgba(0,112,186,.08)}
+.pickup-slot.chosen{border-color:var(--brand);background:var(--brand-soft)}
 .pickup-slot .pu-window{font-weight:600}
 .pickup-slot .pu-cap{font-size:12px;color:var(--mut);white-space:nowrap}
 .pickup .pbox.held{border-color:var(--warn)}
@@ -144,12 +144,21 @@ button.loading{opacity:.7;cursor:progress}
 .modal .row.gap{gap:8px}
 .split-active{margin:8px 0;padding:9px 12px;border-radius:10px;border:1px solid var(--warn);font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 @media(max-width:480px){.receipt{padding:12px}.prod .emo{font-size:22px}}
+.passport{margin-top:12px;border:1px solid var(--line);border-radius:14px;padding:10px 12px;background:var(--bg)}
+.passport summary{cursor:pointer;display:flex;gap:8px;align-items:center;justify-content:space-between}
+.pp-h{font-weight:600;margin:10px 0 4px}.pp-list{margin:4px 0;padding-left:18px}.pp-list li.ok::marker{color:var(--ok)}.pp-list li.bad{color:var(--bad)}
+.pp-lines{list-style:none;margin:6px 0;padding:0}.pp-lines li{display:flex;justify-content:space-between;gap:10px;font-size:.92em;border-top:1px dashed var(--line);padding:3px 0}
+.pp-bar{height:8px;border-radius:99px;background:var(--line);overflow:hidden;margin:6px 0}.pp-bar i{display:block;height:100%;background:var(--ok)}.pp-bar.over i{background:var(--bad)}
+.pp-flow{list-style:none;margin:4px 0;padding:0}.pp-flow li{display:flex;gap:8px;padding:2px 0}.pp-flow li.done{color:var(--ok)}.pp-flow li.pending{color:var(--mut)}.pp-flow li.blocked{color:var(--bad)}.pp-flow .ic{width:18px;text-align:center}
+.pp-note{font-size:12px;margin-top:4px}
 </style>
+<link rel="stylesheet" href="/tokens.css">
 <link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/app-shell.css">
 </head>
 <body>
 <header>
-  <h1>☕ AI Café</h1>
+  <h1><span class="hdr-coffee" aria-hidden="true">☕</span> AI Café</h1>
   <span class="tagline" data-i18n="tagline">Shop by intent. Review every item. Approve every payment.</span>
   <span id="b-ai" class="pill">AI …</span>
   <span id="b-pp" class="pill">PayPal …</span>
@@ -159,10 +168,42 @@ button.loading{opacity:.7;cursor:progress}
       <option value="tr">Türkçe</option>
     </select>
   </label>
-  <a href="/dashboard.html">Agent Control Center →</a>
+  <a href="/dashboard.html">Agent Control Center →</a> · <a href="/merchant.html">For cafés →</a>
 </header>
+<nav class="tabbar" role="tablist" aria-label="AI Café">
+  <button type="button" role="tab" id="tab-home" data-go="home" aria-selected="true"><span class="ti" aria-hidden="true">🏠</span><span data-i18n="nav.home">Home</span></button>
+  <button type="button" role="tab" id="tab-barista" data-go="barista" aria-selected="false"><span class="ti" aria-hidden="true">💬</span><span data-i18n="nav.barista">Barista</span></button>
+  <button type="button" role="tab" id="tab-cart" data-go="cart" aria-selected="false"><span class="ti" aria-hidden="true">🛒</span><span data-i18n="nav.cart">Cart</span><span class="badge" id="cart-badge" hidden>0</span></button>
+  <button type="button" role="tab" id="tab-profile" data-go="profile" aria-selected="false"><span class="ti" aria-hidden="true">👤</span><span data-i18n="nav.profile">Profile</span></button>
+</nav>
 <div id="banner" hidden></div>
-<main>
+<main class="shell">
+  <div class="tab-panel" id="panel-home" data-panel="home" role="tabpanel" aria-labelledby="tab-home">
+    <section class="hero" aria-label="AI Café">
+      <p class="eyebrow" data-i18n="home.eyebrow">Trust-first agentic commerce</p>
+      <h2 class="hero-title" data-i18n="home.title">AI prepares the order. You control the money.</h2>
+      <p class="hero-lead" data-i18n="home.lead">AI Café is a trust-first agentic commerce platform for cafés. AI prepares the order, users control spending, and PayPal securely completes the payment.</p>
+      <div class="hero-cta">
+        <button class="primary" type="button" data-go="barista" data-i18n="home.cta">Start ordering</button>
+        <button type="button" data-go="#how-it-works" data-i18n="home.cta2">See how it works</button>
+      </div>
+    </section>
+    <section id="how-it-works" aria-label="How it works">
+      <h2 data-i18n="home.how.title">How it works</h2>
+      <div class="how3">
+        <div class="how-card c-mint"><span class="how-n">1</span><b data-i18n="home.how1.t">AI Barista</b><span data-i18n="home.how1.d">Tell Coco your taste, diet and budget. It prepares a cart from the real menu.</span></div>
+        <div class="how-card c-lavender"><span class="how-n">2</span><b data-i18n="home.how2.t">Spending Mandate</b><span data-i18n="home.how2.d">Your limit is enforced on the server. The AI cannot raise it.</span></div>
+        <div class="how-card c-sky"><span class="how-n">3</span><b data-i18n="home.how3.t">PayPal Checkout</b><span data-i18n="home.how3.d">You approve on PayPal (Sandbox). The server verifies the result.</span></div>
+      </div>
+    </section>
+    <section aria-label="Menu">
+      <h2 data-i18n="menu.heading">Menu</h2>
+    <div class="cats" id="cats"></div>
+    <div id="catalog"></div>
+  </section>
+
+  </div>
+  <div class="tab-panel" id="panel-barista" data-panel="barista" role="tabpanel" aria-labelledby="tab-barista" hidden>
     <section aria-label="AI shopping assistant">
       <h2><span id="coco-badge" class="coco-badge" aria-hidden="true"></span> <span data-i18n="ask.heading">Ask the café agent</span></h2>
     <div id="log" role="log" aria-live="polite"></div>
@@ -171,23 +212,22 @@ button.loading{opacity:.7;cursor:progress}
       <input id="msg" type="text" maxlength="500" placeholder="e.g. A vegetarian breakfast for two under €20" autocomplete="off" aria-label="Your request" data-i18n="chat.placeholder">
       <button class="primary" id="send" type="submit" data-i18n="send">Send</button>
     </form>
-    <div class="prefs">
-      <span data-i18n="profile.label">Shopper profile:</span>
-      <select id="diet" multiple aria-label="Dietary preferences">
-        <option value="" data-i18n-option="diet.any">any diet</option><option value="vegetarian" data-i18n-option="diet.vegetarian">vegetarian</option><option value="vegan" data-i18n-option="diet.vegan">vegan</option><option value="gluten-free" data-i18n-option="diet.gluten-free">gluten-free</option>
-      </select>
-      <input id="budget" type="number" min="1" max="100" step="1" placeholder="max budget €" aria-label="Maximum budget in euros" data-i18n="budget.placeholder">
-      <small id="profile-status" class="profile-status" role="status" aria-live="polite"></small>
-      <small id="wb-sample" class="mut" style="display:block;margin-top:2px">Diet and allergen decisions use merchant-provided information; unknown information blocks checkout.</small>
-      <span class="allergen" data-i18n="prefs.allergenLabel">Allergen concerns</span>
-      <span id="allergen-chips" class="tags" aria-label="Allergen concerns"></span>
-    </div>
+    </section>
+<section aria-label="Demo scenarios">
+      <h2 data-i18n="scenario.heading">Try a scenario</h2>
+      <p class="mut" style="margin:0 0 10px;font-size:13px" data-i18n="scenario.note">One click fills the cart. The decision you see comes from the server-side policy engine, not from this page.</p>
+    <div id="scenarios"></div>
   </section>
+    
+    <button type="button" class="cart-pill primary" id="cart-pill" data-go="cart" hidden></button>
+  </div>
+  <div class="tab-panel" id="panel-cart" data-panel="cart" role="tabpanel" aria-labelledby="tab-cart" hidden>
     <section aria-label="Cart">
       <h2 data-i18n="cart.heading">Your cart</h2>
       <div id="cart"></div>
       <div id="policy" aria-live="polite"></div>
       <div id="policy-note"></div>
+      <div id="takehome"></div>
       <div id="cart-explain" class="explain" hidden></div>
       <div id="allergy-note" class="allergy" hidden></div>
       <div id="wellbeing" class="wellbeing" hidden></div>
@@ -207,16 +247,40 @@ button.loading{opacity:.7;cursor:progress}
       <p class="mut" id="payNote" style="font-size:12.5px;margin:8px 0 0" data-i18n="payNote">The agent can prepare a cart. Only you can authorize payment, in PayPal sandbox.</p>
     <div id="receipt" class="receipt" hidden></div>
   </section>
-    <section style="grid-column:1/-1" aria-label="Demo scenarios">
-      <h2 data-i18n="scenario.heading">Try a scenario</h2>
-      <p class="mut" style="margin:0 0 10px;font-size:13px" data-i18n="scenario.note">One click fills the cart. The decision you see comes from the server-side policy engine, not from this page.</p>
-    <div id="scenarios"></div>
-  </section>
-    <section style="grid-column:1/-1" aria-label="Menu">
-      <h2 data-i18n="menu.heading">Menu</h2>
-    <div class="cats" id="cats"></div>
-    <div id="catalog"></div>
-  </section>
+    
+  </div>
+  <div class="tab-panel" id="panel-profile" data-panel="profile" role="tabpanel" aria-labelledby="tab-profile" hidden>
+    <section aria-label="Taste and budget">
+      <h2 data-i18n="profile.prefs.title">Taste, diet &amp; budget</h2>
+      <div class="prefs">
+      <span data-i18n="profile.label">Shopper profile:</span>
+      <select id="diet" multiple aria-label="Dietary preferences">
+        <option value="" data-i18n-option="diet.any">any diet</option><option value="vegetarian" data-i18n-option="diet.vegetarian">vegetarian</option><option value="vegan" data-i18n-option="diet.vegan">vegan</option><option value="gluten-free" data-i18n-option="diet.gluten-free">gluten-free</option>
+      </select>
+      <input id="budget" type="number" min="1" max="100" step="1" placeholder="max budget €" aria-label="Maximum budget in euros" data-i18n="budget.placeholder">
+      <small id="profile-status" class="profile-status" role="status" aria-live="polite"></small>
+      <small id="wb-sample" class="mut" style="display:block;margin-top:2px">Diet and allergen decisions use merchant-provided information; unknown information blocks checkout.</small>
+      <span class="allergen" data-i18n="prefs.allergenLabel">Allergen concerns</span>
+      <span id="allergen-chips" class="tags" aria-label="Allergen concerns"></span>
+    </div>
+
+    </section>
+    <section aria-label="Order history">
+      <h2 data-i18n="profile.history.title">Recent orders (this browser)</h2>
+      <ul id="order-history" class="history"></ul>
+      <p class="mut" id="order-history-empty" data-i18n="profile.history.empty">No orders yet. Paid sandbox orders appear here.</p>
+    </section>
+    <section aria-label="PayPal guide">
+      <h2 data-i18n="profile.paypal.title">How PayPal works here</h2>
+      <ol class="guide">
+        <li data-i18n="profile.paypal.1">You press “Review &amp; pay”. Nothing is charged yet.</li>
+        <li data-i18n="profile.paypal.2">You are sent to the PayPal Sandbox page and sign in with a sandbox buyer account.</li>
+        <li data-i18n="profile.paypal.3">You approve. The server then verifies the result with PayPal.</li>
+        <li data-i18n="profile.paypal.4">Your receipt shows a signed Cart Mandate you can verify.</li>
+      </ol>
+      <p class="mut"><a href="/merchant.html" data-i18n="profile.merchant">I run a café: how do I connect PayPal? →</a> · <a href="/dashboard.html" data-i18n="profile.control">Agent Control Center →</a></p>
+    </section>
+  </div>
 </main>
 <footer data-i18n="footer">Hackathon prototype · PayPal sandbox only · no real money moves. Dietary labels are informational, not an allergen guarantee.</footer>
 <div id="onboarding" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="onb-title">
@@ -246,5 +310,6 @@ button.loading{opacity:.7;cursor:progress}
 <script src="/i18n.js" defer></script>
 <script src="/qr.js" defer></script>
 <script src="/app.js" defer></script>
+<script src="/app-shell.js" defer></script>
 </body>
 </html>
