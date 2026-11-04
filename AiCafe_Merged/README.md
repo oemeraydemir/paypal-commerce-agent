@@ -135,5 +135,5 @@ the current inventory (if any) are in [docs/screenshots/README.md](docs/screensh
 source/apps/backend      Node.js + TypeScript API, AI agent, MCP server, PayPal, AG Grid dashboard (public/)
 source/apps/flutter_app  Flutter Android/iOS shopper app
 openapi.json, postman/   API spec and Postman collection
-docs/                    Database, merchants, limitations; docs/archive = historical sprint reports
+docs/                    Database, merchants, limitations, evidence and judging guides
 ```

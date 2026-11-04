@@ -54,7 +54,17 @@
         --muted: #8da0b3;
         /* Lighter focus ring for the dark surface. */
         --focus: #93c5fd;
+        /* Lighter primary so primary buttons stay readable on dark panels. */
+        --primary: #4f9cf9;
       }
+      /* Toolbar / filter / export buttons: keep dark text on the bright coral
+         gradient in dark mode too (matches the light theme, WCAG AA on the fill). */
+      body.dark .grid-toolbar button {
+        background: linear-gradient(135deg, #FFA58C 0%, #F4795F 100%) !important;
+        color: #17120F !important;
+        border: 0 !important;
+      }
+      body.dark .grid-toolbar button:hover { filter: brightness(1.06); }
 
       /* Dark-mode badge colours: the light-theme greens/ambers/reds fail WCAG AA
          on the dark panel, so badge text + tints are lightened for contrast

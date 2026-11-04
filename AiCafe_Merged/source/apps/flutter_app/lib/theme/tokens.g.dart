@@ -8,7 +8,7 @@ abstract final class AcLight {
   static const Color surface = Color(0xFFFFFFFF);
   static const Color surfaceAlt = Color(0xFFFBEFE8);
   static const Color ink = Color(0xFF2B2320);
-  static const Color muted = Color(0xFF6E625B);
+  static const Color muted = Color(0xFF5C514A);
   static const Color line = Color(0xFFF1E3DA);
   static const Color coral = Color(0xFFFF8F73);
   static const Color coralStrong = Color(0xFFC93D24);

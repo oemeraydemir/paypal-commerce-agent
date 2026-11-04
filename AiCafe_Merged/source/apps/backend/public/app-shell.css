@@ -59,6 +59,19 @@ main.shell .tab-panel[hidden] { display: none; }
 /* ---- Profile ---- */
 .history { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .history li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 16px; background: var(--ac-surface-alt); }
+.history-item { cursor: pointer; transition: background .15s ease; }
+.history-item:hover { background: var(--ac-surface); }
+.history-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.invoice { margin-top: 12px; padding: 12px; border-radius: 14px; background: var(--ac-surface); border: 1px dashed var(--ac-line); }
+.invoice h4 { margin: 0 0 8px; font-size: 14px; }
+.invoice-rows { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.invoice-rows li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.invoice-kv { display: grid; gap: 2px; margin-bottom: 10px; font-size: 12.5px; color: var(--ac-muted); }
+@media print {
+  body * { visibility: hidden !important; }
+  #panel-cart, #panel-cart *, #receipt, #receipt * { visibility: visible !important; }
+  #receipt { position: absolute; left: 0; top: 0; width: 100%; box-shadow: none; border: 0; }
+}
 .guide { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
 
 /* ---- AI Transaction Passport: who does what ---- */
@@ -72,6 +85,30 @@ main.shell .tab-panel[hidden] { display: none; }
 .pp-bar i { border-radius: 99px; }
 .pp-bar .pp-mark { position: absolute; top: -4px; bottom: -4px; width: 3px; border-radius: 2px; background: var(--ink); }
 .pp-lock { display: flex; gap: 8px; align-items: center; margin: 8px 0; padding: 10px 12px; border-radius: 16px; background: var(--ac-mint); color: var(--ac-mint-ink); font-weight: 700; font-size: 13px; }
+
+/* ---- Dark mode: guarantee readable text/numbers on every surface ----
+   The token palette flips to dark surfaces + light ink automatically; these
+   overrides fix components that otherwise keep a light/dark mismatch. */
+@media (prefers-color-scheme: dark) {
+  /* step number circles on the dark pastel cards */
+  .how-n { background: rgba(0,0,0,.45); color: var(--ac-ink); }
+  /* catalog category chips: solid adapted surfaces, never dark-on-dark */
+  .cats button { background: var(--ac-surface-alt); color: var(--ac-ink); border-color: var(--ac-line); }
+  .cats button:hover { border-color: var(--ac-coral); }
+  .cats .on { background: var(--ac-coral); color: var(--ac-canvas); border-color: var(--ac-coral); }
+  .chips button { background: var(--ac-surface-alt); color: var(--ac-ink); border-color: var(--ac-line); }
+  .chips button:hover { border-color: var(--ac-coral); }
+  .chips button.on { background: var(--ac-coral); color: var(--ac-canvas); border-color: var(--ac-coral); }
+  /* non-selected category chips keep a quiet-but-readable surface */
+  #cats button:not(.on), .cats button:not(.on) { background: var(--ac-surface-alt); color: var(--ac-ink); }
+  /* hero secondary CTA: darken the translucent fill so light text clears AA */
+  .hero-cta button:not(.primary) { background: rgba(0,0,0,.6); color: var(--ac-ink); }
+  /* persistent nav labels + tagline must stay readable on the dark glass bar */
+  .tabbar button { color: var(--ac-ink); }
+  .tabbar button[aria-selected="true"] { background: var(--ac-coral-soft); color: var(--ac-ink); }
+  header .tagline { color: var(--ac-ink); opacity: .82; }
+  header .lang { color: var(--ac-ink); }
+}
 
 /* ---- compact header on phones: the links live in Profile, the tagline lives in Home ---- */
 @media (max-width: 819px) {

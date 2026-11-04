@@ -1,8 +1,20 @@
 import { CatalogService } from '../catalog/service';
 import { parseBudgetMinor, parsePeople } from './fallback-planner';
 import { meetsDietaryPreferences, type ShoppingPreferences } from './tool-executor';
+import { explainChoiceLine } from './explainer';
+import { currentBusiness } from '../config/business-config';
 
-export interface CatalogChoice { productId: string; name: string; quantity: number; totalMinor: number; }
+export interface CatalogChoice {
+  productId: string;
+  name: string;
+  quantity: number;
+  totalMinor: number;
+  /** Real catalog metadata carried through so explanations stay grounded. */
+  description?: string;
+  priceMinor?: number;
+  currency?: string;
+  dietary?: string[];
+}
 export interface CatalogDiscovery {
   category: string;
   quantity: number;
@@ -65,7 +77,7 @@ export function buildCatalogDiscovery(message:string,profile:ShoppingPreferences
     .filter(p=>meetsDietaryPreferences(p,dietary))
     .filter(p=>maxBudgetMinor===undefined||p.priceMinor*quantity<=maxBudgetMinor)
     .slice(0,4)
-    .map(p=>({productId:p.id,name:p.name,quantity,totalMinor:p.priceMinor*quantity}));
+    .map(p=>({productId:p.id,name:p.name,quantity,totalMinor:p.priceMinor*quantity,description:p.description,priceMinor:p.priceMinor,currency:p.currency,dietary:p.dietary}));
   if(options.length<2) return null;
   return {category,quantity,language:languageFor(message),effectivePreferences,options};
 }
@@ -78,6 +90,8 @@ export function formatDiscoveryReply(d:CatalogDiscovery):string {
   const intro=tr
     ? `Profilinize ve isteğinize uyan ${d.options.length} menü seçeneği buldum. Birini seçin; sepeti hazırlarken bütçe ve satın alma politikası yeniden kontrol edilecek.`
     : `I found ${d.options.length} menu options that match your request and shopper profile. Choose one; I will re-check the budget and purchase policy when preparing the cart.`;
-  const rows=d.options.map((o,i)=>`${i+1}. ${o.quantity>1?`${o.quantity}× `:''}${o.name}`);
+  const rows=d.options.map((o,i)=>
+    explainChoiceLine(i+1,o,{budgetMinor:d.effectivePreferences.maxBudgetMinor,currency:currentBusiness.currency,locale:currentBusiness.locale,language:d.language})
+  );
   return `${intro}\n\n${tr?'Seçenekler:':'Options:'}\n${rows.join('\n')}`;
 }

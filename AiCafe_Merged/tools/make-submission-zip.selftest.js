@@ -24,11 +24,21 @@ function project(extra) {
   extra(w);
   return dir;
 }
+function listZip(out) {
+  if (process.platform !== 'win32') {
+    return spawnSync('unzip', ['-Z1', out], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean);
+  }
+  // Windows 10+ ships bsdtar as System32\tar.exe (the same tool the builder uses). List the archive contents.
+  const bsdtar = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe');
+  const bin = fs.existsSync(bsdtar) ? bsdtar : 'tar';
+  const rr = spawnSync(bin, ['-tf', out], { encoding: 'utf8' });
+  return rr.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+}
+
 function run(dir) {
   const out = path.join(dir, 'out.zip');
   const r = spawnSync(process.execPath, [BUILDER, '--root', dir, '--out', out], { encoding: 'utf8' });
-  const names = fs.existsSync(out) && process.platform !== 'win32'
-    ? spawnSync('unzip', ['-Z1', out], { encoding: 'utf8' }).stdout.split('\n').filter(Boolean) : [];
+  const names = fs.existsSync(out) ? listZip(out) : [];
   return { code: r.status, text: (r.stdout || '') + (r.stderr || ''), names, out };
 }
 function check(name, ok, detail) { results.push([ok, name]); if (!ok) { failed++; console.log(`  FAIL ${name}${detail ? ' :: ' + detail : ''}`); } else console.log(`  ok   ${name}`); }

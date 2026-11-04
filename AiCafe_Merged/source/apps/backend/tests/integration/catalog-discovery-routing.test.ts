@@ -30,6 +30,11 @@ describe('catalog discovery routing', () => {
     expect(res.body.preparedCart).toBeNull();
     expect(res.body.checkoutReady).toBe(false);
     expect(mockChat).not.toHaveBeenCalled();
+    // every option is listed WITH its own grounded explanation + server-price budget fit
+    expect(res.body.response).toMatch(/Within your .* budget\./);
+    const numbered = (res.body.response.match(/^\d+\. /gm) || []).length;
+    expect(numbered).toBeGreaterThanOrEqual(2);
+    expect(res.body.response).not.toMatch(/allergen-free|guaranteed safe|safe for allergies/i);
   });
 
   test('requests without the discovery intent preserve the normal AI path', async () => {

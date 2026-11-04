@@ -30,11 +30,11 @@ describe('design tokens', () => {
   const { css, dart, tokens } = gen.render();
 
   it('committed tokens.css is in sync with design/tokens.json (run `npm run tokens`)', () => {
-    expect(fs.readFileSync(gen.OUT_CSS, 'utf8')).toBe(css);
+    expect(fs.readFileSync(gen.OUT_CSS, 'utf8').replace(/\r\n/g, '\n')).toBe(css.replace(/\r\n/g, '\n'));
   });
 
   it('committed Flutter tokens.g.dart is in sync with design/tokens.json (run `npm run tokens`)', () => {
-    expect(fs.readFileSync(gen.OUT_DART, 'utf8')).toBe(dart);
+    expect(fs.readFileSync(gen.OUT_DART, 'utf8').replace(/\r\n/g, '\n')).toBe(dart.replace(/\r\n/g, '\n'));
   });
 
   it('palette is the pastel reference (coral / mint / peach / lavender / sky), not the old blue', () => {

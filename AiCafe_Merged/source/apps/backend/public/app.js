@@ -45,6 +45,9 @@
         return;
       }
       if (fence) return;
+      // An indented line just continues the previous option's explanation
+      // (e.g. "   Mozzarella, ..."); it must not end the numbered Options list.
+      if (list && source !== line && !/^\d/.test(line)) return;
       var parts = cells(line);
       if (parts.length >= 2 && /^(?:options?|seçenek(?:ler)?)$/i.test(clean(parts[0]))) {
         table = true; list = false; return;
@@ -1006,6 +1009,8 @@
     };
     wrap.appendChild(btn); wrap.appendChild(out);
     wrap.appendChild(qrBlock(orderId));
+    // Show the Cart Mandate verdict immediately; the button still allows re-verifying.
+    if (typeof api === 'function') { try { btn.onclick(); } catch (e) { /* graceful */ } }
     return wrap;
   }
   // Receipt QR: scans to a public page that checks the signed Cart Mandate (/verify.html#<orderId>.<signature>).
@@ -1290,6 +1295,31 @@
     wrap.appendChild(out);
     return wrap;
   }
+  // E-invoice: itemised, printable record that carries the Cart Mandate QR so a
+  // third party can verify the signed mandate without trusting this page.
+  function invoiceBlock(orderId, d) {
+    var wrap = el('div', 'invoice');
+    wrap.appendChild(el('h4', '', i18nT('invoice.title')));
+    var rows = el('ul', 'invoice-rows');
+    (d.items || []).forEach(function (it) {
+      var li = el('li', '');
+      li.appendChild(el('span', '', it.qty + '× ' + it.name));
+      li.appendChild(el('span', '', it.price || ''));
+      rows.appendChild(li);
+    });
+    wrap.appendChild(rows);
+    var kv = el('div', 'invoice-kv');
+    kv.appendChild(el('p', '', i18nT('receipt.total') + ' ' + (d.totalText || '')));
+    kv.appendChild(el('p', '', i18nT('invoice.orderRef') + ' ' + (d.orderId || '—')));
+    kv.appendChild(el('p', '', i18nT('receipt.date') + ' ' + fmtDate(new Date())));
+    if (d.maskedId) kv.appendChild(el('p', '', i18nT('receipt.captureId') + ' ' + d.maskedId));
+    wrap.appendChild(kv);
+    wrap.appendChild(qrBlock(orderId));
+    var printBtn = el('button', '', i18nT('invoice.print')); printBtn.type = 'button';
+    printBtn.onclick = function () { try { window.print(); } catch (e) { /* graceful */ } };
+    wrap.appendChild(printBtn);
+    return wrap;
+  }
   function renderReceipt(d) {
     var box = $('receipt'); box.textContent = ''; box.hidden = false;
     box.appendChild(el('h3', '', i18nT('receipt.title')));
@@ -1304,6 +1334,7 @@
     }
     box.appendChild(el('div', 'rtotal', i18nT('receipt.total') + d.totalText));
     box.appendChild(el('div', 'rmask', i18nT('receipt.captureId') + d.maskedId));
+    if (d.orderId && d.items && d.items.length) { try { box.appendChild(invoiceBlock(d.orderId, d)); } catch (e) { /* optional */ } }
     box.appendChild(el('div', 'mut', i18nT('receipt.date') + fmtDate(new Date())));
     var steps = [i18nT('receipt.step.cart'), i18nT('receipt.step.policy') + ' — ' + decisionLabel(d.decision), i18nT('receipt.step.paypal'), i18nT('receipt.step.captured')];
     var ol = el('ol', 'rsteps');
@@ -1330,7 +1361,7 @@
       try {
         var histItems = (d.items || []).map(function (it) { return { qty: it.qty, name: it.name }; });
         window.dispatchEvent(new CustomEvent('aicafe:receipt', {
-          detail: { at: Date.now(), orderId: d.orderId, totalText: d.totalText || '', items: histItems }
+          detail: { at: Date.now(), orderId: d.orderId, totalText: d.totalText || '', maskedId: d.maskedId || '', decision: d.decision, status: d.status || 'COMPLETED', items: histItems }
         }));
       } catch (e) { /* history is best-effort */ }
     }
@@ -1417,10 +1448,36 @@
   }
 
   // ---- Wellbeing check (server-authoritative) ------------------------------------------------
+  // The server evaluates each selected sensitivity against merchant-provided menu
+  // data. The UI never collapses that into "safe / suitable": ingredient facts and
+  // cross-contact are shown separately, and missing data stays visibly missing.
   var wbTimer = null, wbSeq = 0;
   function scheduleWellbeing() { clearTimeout(wbTimer); wbTimer = setTimeout(refreshWellbeing, 250); }
   function wbDiets() { return prefs().dietary; }
-  function wbLabel(d) { return i18nT('wb.diet.' + d); }
+  function i18nF(k, vars) {
+    var s = i18nT(k);
+    Object.keys(vars || {}).forEach(function (name) { s = s.split('{' + name + '}').join(vars[name]); });
+    return s;
+  }
+  function wbRestrictionLabel(restriction) {
+    var key = String(restriction).split(':').pop() || restriction;
+    var label = i18nT('wb.r.' + key);
+    return label === 'wb.r.' + key ? key : label;
+  }
+  // Older deployments only returned conflicts/missing. Reconstruct per-restriction
+  // facts from them so the raw "UNKNOWN / Missing information: ..." copy can never
+  // leak into the interface again.
+  function wbFacts(it) {
+    if (it.facts && it.facts.length) return it.facts;
+    var out = [];
+    (it.conflicts || []).forEach(function (c) {
+      out.push({ restriction: c.restriction, status: 'CONFLICT', ingredients: c.ingredients || [] });
+    });
+    (it.missing || []).forEach(function (m) {
+      out.push({ restriction: m, status: 'UNKNOWN', ingredients: [] });
+    });
+    return out;
+  }
   function refreshWellbeing() {
     var box = $('wellbeing'); if (!box) return;
     var ids = Object.keys(cart), dietary = wbDiets(), allergens = loadAllergens();
@@ -1433,20 +1490,96 @@
   function renderWellbeing(r, dietary, allergens, failed) {
     var box = $('wellbeing'); if (!box) return; // page already torn down
     box.textContent = ''; box.hidden = false;
-    var h = el('h4', ''); h.appendChild(el('span', '', i18nT('wb.title'))); h.appendChild(el('span', 'wb-badge', i18nT('wb.badge'))); box.appendChild(h);
-    if (r) {
-        var ul = el('ul', '');
-        r.items.forEach(function (it) {
-          var li = el('li', ''); li.appendChild(el('span', '', it.quantity + ' × ' + it.name));
-          li.appendChild(el('span', '', it.status));
-          it.conflicts.forEach(function (c) { li.appendChild(el('small', 'wb-no', c.restriction + ': ' + (c.ingredients.join(', ') || 'ingredient conflict'))); });
-          it.missing.forEach(function (m) { li.appendChild(el('small', 'wb-no', 'Missing information: ' + m)); });
-          ul.appendChild(li);
-        });
-        box.appendChild(ul);
-    } else if (failed) { box.appendChild(el('p', 'wb-no', 'Wellbeing check unavailable. Checkout is blocked until the server can evaluate this cart.')); }
-    if (r && r.alternatives && r.alternatives.length) box.appendChild(el('p', '', 'Alternatives with no known conflict: ' + r.alternatives.map(function (a) { return a.name; }).join(', ')));
-    box.appendChild(el('p', '', r ? r.notice : i18nT('wb.notice')));
+    var h = el('h4', '');
+    h.appendChild(el('span', '', i18nT('wb.title')));
+    h.appendChild(el('span', 'wb-badge', i18nT('wb.badge')));
+    box.appendChild(h);
+
+    // 1) The sensitivities the shopper actually selected (never inferred).
+    var checkedKeys = (r && r.checked && r.checked.length)
+      ? r.checked.map(function (c) { return c.key; })
+      : [].concat(dietary || [], allergens || []);
+    var checkedNames = checkedKeys.map(wbRestrictionLabel).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    var checked = el('div', 'wb-checked');
+    checked.appendChild(el('b', '', i18nT('wb.checked') + ': '));
+    checked.appendChild(document.createTextNode(checkedNames.join(', ')));
+    checked.appendChild(el('small', '', i18nT('wb.checkedHint')));
+    box.appendChild(checked);
+
+    if (!r) {
+      box.appendChild(el('p', 'wb-no', i18nT('wb.unavailable')));
+      if (failed) box.appendChild(el('p', 'wb-note', i18nT('wb.unavailable.detail')));
+      return;
+    }
+    if (r.status && r.status !== 'NO_KNOWN_CONFLICT') box.appendChild(el('p', 'wb-headline', i18nT('wb.heading')));
+
+    // 2) One result block per product, with one line per checked sensitivity.
+    var list = el('ul', 'wb-items');
+    (r.items || []).forEach(function (it) {
+      var li = el('li', 'wb-item');
+      var state = it.status === 'CONFIRMED_CONFLICT' ? 'conflict' : it.status === 'UNKNOWN' ? 'unknown' : 'clear';
+      var head = el('div', 'wb-item-head');
+      head.appendChild(el('span', 'wb-item-name', it.quantity + ' × ' + it.name));
+      head.appendChild(el('span', 'wb-state wb-state-' + state, i18nT('wb.state.' + state)));
+      li.appendChild(head);
+
+      wbFacts(it).forEach(function (f) {
+        var label = wbRestrictionLabel(f.restriction);
+        var text;
+        if (f.status === 'CONFLICT') {
+          text = (f.ingredients && f.ingredients.length)
+            ? i18nF('wb.fact.conflict', { r: label, list: f.ingredients.join(', ') })
+            : i18nF('wb.fact.conflict.noList', { r: label });
+        } else if (f.status === 'UNKNOWN') {
+          text = i18nF('wb.fact.unknown', { r: label });
+        } else {
+          text = i18nF('wb.fact.clear', { r: label });
+        }
+        li.appendChild(el('div', 'wb-fact wb-fact-' + String(f.status).toLowerCase(), text));
+      });
+      // Cross-contact is deliberately a separate line: no merchant data = no claim.
+      li.appendChild(el('div', 'wb-cross', i18nT('wb.crossContact')));
+
+      // 3) Safe next steps — rendered ONLY when the action really works.
+      var actions = el('div', 'wb-actions');
+      if (state !== 'clear') {
+        var qty = cart[it.productId] || it.quantity || 1;
+        var remove = el('button', 'wb-action', i18nT('wb.action.remove'));
+        remove.type = 'button';
+        remove.onclick = function () { setQty(it.productId, 0); };
+        actions.appendChild(remove);
+        var alt = (r.alternatives || [])[0];
+        if (alt && alt.productId && catalog[alt.productId]) {
+          var replace = el('button', 'wb-action', i18nF('wb.action.replace', { name: alt.name }));
+          replace.type = 'button';
+          replace.onclick = function () {
+            setQty(it.productId, 0);
+            setQty(alt.productId, (cart[alt.productId] || 0) + qty);
+          };
+          actions.appendChild(replace);
+        }
+      }
+      if (actions.childNodes.length) {
+        actions.insertBefore(el('span', 'wb-actions-label', i18nT('wb.next') + ': '), actions.firstChild);
+        li.appendChild(actions);
+      }
+      list.appendChild(li);
+    });
+    box.appendChild(list);
+
+    // 4) Source, data version and limits — no fabricated "last updated" date.
+    var src = el('div', 'wb-source');
+    src.appendChild(el('p', '', i18nT('wb.source')));
+    var version = (r.source && r.source.dataVersion) || r.productDataVersion;
+    if (version) src.appendChild(el('p', 'wb-version', i18nF('wb.sourceVersion', { v: String(version).slice(0, 8) })));
+    src.appendChild(el('p', '', i18nT('wb.limit')));
+    box.appendChild(src);
+
+    if (r.alternatives && r.alternatives.length) {
+      box.appendChild(el('p', 'wb-alt', i18nF('wb.alternatives', {
+        names: r.alternatives.slice(0, 4).map(function (a) { return a.name; }).join(', ')
+      })));
+    }
   }
 
   function syncWellbeing() {

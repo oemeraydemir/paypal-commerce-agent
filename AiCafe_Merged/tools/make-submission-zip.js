@@ -24,10 +24,10 @@ const STAGE = path.join(ROOT, '_submission-stage');
 
 // Top-level entries that belong in the package.
 const INCLUDE = [
-  'README.md', 'LICENSE', 'CONTRIBUTING.md', 'ARCHITECTURE.md', 'DEPLOYMENT.md', 'ENVIRONMENT.md',
+  'README.md', 'LICENSE', 'SECURITY.md', 'CONTRIBUTING.md', 'ARCHITECTURE.md', 'DEPLOYMENT.md', 'ENVIRONMENT.md',
   // Demo documents judges are pointed to from docs/JUDGING.md and docs/screenshots/README.md.
   'DEMO_CHECKLIST.md', 'DEMO_VIDEO_SCRIPT.md',
-  'openapi.json', 'render.yaml', '.gitignore', '.github', 'docs', 'postman', 'source',
+  'openapi.json', 'render.yaml', '.gitignore', '.gitattributes', '.github', 'docs', 'postman', 'source',
 ];
 // Excluded anywhere in the tree.
 const DIR_EXCLUDE = new Set([

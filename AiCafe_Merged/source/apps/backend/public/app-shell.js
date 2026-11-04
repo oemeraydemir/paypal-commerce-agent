@@ -49,16 +49,42 @@
     var list = readHistory(); ul.textContent = '';
     list.forEach(function (o) {
       var li = document.createElement('li');
+      li.className = 'history-item';
+      li.setAttribute('role', 'button');
+      li.tabIndex = 0;
+      li.setAttribute('aria-label', t('profile.history.open', 'Open receipt') + ': ' + (o.totalText || ''));
       var a = document.createElement('span'); a.textContent = new Date(o.at).toLocaleString() + ' · ' + (o.items || []).map(function (i) { return i.qty + '× ' + i.name; }).join(', ');
       var b = document.createElement('b'); b.textContent = o.totalText || '';
-      li.appendChild(a); li.appendChild(b); ul.appendChild(li);
+      li.appendChild(a); li.appendChild(b);
+      li.addEventListener('click', function () { openReceipt(o); });
+      li.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openReceipt(o); }
+      });
+      ul.appendChild(li);
     });
     if (empty) empty.hidden = list.length > 0;
+  }
+  // Open the full receipt (Cart Mandate + evidence + refund actions) for a past order.
+  // This delegates to app.js, which fetches each section server-side by order id; the shell
+  // only decides *which* order and switches to the panel where the receipt renders.
+  function openReceipt(o) {
+    if (!o || !o.orderId) return;
+    var render = window.AICAFE && window.AICAFE.renderReceipt;
+    if (!render) return;
+    render({
+      orderId: o.orderId,
+      items: o.items || [],
+      totalText: o.totalText || '',
+      maskedId: o.maskedId || '',
+      decision: o.decision,
+      status: o.status || 'COMPLETED'
+    });
+    if (window.AiCafeShell && window.AiCafeShell.go) window.AiCafeShell.go('cart');
   }
   window.addEventListener('aicafe:receipt', function (e) {
     var d = (e && e.detail) || {}; var a = readHistory();
     if (d.orderId && a.some(function (o) { return o.orderId === d.orderId; })) return;
-    a.unshift({ at: d.at || Date.now(), orderId: d.orderId || '', totalText: d.totalText || '', items: (d.items || []).map(function (i) { return { qty: i.qty, name: i.name }; }) });
+    a.unshift({ at: d.at || Date.now(), orderId: d.orderId || '', totalText: d.totalText || '', maskedId: d.maskedId || '', decision: d.decision, status: d.status || 'COMPLETED', items: (d.items || []).map(function (i) { return { qty: i.qty, name: i.name }; }) });
     writeHistory(a); renderHistory();
   });
 

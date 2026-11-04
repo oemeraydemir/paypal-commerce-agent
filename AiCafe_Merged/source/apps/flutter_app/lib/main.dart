@@ -35,12 +35,20 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // Single HTTP client shared by both providers.
-        Provider<ApiService>(
-          create: (_) => ApiService(storage: SecureSessionStorage()),
+        ChangeNotifierProvider<LocaleProvider>.value(value: localeProvider),
+        // Single HTTP client shared by both providers. Its language is kept in
+        // sync with LocaleProvider so server-derived Wellbeing Guard copy is
+        // localised (the service has no BuildContext).
+        ProxyProvider<LocaleProvider, ApiService>(
+          create: (ctx) => ApiService(storage: SecureSessionStorage())
+            ..languageCode = ctx.read<LocaleProvider>().languageCode,
+          update: (ctx, locale, previous) {
+            final api = previous ?? ApiService(storage: SecureSessionStorage());
+            api.languageCode = locale.languageCode;
+            return api;
+          },
           dispose: (_, api) => api.dispose(),
         ),
-        ChangeNotifierProvider<LocaleProvider>.value(value: localeProvider),
         ChangeNotifierProvider<ChatProvider>(
           create: (ctx) => ChatProvider(ctx.read<ApiService>()),
         ),

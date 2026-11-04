@@ -48,7 +48,15 @@ body {
   font-size: 16px;
   line-height: 1.5;
   letter-spacing: -.003em;
-  background: var(--bg) var(--mesh) fixed;
+  /* NOTE: never combine --bg and --mesh in the `background` SHORTHAND. --mesh is a
+     comma-separated multi-layer gradient; substituting it via var() into the
+     shorthand makes the whole declaration invalid, and an invalid higher-priority
+     declaration WINS and resets background to its initial value instead of falling
+     back to a lower-priority valid rule. Split into longhands so the dark surface
+     actually renders. */
+  background-color: var(--bg);
+  background-image: var(--mesh);
+  background-attachment: fixed;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -80,8 +88,16 @@ header a { font-weight: 600; text-decoration: none; padding: 8px 12px; border-ra
 header a:hover { background: var(--brand); color: #fff; }
 
 .pill { font-weight: 600; padding: 5px 11px; border-width: 1.5px; background: transparent; }
-.pill.on { background: rgba(23, 128, 63, .10); }
+/* Light mode: the "on" pill text is dark green (#176B3B) so it clears WCAG AA
+   (>= 4.5:1) against the light header glass it sits on; #1F7A55 scores 4.41. */
+.pill.on { background: rgba(23, 128, 63, .10); color: #176B3B; border-color: #176B3B; }
 .pill.off { background: rgba(214, 40, 57, .08); }
+/* Dark mode: the "on" pill sits on the translucent header glass, whose effective
+   luminance is higher than a solid card. Brighten the green so it clears WCAG AA
+   (>= 4.5:1); #5FD18D scores 4.25, #8CE0AC scores ~5.2 against that surface. */
+@media (prefers-color-scheme: dark) {
+  .pill.on { color: #8CE0AC; border-color: rgba(140, 224, 172, .6); }
+}
 
 /* ---------- Surfaces ---------- */
 main { gap: 20px; margin: 22px auto; max-width: 1180px; }
@@ -179,6 +195,104 @@ form button.primary { border-radius: 99px; padding-inline: 22px; }
 .checks .ic, .rsteps .ic { width: 20px; height: 20px; }
 .mandate-list li { padding: 5px 0; }
 .wellbeing .wb-badge { font-weight: 700; }
+
+/* ---------- Wellbeing Guard: per-product, source-aware result card ----------
+   Palette is scoped to the card and has an explicit dark variant for BOTH the
+   OS-driven storefront dark mode and the dashboard's manual `body.dark` toggle.
+   Ingredient facts, cross-contact and provenance stay visually separate so the
+   UI never reads as a single "suitable / safe" verdict. */
+.wellbeing {
+  --wb-ink: #241c17;
+  --wb-muted: #6b5b4f;
+  --wb-surface: #fffdfb;
+  --wb-line: #e6ddd2;
+  --wb-warn: #8a4b00;
+  --wb-warn-bg: #fff3df;
+  --wb-bad: #a3231c;
+  --wb-bad-bg: #fdece8;
+  --wb-ok: #176b3b;
+  --wb-accent: #C93D24;
+  background: var(--wb-surface);
+  color: var(--wb-ink);
+  border-color: var(--wb-line);
+  padding: 14px 16px;
+}
+@media (prefers-color-scheme: dark) {
+  .wellbeing {
+    --wb-ink: #F6EDE6;
+    --wb-muted: #C9B9AC;
+    --wb-surface: #221A16;
+    --wb-line: #3A2E27;
+    --wb-warn: #FFC27A;
+    --wb-warn-bg: #3A2A0F;
+    --wb-bad: #FFB4AB;
+    --wb-bad-bg: #4A211C;
+    --wb-ok: #8CE0AC;
+    --wb-accent: #FF9E85;
+  }
+}
+/* Manual dark toggle (dashboard) must not depend on the OS colour scheme. */
+body.dark .wellbeing {
+  --wb-ink: #F6EDE6;
+  --wb-muted: #C9B9AC;
+  --wb-surface: #221A16;
+  --wb-line: #3A2E27;
+  --wb-warn: #FFC27A;
+  --wb-warn-bg: #3A2A0F;
+  --wb-bad: #FFB4AB;
+  --wb-bad-bg: #4A211C;
+  --wb-ok: #8CE0AC;
+  --wb-accent: #FF9E85;
+}
+.wellbeing h4 { color: var(--wb-ink); }
+.wellbeing .wb-badge { color: var(--wb-warn); border-color: var(--wb-warn); background: var(--wb-warn-bg); }
+.wellbeing p, .wellbeing small, .wellbeing li { color: var(--wb-ink); }
+.wellbeing .wb-checked {
+  font-size: 12.5px; line-height: 1.5; padding: 8px 10px; margin: 8px 0 10px;
+  border-radius: 10px; background: var(--wb-warn-bg); color: var(--wb-ink);
+}
+.wellbeing .wb-checked small { display: block; color: var(--wb-muted); margin-top: 2px; }
+.wellbeing .wb-headline { font-weight: 700; font-size: 13px; margin: 0 0 8px !important; }
+.wellbeing ul.wb-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.wellbeing li.wb-item {
+  display: block; padding: 10px 12px; border: 1px solid var(--wb-line);
+  border-radius: 12px; background: var(--wb-surface); color: var(--wb-ink);
+}
+.wellbeing .wb-item-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  gap: 10px; flex-wrap: wrap; margin-bottom: 6px;
+}
+.wellbeing .wb-item-name { font-weight: 700; color: var(--wb-ink); }
+.wellbeing .wb-state { font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.wellbeing .wb-state-conflict { color: var(--wb-bad); }
+.wellbeing .wb-state-unknown { color: var(--wb-warn); }
+.wellbeing .wb-state-clear { color: var(--wb-ok); }
+.wellbeing .wb-fact { font-size: 12.5px; line-height: 1.5; margin: 3px 0; color: var(--wb-ink); }
+.wellbeing .wb-fact-conflict { color: var(--wb-bad); }
+.wellbeing .wb-fact-unknown { color: var(--wb-warn); }
+.wellbeing .wb-fact-no_conflict { color: var(--wb-ok); }
+.wellbeing .wb-cross {
+  font-size: 12px; margin-top: 6px; padding-top: 6px;
+  border-top: 1px dashed var(--wb-line); color: var(--wb-muted);
+}
+.wellbeing .wb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+.wellbeing .wb-actions-label { font-size: 11.5px; font-weight: 700; color: var(--wb-muted); }
+.wellbeing button.wb-action {
+  min-height: 30px; padding: 4px 10px; font-size: 11.5px; font-weight: 700;
+  border-radius: 99px; border: 1px solid var(--wb-accent);
+  background: var(--wb-surface); color: var(--wb-accent); cursor: pointer;
+}
+.wellbeing button.wb-action:hover { background: var(--wb-accent); color: var(--wb-surface); }
+.wellbeing button.wb-action:focus-visible { outline: 3px solid var(--wb-accent); outline-offset: 2px; }
+.wellbeing .wb-source {
+  margin-top: 10px; padding: 8px 10px; border-radius: 10px;
+  background: var(--wb-warn-bg); font-size: 12px; line-height: 1.5;
+}
+.wellbeing .wb-source p { color: var(--wb-ink); margin: 2px 0 !important; }
+.wellbeing .wb-version { color: var(--wb-muted) !important; font-variant-numeric: tabular-nums; }
+.wellbeing .wb-alt { margin-top: 8px !important; font-size: 12px; color: var(--wb-muted) !important; }
+.wellbeing .wb-no { color: var(--wb-bad); font-weight: 700; }
+.wellbeing .wb-note { font-size: 12px; color: var(--wb-muted) !important; }
 .allergy { border-width: 1.5px; border-radius: 14px; }
 #allergen-chips button { min-height: 32px; padding: 4px 12px; font-size: 12.5px; font-weight: 600; }
 #allergen-chips button.on { background: var(--warn); }
@@ -358,6 +472,11 @@ form button.primary { flex: 0 0 auto; }
   :root { --bg: #1a1412; --line: #3a2d28; --brand: #ff8a78; --focus: #ffb3a6; --pastel-ink: #fff3ee;
     --t-breakfast: #4a3626; --t-drinks: #24394d; --t-desserts: #3b3252; --t-gifts: #4d2f2b;
     --t-lunch: #2a4436; --t-snacks: #4a4326; --t-catering: #27434a; }
+  /* header links: readable on the dark glass bar */
+  header a { background: var(--ac-surface-alt); color: var(--ac-coral); border-color: var(--ac-line); }
+  header a:hover { background: var(--ac-coral); color: var(--ac-canvas); }
+  /* coffee emoji: keep it visible (light) on the dark header instead of black */
+  header h1 .hdr-coffee { -webkit-text-fill-color: #fff; color: #fff; }
 }
 .prod { background: var(--t-default, var(--card)); color: var(--pastel-ink); border: 0; border-radius: 24px; padding: 14px; }
 .prod[data-cat="breakfast"] { background: var(--t-breakfast); } .prod[data-cat="drinks"] { background: var(--t-drinks); }
@@ -376,3 +495,49 @@ header { border-radius: 0 0 28px 28px; }
   background: var(--panel-2) !important; color: var(--text) !important;
   border: 1px solid var(--border) !important; box-shadow: none !important;
 }
+
+/* ---------- Manual dark toggle: the palette must follow the PAGE, not the OS ----------
+   tokens.css flips --ac-* on :root only inside `prefers-color-scheme: dark`.
+   `body { color: var(--ink) }` above therefore stayed BLACK when an OS in light
+   mode had the dashboard's own dark theme switched on: unreadable KPI numbers
+   (e.g. "25") and headings ("Wellbeing Guard decisions"). Re-declare the tokens
+   on `body` so the manual toggle and the OS can never disagree. Custom property
+   substitution happens where a property is declared, so --ink/--mut/--card must
+   ALSO be re-declared here (they are `var(--ac-*)` on :root). */
+body.dark {
+  --ac-canvas: #17120F; --ac-surface: #221A16; --ac-surface-alt: #2B211C;
+  --ac-ink: #F6EDE6; --ac-muted: #B3A397; --ac-line: #3A2E27;
+  --bg: #17120F; --card: #221A16; --ink: #F6EDE6; --mut: #B3A397; --line: #3A2E27;
+  --text: #F6EDE6; --muted: #B3A397; --panel: #221A16; --panel-2: #1B1410; --border: #3A2E27;
+}
+/* The opposite mismatch: OS dark + the toggle set back to light. Pages with a
+   manual toggle (the dashboard banner) must stay light in that case. */
+body:has(.demo-banner):not(.dark) {
+  --ac-canvas: #FFF8F4; --ac-surface: #FFFFFF; --ac-surface-alt: #FBEFE8;
+  --ac-ink: #2B2320; --ac-muted: #5C514A; --ac-line: #F1E3DA;
+  --bg: #f4f7fb; --card: #ffffff; --ink: #1f2937; --mut: #667085; --line: #dfe7f1;
+  --text: #1f2937; --muted: #667085; --panel: #ffffff; --panel-2: #f8fafc; --border: #dfe7f1;
+}
+/* The dashboard header keeps a bright coral gradient in BOTH themes: its text
+   must always be dark ink, independent of the palette tokens. */
+.page .header, .page .header h1 { color: #241c17 !important; -webkit-text-fill-color: #241c17; }
+.page .header .last-updated { color: rgba(43, 35, 32, .88) !important; }
+.theme-btn { color: #241c17 !important; }
+
+/* High-contrast KPI numbers and section headings in both themes. These are the
+   elements the storefront/dashboard share with dynamically generated panels. */
+.stat-value, .aa-big, .aa-sub, .aa-q, .detail-item .value, .side-header h3 {
+  color: var(--text) !important;
+}
+.stat-label, .stat-sub, .ops-muted, .detail-group-title { color: var(--muted) !important; }
+
+/* Agent Activity cards: a readable, spaced grid instead of bare unstyled text. */
+.aa-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0 18px; }
+.aa-card {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 16px;
+  padding: 14px 16px; color: var(--text);
+}
+.aa-q { margin: 0 0 6px; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.aa-big { margin: 0 0 8px; font-size: 22px; font-weight: 800; letter-spacing: -.02em; }
+.aa-card ul { margin: 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; color: var(--text); }
+.aa-sub { margin: 18px 0 10px; font-size: 14px; font-weight: 800; }

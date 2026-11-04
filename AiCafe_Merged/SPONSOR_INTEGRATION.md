@@ -9,7 +9,7 @@ API is in production — none of those steps have been performed here.
 
 | Artifact | Path | Verified state |
 |---|---|---|
-| OpenAPI spec | `openapi.json` | Valid JSON. Title: "AI Café — PayPal Commerce Agent API", version 1.0.0. | 34 documented paths covering catalog, AI chat, policy preview, orders (create / capture / cancel), sessions, checkout return/cancel, dashboard/ops, refunds, mandates, discovery (agent commerce / feed) and the MCP endpoint. |
+| OpenAPI spec | `openapi.json` | Valid JSON. Title: "AI Café — PayPal Commerce Agent API", version 1.0.0. | 39 documented paths (41 operations) covering catalog, AI chat, policy preview, orders (create / capture / cancel), sessions, checkout return/cancel, dashboard/ops, refunds, mandates, discovery (agent commerce / feed) and the MCP endpoint. |
 | Postman collection | `postman/paypal-commerce-agent.postman_collection.json` | Present; a runnable collection for the endpoints above. |
 | Postman environment | `postman/paypal-commerce-agent.postman_environment.json` | Present; contains environment variables (e.g. base URL, session/paypal placeholders) for the collection. |
 

@@ -24,17 +24,40 @@ async function waitFor<T>(fn: () => T | null | undefined | false, what: string, 
 }
 
 describe('web wellbeing card', () => {
-  test('shows server evaluation, unknown ingredient data and non-medical notice', async () => {
+  test('shows per-product merchant facts instead of raw UNKNOWN / Missing information codes', async () => {
     const dom = await open({ 'aicafe.onboarded': 'true', 'aicafe.cart': JSON.stringify({ coffee: 1 }), 'aicafe.allergens': JSON.stringify(['gluten']) });
     const diet = dom.window.document.getElementById('diet') as HTMLSelectElement;
     diet.value = 'vegan'; diet.dispatchEvent(new dom.window.Event('change'));
-    const box = await waitFor(() => { const b = dom.window.document.getElementById('wellbeing'); return b && !b.hidden && b.querySelector('li') && b; }, 'wellbeing card');
+    const box = await waitFor(() => { const b = dom.window.document.getElementById('wellbeing'); return b && !b.hidden && b.querySelector('li.wb-item') && b; }, 'wellbeing card');
     const text = box.textContent || '';
-    expect(text).toMatch(/UNKNOWN/i);
-    expect(text).toMatch(/Missing information/i);
+    // Shopper-selected sensitivities and one result per product.
+    expect(text).toMatch(/Sensitivities you selected/i);
+    expect(text).toMatch(/Gluten/i);
+    expect(text).toMatch(/Fresh Brewed Coffee/i);
+    expect(text).toMatch(/Gluten information is missing; we cannot verify suitability/i);
+    // Ingredient facts and cross-contact stay separate; source + limits are shown.
+    expect(text).toMatch(/Cross-contact information is not available/i);
+    expect(text).toMatch(/Based on the menu information provided by the business/i);
+    expect(text).toMatch(/Menu data version/i);
     expect(text).toMatch(/not medical advice/i);
-    expect(text.toLowerCase()).not.toMatch(/\bsafe\b|suitable/);
+    // No machine codes and no unverified safety verdict.
+    expect(text).not.toMatch(/UNKNOWN|Missing information|allergen:gluten|dietary:vegan/i);
+    expect(text.toLowerCase()).not.toMatch(/\bsafe\b|suitable|allergen-free|gluten-free product/);
     expect(dom.window.document.getElementById('wb-sample')!.textContent).toMatch(/unknown information blocks checkout/i);
+  });
+
+  test('a confirmed merchant ingredient conflict is attributed to the menu text, and the remove action works', async () => {
+    const dom = await open({ 'aicafe.onboarded': 'true', 'aicafe.cart': JSON.stringify({ veg_breakfast: 1 }), 'aicafe.allergens': JSON.stringify(['gluten']) });
+    const box = await waitFor(() => { const b = dom.window.document.getElementById('wellbeing'); return b && !b.hidden && b.querySelector('li.wb-item') && b; }, 'wellbeing card with facts');
+    const text = box.textContent || '';
+    expect(text).toMatch(/The merchant information names Gluten: toast, granola/i);
+    expect(text).toMatch(/Cross-contact information is not available/i);
+    expect(text).not.toMatch(/UNKNOWN|Missing information|allergen:gluten/i);
+    const remove = box.querySelector('button.wb-action') as HTMLButtonElement;
+    expect(remove.textContent).toMatch(/Remove from cart/i);
+    remove.click();
+    await waitFor(() => { const b = dom.window.document.getElementById('wellbeing'); return b && b.hidden; }, 'wellbeing card hidden after removal');
+    expect(JSON.parse(dom.window.localStorage.getItem('aicafe.cart') || '{}')).toEqual({});
   });
 
   test('allergen concerns are sent only through the authenticated wellbeing profile contract', async () => {

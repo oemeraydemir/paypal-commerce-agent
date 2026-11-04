@@ -45,6 +45,34 @@ describe('Wellbeing Guard authoritative contract', () => {
     expect(() => parseWellbeingPreferences({ dietary: [], allergens: ['unknown'] })).toThrow();
   });
 
+  test('exposes per-restriction facts with merchant provenance and separate cross-contact', () => {
+    const decision = evaluateWellbeing(
+      [{ productId: 'veg_breakfast', quantity: 1 }, { productId: 'coffee', quantity: 1 }],
+      { dietary: [], allergens: ['gluten'] },
+      catalog,
+    );
+    expect(decision.checked).toEqual([{ restriction: 'allergen:gluten', kind: 'allergen', key: 'gluten' }]);
+    expect(decision.source.type).toBe('merchant-menu');
+    expect(decision.source.verified).toBe(false);
+    expect(decision.source.dataVersion).toMatch(/^[a-f0-9]{64}$/);
+    expect(decision.crossContact).toEqual({ assessed: false, merchantData: false });
+    expect(decision.allowed).toBe(false);
+
+    // The merchant description names gluten-bearing ingredients -> CONFLICT.
+    const breakfast = decision.items[0];
+    expect(breakfast.status).toBe('CONFIRMED_CONFLICT');
+    expect(breakfast.facts[0].status).toBe('CONFLICT');
+    expect(breakfast.facts[0].source).toBe('merchant-ingredients');
+    expect(breakfast.facts[0].ingredients).toEqual(expect.arrayContaining(['toast', 'granola']));
+
+    // Coffee has neither a gluten-free label nor a named ingredient -> UNKNOWN,
+    // never guessed as safe.
+    const coffee = decision.items[1];
+    expect(coffee.status).toBe('UNKNOWN');
+    expect(coffee.facts[0].status).toBe('UNKNOWN');
+    expect(coffee.facts[0].source).toBeNull();
+  });
+
   test('direct order API cannot bypass missing profile or UNKNOWN restriction data', async () => {
     const product = catalog.getAll()[0];
     await request(app).put('/api/wellbeing/preferences').set(s.headers).send({ preferences: { dietary: ['vegan'], allergens: [] } });
@@ -76,7 +104,7 @@ describe('Wellbeing Guard authoritative contract', () => {
   });
 
   test('Split Bill share payment checks the participant profile against the bill products', async () => {
-    const created = await request(app).post('/api/bills').set(s.headers).send({ items: [{ productId: 'coffee', quantity: 1 }], participantCount: 2 });
+    const created = await request(app).post('/api/bills').set(s.headers).send({ items: [{ productId: 'latte', quantity: 1 }], participantCount: 2 });
     expect(created.status).toBe(201);
     const ownerShare = created.body.shares[0];
     await request(app).put('/api/wellbeing/preferences').set(s.headers).send({ preferences: { dietary: ['vegan'], allergens: [] } });

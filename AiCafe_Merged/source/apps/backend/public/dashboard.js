@@ -946,15 +946,27 @@
   el('closeSide').addEventListener('click', closeSidePanel);
   el('sideBackdrop').addEventListener('click', closeSidePanel);
 
-  el('themeToggle').addEventListener('click', function () {
-    dark = !dark;
+  function applyDarkTheme(darkVal) {
+    dark = !!darkVal;
     var theme = dark ? darkTheme : lightTheme;
     ordersApi.setGridOption('theme', theme);
     eventsApi.setGridOption('theme', theme);
     pickupApi.setGridOption('theme', theme);
     document.body.classList.toggle('dark', dark);
-    el('themeToggle').textContent = dark ? 'Light mode' : 'Dark mode';
+    var t = el('themeToggle');
+    if (t) t.textContent = dark ? 'Light mode' : 'Dark mode';
+  }
+
+  el('themeToggle').addEventListener('click', function () {
+    applyDarkTheme(!dark);
   });
+
+  // Follow the OS colour-scheme by default so dark-mode users get a coherent UI.
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (mq.matches) applyDarkTheme(true);
+    if (mq.addEventListener) mq.addEventListener('change', function (e) { applyDarkTheme(e.matches); });
+  }
 
   refreshData().catch(function (err) {
     console.warn('initial dashboard load failed:', err && err.message);

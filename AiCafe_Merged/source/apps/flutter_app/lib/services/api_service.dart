@@ -18,6 +18,7 @@ import 'package:flutter_app/models/refund.dart';
 import 'package:flutter_app/models/take_home.dart';
 import 'package:flutter_app/services/error_body.dart';
 import 'package:flutter_app/services/session_service.dart';
+import 'package:flutter_app/utils/wellbeing_message.dart';
 
 /// Raised when the backend responds with a non-2xx status.
 ///
@@ -142,6 +143,11 @@ class ApiService {
   final http.Client _client;
   final String _baseUrl;
   final SessionStorage _storage;
+
+  /// Active UI language (en / tr). Kept in sync with [LocaleProvider] by main.dart
+  /// so server-derived Wellbeing Guard copy is localised before it is surfaced
+  /// in an error message. Defaults to English for tests and headless callers.
+  String languageCode = 'en';
 
   /// Single-flight guard for session creation (F5). When non-null, a creation
   /// is already in flight and concurrent callers await this future instead of
@@ -576,19 +582,13 @@ class ApiService {
       _ensureOk(check, 'checkWellbeing');
       final decision = jsonDecode(check.body) as Map<String, dynamic>;
       if (decision['allowed'] != true) {
-        final lines = (decision['items'] as List? ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map((item) => '${item['name']}: ${item['status']} ${((item['conflicts'] as List?) ?? const []).map((c) => (c as Map)['ingredients']).join(', ')} ${((item['missing'] as List?) ?? const []).join(', ')}')
-            .join('; ');
-        final alternatives = (decision['alternatives'] as List? ?? const [])
-            .whereType<Map<String, dynamic>>()
-            .map((item) => item['name'])
-            .whereType<String>()
-            .join(', ');
-        final suggestion = alternatives.isEmpty
-            ? ''
-            : ' Alternatives with no known conflict: $alternatives.';
-        throw ApiException(403, '$lines.$suggestion ${decision['notice'] ?? ''}', code: 'WELLBEING_GUARD_BLOCKED');
+        // Same source-aware, per-product copy as the web storefront. Never expose
+        // raw status codes like "UNKNOWN / Missing information: allergen:gluten".
+        throw ApiException(
+          403,
+          formatWellbeingDecision(decision, lang: languageCode),
+          code: 'WELLBEING_GUARD_BLOCKED',
+        );
       }
     }
     final res = await _executeWithAuth((headers) async {

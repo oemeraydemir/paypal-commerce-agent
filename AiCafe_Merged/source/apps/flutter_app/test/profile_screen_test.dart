@@ -57,8 +57,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Your shopping profile'), findsOneWidget);
-    expect(find.text('Use the café better with AI + PayPal'), findsOneWidget);
     expect(find.text('Edit my preferences'), findsOneWidget);
+
+    // ListView builds its children lazily: everything below the viewport is not
+    // in the widget tree yet. Scroll each later section into view before
+    // asserting its text (otherwise find.text reports 0 widgets).
+    await tester.scrollUntilVisible(
+      find.text('Use the café better with AI + PayPal'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    expect(find.text('Use the café better with AI + PayPal'), findsOneWidget);
 
     // The merchant section renders below the fold; scroll down to it.
     await tester.scrollUntilVisible(
