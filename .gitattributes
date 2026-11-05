@@ -1,0 +1,5 @@
+# Generated design-token artifacts are compared byte-for-byte against the
+# generator output (tests/unit/design-tokens.test.ts), which emits LF. Force LF
+# on checkout so Windows core.autocrlf=true cannot make the sync test fail.
+source/apps/backend/public/tokens.css text eol=lf
+source/apps/flutter_app/lib/theme/tokens.g.dart text eol=lf

@@ -1,0 +1,519 @@
+import crypto from 'crypto';
+import stringify from 'fast-json-stable-stringify';
+import { OrderService } from '../orders/service';
+import { refundService } from '../refunds/service';
+import { BillService } from '../bills/service';
+import { policyStorage } from '../policy/storage';
+import { Order, OrderStatus, OrderOrigin } from '../orders/domain';
+import {
+  CANONICALIZATION,
+  SignedCartMandate,
+  signCartMandate,
+  signPayload,
+  verifyCartMandate,
+  verifyPayloadSignature,
+} from '../mandate/mandate-service';
+
+// Stage 3: Dispute Evidence Package ("Evidential Passport").
+//
+// Assembles the independent, server-verified records for an order into one
+// tamper-evident bundle: the signed Cart Mandate (what the shopper was asked to
+// approve), the authoritative policy events (which rules/limits were enforced),
+// the order + PayPal references, and the human-approval status. The whole bundle
+// is then signed with the SAME keyring as the mandate, so a single public key
+// verifies both.
+//
+// PII minimization: policy events keep only id/timestamp/decision/rules/reason/
+// amounts/policy-snapshot (no userId/sessionId/cartId); the order summary keeps
+// item productIds and quantities but not prices/names of the shopper.
+
+export const EVIDENCE_VERSION = 'aicafe.evidence/1';
+
+export interface EvidenceOrderSummary {
+  id: string;
+  status: OrderStatus;
+  origin: OrderOrigin;
+  totalMinor: number;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+  items: Array<{ productId: string; quantity: number }>;
+  paypalOrderId?: string;
+  paypalCaptureId?: string;
+  paypalStatus?: string;
+  /** Stage 2: the scoped-allowance id that governed this order (if any). */
+  appliedScopeId?: string;
+}
+
+/**
+ * One item in the evidence pack. `source` separates VERIFIED server records from
+ * AI-GENERATED narrative, so a reviewer (or a court) can see at a glance what is
+ * an original record versus an assistant-authored summary. `verified` is true
+ * only for records the server actually produced; narratives are always false.
+ */
+export interface EvidenceItem {
+  kind: 'order-record' | 'mandate-record' | 'policy-record' | 'payment-record' | 'refund-record' | 'generated-statement';
+  source: 'record' | 'narrative';
+  verified: boolean;
+  label: string;
+  detail: string;
+}
+
+/** Full detail of a single policy rule that fired (which rule, why, expected vs actual). */
+export interface EvidenceRuleDetail {
+  type: string;
+  rule: string;
+  expected: string | number | string[] | number[];
+  actual: string | number | string[] | number[];
+  message: string;
+}
+
+export interface EvidencePolicyEvent {
+  id: string;
+  timestamp: string;
+  decision: string;
+  /** Rule types only (kept for compact display / backward compatibility). */
+  violatedRules: string[];
+  /** Priority 1: full rule detail — which rule fired, expected vs actual, and why. */
+  ruleDetails: EvidenceRuleDetail[];
+  reason: string;
+  amountMinor: number;
+  currency: string;
+  policySnapshot: { maxPerPurchaseMinor: number; dailySpendLimitMinor: number; confirmationThresholdMinor: number };
+  wellbeingDecision?: { status: string; productDataVersion: string; items: unknown[] };
+}
+
+export type EvidenceTimelineStepKind =
+  | 'ORDER_CREATED'
+  | 'POLICY_EVALUATED'
+  | 'HUMAN_APPROVAL'
+  | 'PAYMENT_CAPTURED'
+  | 'REFUND_REQUESTED'
+  | 'REFUND_AI_ADVISORY'
+  | 'REFUND_MERCHANT_APPROVED'
+  | 'REFUND_ISSUED'
+  | 'REFUND_DECLINED';
+
+/** Priority 1: one canonical, server-built timeline the UI can visualise as-is. */
+export interface EvidenceTimelineStep {
+  step: EvidenceTimelineStepKind;
+  at: string;
+  detail?: string;
+  decision?: string;
+}
+
+/** Priority 1: an auto-generated, dispute-ready defense statement (JSON + narrative). */
+export interface EvidenceDisputeDefense {
+  templateVersion: 'aicafe.dispute-defense/1';
+  claimType: 'AUTHORIZED_CHECKOUT';
+  orderReference: string;
+  amountMinor: number;
+  currency: string;
+  keyFacts: string[];
+  evidencePointers: Array<{ label: string; pointer: string }>;
+  recommendedResponse: string;
+  /** Human-readable multi-line text, suitable for saving as .txt or printing to PDF. */
+  narrative: string;
+}
+
+export interface EvidencePackagePayload {
+  version: typeof EVIDENCE_VERSION;
+  orderId: string;
+  issuedAt: string;
+  mandate: SignedCartMandate;
+  order: EvidenceOrderSummary;
+  policyEvents: EvidencePolicyEvent[];
+  timeline: EvidenceTimelineStep[];
+  disputeDefense: EvidenceDisputeDefense;
+  /** Stage 3.5: explicit provenance ledger separating verified records from AI narrative. */
+  evidenceItems: EvidenceItem[];
+  humanApproval: {
+    authority: 'buyer_approval_at_paypal';
+    state: 'awaiting_approval' | 'approved' | 'not_recorded';
+    paypalCaptureId?: string;
+  };
+}
+
+export interface EvidencePackage extends EvidencePackagePayload {
+  integrity: {
+    alg: 'EdDSA';
+    kid: string;
+    canonicalization: typeof CANONICALIZATION;
+    digest: string;
+    signature: string;
+  };
+}
+
+function approvalState(status: OrderStatus): EvidencePackagePayload['humanApproval']['state'] {
+  switch (status) {
+    case OrderStatus.PAID:
+    case OrderStatus.ORDER_CONFIRMED:
+      return 'approved';
+    case OrderStatus.CART_READY:
+    case OrderStatus.AWAITING_CONFIRMATION:
+    case OrderStatus.PAYMENT_PENDING:
+      return 'awaiting_approval';
+    default:
+      return 'not_recorded';
+  }
+}
+
+// Priority 1: canonical, human-readable timeline (order -> policy -> approval -> capture).
+// Kept in logical order (not re-sorted by timestamp) so it reads as a passport.
+function buildTimeline(order: Order, policyEvents: EvidencePolicyEvent[]): EvidenceTimelineStep[] {
+  const steps: EvidenceTimelineStep[] = [
+    { step: 'ORDER_CREATED', at: order.createdAt.toISOString(), detail: order.id },
+  ];
+  for (const event of policyEvents) {
+    steps.push({
+      step: 'POLICY_EVALUATED',
+      at: event.timestamp,
+      decision: event.decision,
+      detail: event.reason,
+    });
+  }
+  steps.push({
+    step: 'HUMAN_APPROVAL',
+    at: order.updatedAt.toISOString(),
+    detail: approvalState(order.status),
+  });
+  if (order.paypalCaptureId) {
+    steps.push({
+      step: 'PAYMENT_CAPTURED',
+      at: order.updatedAt.toISOString(),
+      detail: order.paypalCaptureId,
+    });
+  }
+  return steps;
+}
+
+// Only refund events that were actually recorded: a request, and (when decided) its outcome.
+function buildRefundSteps(orderId: string): EvidenceTimelineStep[] {
+  const steps: EvidenceTimelineStep[] = [];
+  const records = [...refundService.listForOrder(orderId)].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  for (const r of records) {
+    const who = r.proposedBy === 'CUSTOMER' ? 'customer' : r.proposedBy === 'OPS_COPILOT' ? 'ops copilot (AI)' : 'merchant';
+    steps.push({
+      step: 'REFUND_REQUESTED',
+      at: r.createdAt,
+      detail: `${(r.amountMinor / 100).toFixed(2)} ${r.currency} requested by ${who}`,
+    });
+    if (r.aiRecommendation) {
+      steps.push({
+        step: 'REFUND_AI_ADVISORY',
+        at: r.createdAt,
+        detail: `Non-binding ${r.aiRecommendation.source.toLowerCase()} classification: ${r.aiRecommendation.category}; merchant review required.`,
+      });
+    }
+    if (r.merchantApprovedAt) {
+      steps.push({
+        step: 'REFUND_MERCHANT_APPROVED',
+        at: r.merchantApprovedAt,
+        detail: 'Merchant approval recorded; this is distinct from PayPal confirming the refund.',
+      });
+    }
+    if (r.status === 'REFUNDED') {
+      steps.push({
+        step: 'REFUND_ISSUED',
+        at: r.decidedAt ?? r.updatedAt,
+        detail: `${(r.amountMinor / 100).toFixed(2)} ${r.currency}${r.paypalRefundId ? ' · PayPal refund ' + r.paypalRefundId : ''}`,
+      });
+    } else if (r.status === 'REJECTED') {
+      steps.push({ step: 'REFUND_DECLINED', at: r.decidedAt ?? r.updatedAt, detail: 'merchant declined the request' });
+    }
+  }
+  return steps;
+}
+
+// Priority 1: an auto-generated dispute-defense template. It summarises the
+// signed facts so a merchant can paste them into a chargeback response; it never
+// asserts anything the evidence package does not already prove.
+function buildDisputeDefense(
+  order: Order,
+  policyEvents: EvidencePolicyEvent[],
+  timeline: EvidenceTimelineStep[]
+): EvidenceDisputeDefense {
+  const amount = `${(order.totalMinor / 100).toFixed(2)} ${order.currency}`;
+  const approval = approvalState(order.status);
+  const itemCount = order.items.reduce((n, i) => n + i.quantity, 0);
+
+  const keyFacts = [
+    `Order ${order.id} was created on ${order.createdAt.toISOString()} for ${amount}.`,
+    `The cart contained ${itemCount} item(s) across ${order.items.length} line(s).`,
+    'Prices and totals were set by the server, never by the client or the AI agent.',
+    `Policy enforcement is server-side: ${policyEvents.length} policy decision(s) recorded for this order.`,
+    approval === 'approved'
+      ? 'The buyer approved the payment at PayPal (buyer_approval_at_paypal).'
+      : approval === 'awaiting_approval'
+        ? 'The buyer has not approved the payment yet; no capture has occurred.'
+        : 'No human approval is recorded for this order.',
+  ];
+  if (order.paypalCaptureId) {
+    keyFacts.push(`PayPal capture ${order.paypalCaptureId} is recorded for the approved amount.`);
+  }
+
+  const refunded = refundService.refundedMinor(order.id);
+  const open = refundService.listForOrder(order.id).find((r) => r.status === 'PROPOSED' || r.status === 'PROCESSING');
+  for (const r of refundService.listForOrder(order.id).filter((x) => x.status === 'REFUNDED')) {
+    keyFacts.push(
+      `A refund of ${(r.amountMinor / 100).toFixed(2)} ${r.currency} was issued${r.paypalRefundId ? ` (PayPal refund ${r.paypalRefundId})` : ''}.`
+    );
+  }
+  if (open) keyFacts.push('A refund request for this order is open and awaiting merchant review.');
+  const billGroup = BillService.getInstance().findGroupByOrderId(order.id);
+  if (billGroup) {
+    keyFacts.push(
+      `This order is one share of a split bill between ${billGroup.shares.length} people; each participant approved and paid only their own share at PayPal.`
+    );
+  }
+
+  const evidencePointers = [
+    { label: 'Signed Cart Mandate', pointer: 'mandate (EdDSA signature over the proposed cart)' },
+    { label: 'Policy decisions', pointer: 'policyEvents[] (decision, rule, expected vs actual)' },
+    { label: 'Human approval', pointer: 'humanApproval (buyer approval at PayPal)' },
+    { label: 'Timeline', pointer: 'timeline[] (order -> policy -> approval -> capture)' },
+    { label: 'Package integrity', pointer: 'integrity (EdDSA signature + SHA-256 digest)' },
+  ];
+
+  const recommendedResponse =
+    refunded >= order.totalMinor
+      ? 'The buyer has already been refunded in full. Tell the reviewer the charge was refunded (see the refund steps in the timeline) and do not contest the dispute.'
+      : refunded > 0
+        ? `The buyer has already received a partial refund of ${(refunded / 100).toFixed(2)} ${order.currency}; ${((order.totalMinor - refunded) / 100).toFixed(2)} ${order.currency} remains. Mention the partial refund when responding.`
+        : approval === 'approved'
+      ? 'This is an authorized, server-priced checkout. The signed mandate and the PayPal buyer approval together show the buyer approved the exact amount captured. Recommend representing the charge as authorized.'
+      : 'Do not represent this as a completed charge: no buyer approval or capture is recorded. Provide the timeline as evidence of the current order state.';
+
+  const narrative = [
+    'DISPUTE / CHARGEBACK DEFENSE STATEMENT',
+    `Order reference: ${order.id}`,
+    `Amount: ${amount}`,
+    `Status: ${order.status}`,
+    `Buyer approval: ${approval}`,
+    '',
+    'Timeline:',
+    ...timeline.map((s) => `- ${s.at}  ${s.step}${s.decision ? ' [' + s.decision + ']' : ''}${s.detail ? ' — ' + s.detail : ''}`),
+    '',
+    'Key facts:',
+    ...keyFacts.map((f) => `- ${f}`),
+    '',
+    'Evidence pointers:',
+    ...evidencePointers.map((e) => `- ${e.label}: ${e.pointer}`),
+    '',
+    `Recommended response: ${recommendedResponse}`,
+    '',
+    'Generated from a server-signed evidence package. Verify it independently via POST /api/evidence/verify.',
+  ].join('\n');
+
+  return {
+    templateVersion: 'aicafe.dispute-defense/1',
+    claimType: 'AUTHORIZED_CHECKOUT',
+    orderReference: order.id,
+    amountMinor: order.totalMinor,
+    currency: order.currency,
+    keyFacts,
+    evidencePointers,
+    recommendedResponse,
+    narrative,
+  };
+}
+
+/** Builds the explicit provenance ledger for the package (verified records vs AI narrative). */
+function buildEvidenceItems(
+  order: Order,
+  policyEvents: EvidencePolicyEvent[],
+  timeline: EvidenceTimelineStep[],
+  disputeDefense: EvidenceDisputeDefense
+): EvidenceItem[] {
+  const items: EvidenceItem[] = [
+    {
+      kind: 'order-record', source: 'record', verified: true,
+      label: 'Order record',
+      detail: `Order ${order.id} (${order.status}) created ${order.createdAt.toISOString()} for ${(order.totalMinor / 100).toFixed(2)} ${order.currency}.`,
+    },
+    {
+      kind: 'mandate-record', source: 'record', verified: true,
+      label: 'Signed Cart Mandate',
+      detail: 'EdDSA-signed proposal of the exact cart, prices and enforced limits (kid-bound to the server keyring).',
+    },
+  ];
+  for (const e of policyEvents) {
+    items.push({
+      kind: 'policy-record', source: 'record', verified: true,
+      label: 'Policy decision',
+      detail: `${e.decision} at ${e.timestamp} — ${e.reason}`,
+    });
+  }
+  if (order.paypalCaptureId) {
+    items.push({
+      kind: 'payment-record', source: 'record', verified: true,
+      label: 'PayPal capture', detail: `Capture ${order.paypalCaptureId} (status ${order.paypalStatus ?? 'unknown'}).`,
+    });
+  }
+  const refunds = refundService.listForOrder(order.id).filter((r) => r.status === 'REFUNDED');
+  for (const r of refunds) {
+    items.push({
+      kind: 'refund-record', source: 'record', verified: true,
+      label: 'Refund', detail: `${(r.amountMinor / 100).toFixed(2)} ${r.currency}${r.paypalRefundId ? ' · ' + r.paypalRefundId : ''}.`,
+    });
+  }
+  items.push({
+    kind: 'generated-statement', source: 'narrative', verified: false,
+    label: 'AI-generated defense narrative',
+    detail: 'Auto-authored summary and recommended response. It is an assistant-written interpretation of the verified records, not itself a record.',
+  });
+  return items;
+}
+
+export function buildEvidencePackage(orderId: string): EvidencePackage | null {
+  const order = OrderService.getInstance().getById(orderId);
+  if (!order) return null;
+
+  const mandate = signCartMandate(order);
+
+  const policyEvents: EvidencePolicyEvent[] = policyStorage
+    .getEvents()
+    .filter((e) => e.orderId === order.id)
+    .map((e) => ({
+      id: e.id,
+      timestamp: e.timestamp,
+      decision: e.decision,
+      violatedRules: e.violatedRules.map((v) => v.type),
+      // Priority 1: keep the full rule detail so a dispute reviewer can see
+      // exactly which rule fired and the expected vs actual values.
+      ruleDetails: e.violatedRules.map((v) => ({
+        type: v.type,
+        rule: v.rule,
+        expected: v.expected,
+        actual: v.actual,
+        message: v.message,
+      })),
+      reason: e.reason,
+      amountMinor: e.amountMinor,
+      currency: e.currency,
+      policySnapshot: e.policySnapshot,
+      ...(e.wellbeingDecision ? { wellbeingDecision: e.wellbeingDecision } : {}),
+    }));
+
+  const summary: EvidenceOrderSummary = {
+    id: order.id,
+    status: order.status,
+    origin: order.origin,
+    totalMinor: order.totalMinor,
+    currency: order.currency,
+    createdAt: order.createdAt.toISOString(),
+    updatedAt: order.updatedAt.toISOString(),
+    items: [...order.items].map((i) => ({ productId: i.productId, quantity: i.quantity })),
+    ...(order.appliedScopeId ? { appliedScopeId: order.appliedScopeId } : {}),
+  };
+  if (order.paypalOrderId) summary.paypalOrderId = order.paypalOrderId;
+  if (order.paypalCaptureId) summary.paypalCaptureId = order.paypalCaptureId;
+  if (order.paypalStatus) summary.paypalStatus = order.paypalStatus;
+
+  const timeline = [...buildTimeline(order, policyEvents), ...buildRefundSteps(order.id)];
+  if (order.appliedScopeId) {
+    timeline.splice(1, 0, {
+      step: 'POLICY_EVALUATED',
+      at: order.createdAt.toISOString(),
+      detail: `Scoped allowance ${order.appliedScopeId} was applied (server-set)`,
+    });
+  }
+  const disputeDefense = buildDisputeDefense(order, policyEvents, timeline);
+  const evidenceItems = buildEvidenceItems(order, policyEvents, timeline, disputeDefense);
+
+  const payload: EvidencePackagePayload = {
+    version: EVIDENCE_VERSION,
+    orderId: order.id,
+    issuedAt: new Date().toISOString(),
+    mandate,
+    order: summary,
+    policyEvents,
+    timeline,
+    disputeDefense,
+    evidenceItems,
+    humanApproval: {
+      authority: 'buyer_approval_at_paypal',
+      state: approvalState(order.status),
+      ...(order.paypalCaptureId ? { paypalCaptureId: order.paypalCaptureId } : {}),
+    },
+  };
+
+  const canonical = Buffer.from(stringify(payload));
+  const digest = crypto.createHash('sha256').update(canonical).digest('hex');
+  const { signature, kid } = signPayload(payload);
+
+  return {
+    ...payload,
+    integrity: { alg: 'EdDSA', kid, canonicalization: CANONICALIZATION, digest, signature },
+  };
+}
+
+export interface EvidenceVerification {
+  valid: boolean;
+  checks: {
+    present: boolean;
+    signature: boolean;
+    digest: boolean;
+    mandateValid: boolean;
+    matchesOrder: boolean;
+    notExpired: boolean;
+  };
+  reason?: string;
+}
+
+const noChecks: EvidenceVerification['checks'] = {
+  present: false,
+  signature: false,
+  digest: false,
+  mandateValid: false,
+  matchesOrder: false,
+  notExpired: false,
+};
+
+export function verifyEvidencePackage(input: unknown): EvidenceVerification {
+  const pkg = input as Partial<EvidencePackage> | undefined;
+  const checks: EvidenceVerification['checks'] = { ...noChecks };
+
+  if (!pkg || typeof pkg !== 'object') {
+    return { valid: false, checks, reason: 'Expected an evidence package.' };
+  }
+  if (pkg.version !== EVIDENCE_VERSION) {
+    return { valid: false, checks, reason: `Unsupported evidence version; expected ${EVIDENCE_VERSION}.` };
+  }
+  checks.present = true;
+
+  const { integrity, ...payload } = pkg as EvidencePackage;
+  if (!integrity || typeof integrity.signature !== 'string' || typeof integrity.kid !== 'string') {
+    return { valid: false, checks, reason: 'Evidence package is missing its integrity block.' };
+  }
+
+  const canonical = Buffer.from(stringify(payload));
+  const digest = crypto.createHash('sha256').update(canonical).digest('hex');
+  checks.digest = digest === integrity.digest;
+  checks.signature = verifyPayloadSignature(integrity.signature, integrity.kid, payload);
+
+  if (payload.mandate && typeof payload.mandate === 'object') {
+    const mv = verifyCartMandate(payload.mandate as unknown as SignedCartMandate, (id) =>
+      OrderService.getInstance().getById(id)
+    );
+    checks.mandateValid = mv.valid;
+    checks.notExpired = mv.checks.notExpired;
+  }
+
+  const living = OrderService.getInstance().getById(payload.orderId);
+  checks.matchesOrder =
+    !!living &&
+    living.id === payload.orderId &&
+    living.status === payload.order?.status &&
+    living.totalMinor === payload.order?.totalMinor &&
+    living.currency === payload.order?.currency;
+
+  const valid = checks.signature && checks.digest && checks.mandateValid && checks.matchesOrder;
+  return {
+    valid,
+    checks,
+    reason: valid
+      ? undefined
+      : 'Evidence integrity, mandate or order-match check failed.',
+  };
+}

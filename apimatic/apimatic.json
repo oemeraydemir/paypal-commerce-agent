@@ -1,0 +1,19 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/@apimatic/cli@2/apimatic.schema.json",
+  "schemaVersion": 1,
+  "portal": {
+    "site": {},
+    "brand": {
+      "logo": {
+        "light": "static/images/placeholder-logo.png",
+        "dark": "static/images/placeholder-logo-dark.png"
+      },
+      "favicon": "static/images/favicon.ico",
+      "colors": {},
+      "colorMode": "both"
+    },
+    "navigation": { "links": [] },
+    "ai": { "pageActions": true }
+  },
+  "languages": { "csharp": {}, "typescript": {}, "python": {} }
+}

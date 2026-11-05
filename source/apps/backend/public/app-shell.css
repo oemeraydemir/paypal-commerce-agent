@@ -1,0 +1,161 @@
+/* AI Café — storefront shell (Home / Barista / Cart / Profile). Colours come from tokens.css only. */
+main.shell { display: block; max-width: 760px; margin: 18px auto 110px; padding: 0 16px; }
+main.shell .tab-panel { display: grid; gap: 18px; }
+main.shell .tab-panel[hidden] { display: none; }
+@media (min-width: 1000px) { main.shell { max-width: 1080px; } #panel-barista { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---- tab bar: bottom on phones (like the Flutter NavigationBar), top pills on desktop ---- */
+.tabbar { position: fixed; z-index: 30; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-around; gap: 4px;
+  padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: var(--glass); border-top: 1px solid var(--line);
+  -webkit-backdrop-filter: saturate(180%) blur(18px); backdrop-filter: saturate(180%) blur(18px); }
+.tabbar button { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 52px;
+  border: 0; background: transparent; color: var(--mut); font-size: 12px; font-weight: 700; border-radius: var(--ac-radius-control); box-shadow: none; }
+.tabbar button .ti { font-size: 20px; line-height: 1; }
+.tabbar button[aria-selected="true"] { background: var(--ac-coral-soft); color: var(--ink); }
+.tabbar .badge { position: absolute; top: 2px; right: calc(50% - 24px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 99px;
+  background: var(--ac-coral-strong); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+@media (min-width: 820px) {
+  .tabbar { position: sticky; top: 61px; bottom: auto; justify-content: center; border-top: 0; border-bottom: 1px solid var(--line); padding: 8px 12px; }
+  .tabbar button { flex: 0 0 auto; flex-direction: row; gap: 8px; padding: 8px 20px; border-radius: var(--ac-radius-pill); min-height: 44px; font-size: 14px; }
+  .tabbar .badge { position: static; }
+  main.shell { margin-bottom: 40px; }
+}
+
+/* ---- Home ---- */
+.hero { padding: 30px 26px; border-radius: 32px; background: var(--ac-grad); color: var(--on-grad); border: 0; box-shadow: var(--shadow-2); }
+.hero .eyebrow { margin: 0 0 6px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; font-size: 12px; }
+.hero .hero-title { margin: 0 0 10px; font-size: clamp(26px, 5.4vw, 40px); line-height: 1.1; letter-spacing: -.03em; font-weight: 800; }
+.hero .hero-lead { margin: 0 0 18px; max-width: 54ch; font-size: 15.5px; }
+.hero-cta { display: flex; flex-wrap: wrap; gap: 10px; }
+.hero-cta button { border-radius: var(--ac-radius-pill); padding: 12px 22px; font-weight: 800; }
+.hero-cta button.primary { background: var(--ac-ink); color: var(--ac-canvas); box-shadow: none; }
+.hero-cta button:not(.primary) { background: rgba(255,255,255,.65); color: var(--ac-ink); border-color: transparent; }
+.how3 { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.how-card { display: grid; gap: 6px; padding: 16px; border-radius: var(--ac-radius-card); font-size: 14px; }
+.how-card b { font-size: 16px; }
+.how-n { width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; background: rgba(255,255,255,.7); color: var(--ac-ink); }
+.c-mint { background: var(--ac-mint); color: var(--ac-mint-ink); }
+.c-lavender { background: var(--ac-lavender); color: var(--ac-lavender-ink); }
+.c-sky { background: var(--ac-sky); color: var(--ac-sky-ink); }
+@media (prefers-color-scheme: dark) { .hero-cta button:not(.primary) { background: rgba(0,0,0,.3); color: var(--ac-ink); } .hero .eyebrow, .hero .hero-title, .hero .hero-lead { color: var(--ac-canvas); } .hero-cta button.primary { background: var(--ac-canvas); color: var(--ac-ink); } }
+
+/* ---- pastel product cards (same category tints as Flutter) ---- */
+#catalog { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 12px; }
+#catalog .prod { border: 0; border-radius: var(--ac-radius-card); padding: 14px; background: var(--ac-surface-alt); color: var(--ac-ink); box-shadow: none; }
+#catalog .prod .art { width: 100%; height: 110px; object-fit: contain; border-radius: 18px; }
+#catalog .prod small { color: inherit; opacity: .78; }
+#catalog .prod .row b { color: var(--ac-coral-strong); }
+#catalog .prod[data-cat="breakfast"] { background: var(--ac-cat-breakfast); } #catalog .prod[data-cat="drinks"] { background: var(--ac-cat-drinks); }
+#catalog .prod[data-cat="desserts"] { background: var(--ac-cat-desserts); } #catalog .prod[data-cat="gifts"] { background: var(--ac-cat-gifts); }
+#catalog .prod[data-cat="lunch"] { background: var(--ac-cat-lunch); } #catalog .prod[data-cat="snacks"] { background: var(--ac-cat-snacks); }
+#catalog .prod[data-cat="catering"] { background: var(--ac-cat-catering); }
+@media (prefers-color-scheme: dark) { #catalog .prod[data-cat] { background: color-mix(in srgb, var(--ac-surface) 78%, var(--ac-cat-snacks)); } #catalog .prod .row b { color: var(--ac-coral); } }
+
+/* ---- floating cart pill on the Barista tab ("View cart · 3 · €24.50") ---- */
+.cart-pill { position: fixed; z-index: 25; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom)); min-width: 240px; border-radius: var(--ac-radius-pill); padding: 14px 24px; font-weight: 800; box-shadow: var(--shadow-2); }
+.cart-pill[hidden] { display: none; }
+@media (min-width: 820px) { .cart-pill { bottom: 24px; } }
+
+/* ---- Profile ---- */
+.history { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.history li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 16px; background: var(--ac-surface-alt); }
+.history-item { cursor: pointer; transition: background .15s ease; }
+.history-item:hover { background: var(--ac-surface); }
+.history-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.invoice { margin-top: 12px; padding: 12px; border-radius: 14px; background: var(--ac-surface); border: 1px dashed var(--ac-line); }
+.invoice h4 { margin: 0 0 8px; font-size: 14px; }
+.invoice-rows { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 4px; }
+.invoice-rows li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.invoice-kv { display: grid; gap: 2px; margin-bottom: 10px; font-size: 12.5px; color: var(--ac-muted); }
+.guide { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+
+/* ---- AI Transaction Passport: who does what ---- */
+.pp-flow li { align-items: center; }
+.pp-actor { flex: none; font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 99px; margin-left: auto; }
+.pp-actor.ai { background: var(--ac-lavender); color: var(--ac-lavender-ink); }
+.pp-actor.server { background: var(--ac-sky); color: var(--ac-sky-ink); }
+.pp-actor.shopper { background: var(--ac-peach); color: var(--ac-peach-ink); }
+.pp-actor.paypal { background: var(--ac-mint); color: var(--ac-mint-ink); }
+.pp-bar { position: relative; overflow: visible; height: 12px; }
+.pp-bar i { border-radius: 99px; }
+.pp-bar .pp-mark { position: absolute; top: -4px; bottom: -4px; width: 3px; border-radius: 2px; background: var(--ink); }
+.pp-lock { display: flex; gap: 8px; align-items: center; margin: 8px 0; padding: 10px 12px; border-radius: 16px; background: var(--ac-mint); color: var(--ac-mint-ink); font-weight: 700; font-size: 13px; }
+
+/* ---- Dark mode: guarantee readable text/numbers on every surface ----
+   The token palette flips to dark surfaces + light ink automatically; these
+   overrides fix components that otherwise keep a light/dark mismatch. */
+@media (prefers-color-scheme: dark) {
+  /* step number circles on the dark pastel cards */
+  .how-n { background: rgba(0,0,0,.45); color: var(--ac-ink); }
+  /* catalog category chips: solid adapted surfaces, never dark-on-dark */
+  .cats button { background: var(--ac-surface-alt); color: var(--ac-ink); border-color: var(--ac-line); }
+  .cats button:hover { border-color: var(--ac-coral); }
+  .cats .on { background: var(--ac-coral); color: var(--ac-canvas); border-color: var(--ac-coral); }
+  .chips button { background: var(--ac-surface-alt); color: var(--ac-ink); border-color: var(--ac-line); }
+  .chips button:hover { border-color: var(--ac-coral); }
+  .chips button.on { background: var(--ac-coral); color: var(--ac-canvas); border-color: var(--ac-coral); }
+  /* non-selected category chips keep a quiet-but-readable surface */
+  #cats button:not(.on), .cats button:not(.on) { background: var(--ac-surface-alt); color: var(--ac-ink); }
+  /* hero secondary CTA: darken the translucent fill so light text clears AA */
+  .hero-cta button:not(.primary) { background: rgba(0,0,0,.6); color: var(--ac-ink); }
+  /* persistent nav labels + tagline must stay readable on the dark glass bar */
+  .tabbar button { color: var(--ac-ink); }
+  .tabbar button[aria-selected="true"] { background: var(--ac-coral-soft); color: var(--ac-ink); }
+  header .tagline { color: var(--ac-ink); opacity: .82; }
+  header .lang { color: var(--ac-ink); }
+}
+
+/* ---- compact header on phones: the links live in Profile, the tagline lives in Home ---- */
+@media (max-width: 819px) {
+  header { padding: 10px 14px; gap: 6px 10px; }
+  header .tagline, header a { display: none; }
+  header .lang span { display: none; }
+}
+
+@media print {
+  body * { visibility: hidden !important; }
+  #panel-order { display: block !important; position: absolute !important; inset: 0 !important; margin: 0 !important; padding: 0 !important; }
+  #order-detail, #order-detail * { visibility: visible !important; }
+  #order-detail { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; margin: 0 !important; padding: 0 !important; }
+  #order-detail button, #order-detail a, #order-detail form { display: none !important; }
+}
+
+/* ==========================================================================
+   Polish pass 2026-11-05 (fixes found while reviewing the running app)
+   ========================================================================== */
+
+/* A rule such as .split-active{display:flex} must never defeat the hidden attribute
+   (it used to leave an empty orange bar above "Review & pay with PayPal"). */
+[hidden] { display: none !important; }
+
+/* Profile: each field is one labelled group, so label, control and hint stay together. */
+.prefs { align-items: start; }
+.prefs .field { display: grid; gap: 6px; align-content: start; min-width: 0; }
+.prefs .field-wide { grid-column: 1 / -1; }
+.prefs .field > label, .prefs .field > .allergen { font-weight: 700; color: var(--ink); }
+.prefs .field select[multiple] { min-height: 124px; flex: none; }
+.prefs .field small { line-height: 1.4; }
+
+/* Scoped allowance creation form: aligned, same look as the other inputs. */
+form.scope-create { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(120px, 1fr) auto; gap: 8px; align-items: center; margin-top: 10px; }
+form.scope-create input { width: 100%; min-height: 44px; padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--card); color: var(--ink); font: inherit; box-sizing: border-box; }
+form.scope-create input:focus-visible { outline: 2px solid var(--focus, var(--brand)); outline-offset: 1px; }
+form.scope-create button { min-height: 44px; border-radius: 99px; padding-inline: 20px; }
+form.scope-create .policy { grid-column: 1 / -1; }
+@media (max-width: 560px) { form.scope-create { grid-template-columns: 1fr; } }
+
+/* Take-it-home card: title and button on their own rows instead of crammed together. */
+#takehome .passport { display: grid; gap: 8px; justify-items: start; }
+
+/* Pickup planner: compact slot grid per day instead of one long list of full-width rows. */
+.pickup-day { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; align-items: stretch; }
+.pickup-day-label { grid-column: 1 / -1; }
+.pickup-day .pickup-slot { width: 100%; margin: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 10px 12px; }
+.pickup-slot .pu-cap { font-size: 12px; opacity: .75; }
+
+/* The floating "View cart" pill no longer covers the footer text. */
+main.shell { padding-bottom: 96px; }
+@media (min-width: 820px) { main.shell { padding-bottom: 88px; } }
+
+/* Barista: keep the conversation area compact until there is something to read. */
+#log { height: auto; min-height: 160px; max-height: 420px; }

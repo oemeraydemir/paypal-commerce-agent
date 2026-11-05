@@ -1,0 +1,91 @@
+# ── Dependencies / build output ──
+node_modules/
+dist/
+build/
+coverage/
+
+# ── Secrets / environment (keep the *.example files) ──
+.env
+.env.*
+!.env.example
+!.env.render.example
+# ephemeral Flutter native integration files
+*.env
+
+# ── Logs ──
+*.log
+npm-debug.log*
+
+# ── Binaries / release artifacts ──
+*.apk
+release/
+
+# ── Editor / OS cruft ──
+.DS_Store
+.idea/
+.vscode/
+*.iml
+
+# ── Flutter / Dart build & local config ──
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+android/local.properties
+/.gradle/
+
+# ── Project data (agent memory, not source) ──
+.workbuddy-ai/
+
+# ── Credential doc (placeholder buyer creds — never commit the filled copy) ──
+docs/devpost-testing-instructions.md
+
+# lean submission package (tools/make-submission-zip.js)
+AiCafe-submission.zip
+_submission-stage/
+
+# raw audit run output (screenshots, HTTP dumps; ~20 MB). Curated evidence lives in docs/EVIDENCE.md
+audit-results/
+
+# Owner-only helpers (never committed, never packaged)
+_owner/
+
+# -- Local clutter that must never be committed --
+wt1.err
+*.err
+test-results.json
+npm-audit-full.json
+*.iml
+_owner/
+
+# -- Generated test/log output (never source) --
+full-test-log.txt
+webhook-result.json
+audit-dry-run.log
+.pg_local/
+source/apps/flutter_app/coverage/
+
+# ── Python SDK caches & generated packaging artifacts ──
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# ── Emulator / UI accessibility dumps (transient) ──
+ui_*.xml
+
+# ── Known temporary AI Café archive snapshots (specific files, not all *.zip) ──
+AiCafe_KontroldenGecen.zip
+AiCafe_SuperApp.zip
+AiCafe_Merged.zip
+AiCafe_Merged0311.zip
+AiCafe_Merged_v2_flutter_channel3.zip
+
+# ── Version snapshots, generated staging, raw audit output ──
+_versions/
+.artgen/
+audit/
+

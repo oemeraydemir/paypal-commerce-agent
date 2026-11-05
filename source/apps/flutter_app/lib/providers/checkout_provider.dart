@@ -1,0 +1,926 @@
+import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'package:flutter_app/l10n/app_strings.dart';
+import 'package:flutter_app/models/cart.dart';
+import 'package:flutter_app/models/order.dart';
+import 'package:flutter_app/models/paid_receipt.dart';
+import 'package:flutter_app/models/pickup.dart';
+import 'package:flutter_app/models/take_home.dart';
+import 'package:flutter_app/providers/chat_provider.dart';
+import 'package:flutter_app/providers/locale_provider.dart';
+import 'package:flutter_app/services/api_service.dart';
+
+/// Drives the PayPal checkout flow and a manual product cart.
+///
+/// Flow (matches the backend's two-step PayPal Orders API):
+///   1. [startCheckout]  -> `POST /api/orders/create` -> opens [approvalUrl] in
+///      the system browser.
+///   2. User approves on PayPal, returns to the app.
+///   3. [completeCheckout] -> `POST /api/orders/:id/capture`.
+///
+/// The client never sees PayPal credentials or calls the PayPal SDK directly;
+/// every payment action is server-side. The manual cart and the AI-prepared
+/// cart are unified into a single list of [OrderItem]s at checkout time.
+/// Server verdict state for the CURRENT cart. Checkout is only allowed for
+/// [allowed] and [needsApproval]; everything else (checking, blocked, error,
+/// idle) keeps the pay button disabled. The backend re-checks on order creation.
+enum CartPolicyStatus { idle, checking, allowed, needsApproval, blocked, error }
+
+/// Structured Checkout Rescue guidance surfaced from a backend error. It is
+/// display-only: the client NEVER auto-retries and never fabricates a payment
+/// outcome. All fields are optional and only present when the server sent them.
+class CheckoutRescue {
+  final bool retryable;
+  final int retryAfterSeconds;
+  final bool cartSaved;
+  final String? suggestion;
+  final String? alternativePayment;
+  final String? code;
+
+  const CheckoutRescue({
+    this.retryable = false,
+    this.retryAfterSeconds = 0,
+    this.cartSaved = false,
+    this.suggestion,
+    this.alternativePayment,
+    this.code,
+  });
+}
+
+class CheckoutProvider extends ChangeNotifier {
+  final ApiService api;
+  final ChatProvider chat;
+  final LocaleProvider? localeProvider;
+  final Future<bool> Function(Uri url) _launchApproval;
+
+  String get _languageCode => localeProvider?.languageCode ?? 'en';
+
+  String _localized(String key, [List<String> args = const []]) {
+    var value = AppStrings.get(_languageCode, key);
+    for (final arg in args) {
+      value = value.replaceFirst('%s', arg);
+    }
+    return value;
+  }
+
+  String? _errorKey;
+  List<String> _errorArgs = const [];
+  String? _rawError;
+  String? get error =>
+      _errorKey == null ? _rawError : _localized(_errorKey!, _errorArgs);
+
+  /// Checkout Rescue guidance captured from the last backend error (if any).
+  CheckoutRescue? _rescue;
+  CheckoutRescue? get rescue => _rescue;
+
+  /// A retry of the pending capture is offered when the backend said the
+  /// operation is retryable and there is still an un-captured pending order.
+  /// This re-runs the server-side reconcile-first capture, so it NEVER
+  /// double-charges: it checks the existing order's real state first.
+  bool get canRetryCapture =>
+      _created != null && _captured == null && (_rescue?.retryable ?? false);
+
+  /// Captures the structured rescue guidance from an [ApiException], and clears
+  /// it when the error carries no usable recovery detail.
+  void _applyRescue(ApiException e) {
+    final hasInfo =
+        e.retryable ||
+        e.cartSaved ||
+        e.suggestion != null ||
+        e.alternativePayment != null ||
+        e.code != null ||
+        e.paypalIssue != null;
+    _rescue = hasInfo
+        ? CheckoutRescue(
+            retryable: e.retryable,
+            retryAfterSeconds: e.retryAfterSeconds,
+            cartSaved: e.cartSaved,
+            suggestion: e.suggestion,
+            alternativePayment: e.alternativePayment,
+            code: e.code ?? e.paypalIssue,
+          )
+        : null;
+  }
+
+  String? _statusMessageKey;
+  List<String> _statusMessageArgs = const [];
+  String? _rawStatusMessage;
+  String? get statusMessage => _statusMessageKey == null
+      ? _rawStatusMessage
+      : _localized(_statusMessageKey!, _statusMessageArgs);
+  PreparedCart? _observedPreparedCart;
+  bool _disposed = false;
+
+  // Every cart change bumps the version; a response is applied only if it still
+  // belongs to the latest version, so a late reply can never override a newer cart.
+  int _policyVersion = 0;
+  // The in-flight verdict request; never completes with an error (see catchError below).
+  Future<void>? _policyFuture;
+  CartPolicyStatus _policyStatus = CartPolicyStatus.idle;
+  String? _policyReason;
+  String? _policyReasonKey;
+  CartPolicyStatus get policyStatus => _policyStatus;
+  String? get policyReason => _policyReasonKey == null
+      ? _policyReason
+      : _localized(_policyReasonKey!);
+
+  // Stage 2: session-scoped allowance snapshot (limits + usage + expiry).
+  PolicyAllowance? _allowance;
+  PolicyAllowance? get allowance => _allowance;
+  PolicyPreview? _cartMandate;
+  PolicyPreview? get cartMandate => _cartMandate;
+  bool get requiresMandateRenewal => _policyStatus == CartPolicyStatus.blocked && _cartMandate != null &&
+      (_cartMandate!.violations.contains('MAX_PURCHASE_EXCEEDED') ||
+       _cartMandate!.violations.contains('ALLOWANCE_EXPIRED'));
+
+  Future<void> renewMandateForCurrentCart() async {
+    final preview = _cartMandate;
+    final allowance = _allowance;
+    final total = preview?.totalMinor;
+    if (preview == null || allowance == null || total == null || total <= 0) return;
+    try {
+      final max = total > allowance.maxPerPurchaseMinor ? total : allowance.maxPerPurchaseMinor;
+      final daily = max > allowance.dailySpendLimitMinor ? max : allowance.dailySpendLimitMinor;
+      _allowance = await api.updatePolicy(
+        maxPerPurchaseMinor: max,
+        dailySpendLimitMinor: daily,
+        validUntil: DateTime.now().add(const Duration(hours: 1)).toUtc().toIso8601String(),
+      );
+      _refreshPolicy();
+      notifyListeners();
+    } catch (error) {
+      _setRawError('Could not renew spending permission: $error');
+      notifyListeners();
+    }
+  }
+
+  Future<void> refreshAllowance() async {
+    try {
+      final value = await api.fetchPolicy();
+      if (_disposed) return;
+      _allowance = value;
+      notifyListeners();
+    } catch (_) {
+      // Allowance is advisory UI; failure is non-fatal.
+    }
+  }
+
+  void _clearPolicyReason() {
+    _policyReason = null;
+    _policyReasonKey = null;
+  }
+  bool get policyAllowsCheckout =>
+      canCheckout &&
+      (_policyStatus == CartPolicyStatus.allowed ||
+          _policyStatus == CartPolicyStatus.needsApproval);
+
+  void _refreshPolicy() {
+    final version = ++_policyVersion;
+    final items = _resolveItems();
+    if (items.isEmpty) {
+      _policyFuture = null;
+      _cartMandate = null;
+      _policyStatus = CartPolicyStatus.idle;
+      _clearPolicyReason();
+      return;
+    }
+    _cartMandate = null;
+    _policyStatus = CartPolicyStatus.checking;
+    _clearPolicyReason();
+    _policyFuture = api
+        .previewPolicy(items)
+        .then((preview) {
+          if (_disposed || version != _policyVersion) return;
+          _cartMandate = preview;
+          switch (preview.decision) {
+            case PolicyDecision.autoAllow:
+              _policyStatus = CartPolicyStatus.allowed;
+            case PolicyDecision.requireConfirmation:
+              _policyStatus = CartPolicyStatus.needsApproval;
+            case PolicyDecision.block:
+              _policyStatus = CartPolicyStatus.blocked;
+            case PolicyDecision.unknown:
+              _policyStatus = CartPolicyStatus.error;
+          }
+          _policyReason = preview.reason;
+      _policyReasonKey = null;
+          notifyListeners();
+        })
+        .catchError((Object _) {
+          if (_disposed || version != _policyVersion) return;
+          _policyStatus = CartPolicyStatus.error;
+          _clearPolicyReason();
+          _policyReasonKey = 'checkout.errorPolicyUnavailableRetry';
+          notifyListeners();
+        });
+  }
+
+  CheckoutProvider(
+    this.api,
+    this.chat, {
+    this.localeProvider,
+    Future<bool> Function(Uri url)? launchApproval,
+  }) : _launchApproval =
+           launchApproval ??
+           ((url) => launchUrl(url, mode: LaunchMode.externalApplication)) {
+    _observedPreparedCart = chat.lastPreparedCart;
+    chat.addListener(_onChatChanged);
+    if (cart.isNotEmpty) _refreshPolicy();
+    refreshAllowance();
+  }
+
+  void _onChatChanged() {
+    if (identical(_observedPreparedCart, chat.lastPreparedCart)) return;
+    _observedPreparedCart = chat.lastPreparedCart;
+    _quantityOverrides.clear();
+    _refreshPolicy();
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    chat.removeListener(_onChatChanged);
+    super.dispose();
+  }
+
+  /// Manual additions are merged with the AI-prepared cart, never substituted.
+  final Map<String, int> _manualCart = <String, int>{};
+  final Map<String, int> _quantityOverrides = <String, int>{};
+  Map<String, int> get cart => Map.unmodifiable(_resolvedQuantities());
+
+  bool _busy = false;
+  bool get busy => _busy;
+
+
+  OrderCreateResult? _created;
+  OrderCreateResult? get created => _created;
+  bool get hasPendingOrder => _created != null && _captured == null;
+
+  /// The shopper's held pickup reservation (if any). Held until it is linked
+  /// to the order at payment. Owned here so the receipt can offer linking.
+  PickupBooking? _pickupBooking;
+  PickupBooking? get pickupBooking => _pickupBooking;
+
+  void setPickupBooking(PickupBooking? booking) {
+    if (_pickupBooking?.bookingId == booking?.bookingId &&
+        _pickupBooking?.status == booking?.status) {
+      return;
+    }
+    _pickupBooking = booking;
+    notifyListeners();
+  }
+
+  OrderCaptureResult? _captured;
+  OrderCaptureResult? get captured => _captured;
+
+  /// Receipt for the payment that was just confirmed. Built from the cart as it
+  /// was at capture time (the cart itself is consumed right after), then
+  /// completed with the signed Cart Mandate (prices + QR link) when that loads.
+  PaidReceipt? _receipt;
+  PaidReceipt? get receipt => _receipt;
+
+  void dismissReceipt() {
+    if (_receipt == null) return;
+    _receipt = null;
+    notifyListeners();
+  }
+
+  PaidReceipt _buildReceipt({required String orderId, String? captureId}) {
+    final prepared = chat.lastPreparedCart;
+    final preparedLines = <String, CartLine>{
+      for (final l in prepared?.items ?? const <CartLine>[]) l.productId: l,
+    };
+    final lines = cart.entries.map((e) {
+      final p = preparedLines[e.key];
+      // A price is shown only while the quantity is the one the server priced.
+      return ReceiptLine(
+        productId: e.key,
+        name: p?.name,
+        quantity: e.value,
+        lineTotalMinor: (p != null && p.quantity == e.value)
+            ? p.lineTotalMinor
+            : null,
+      );
+    }).toList(growable: false);
+    final created = _created;
+    return PaidReceipt(
+      orderId: orderId,
+      captureId: captureId,
+      lines: lines,
+      totalFormatted: created?.totalFormatted ?? '',
+      totalMinor: created?.totalMinor,
+      currency: created?.currency ?? 'EUR',
+      source: receiptSourceFor(
+        hadPreparedCart: prepared != null,
+        mode: chat.lastPreparedCartMode,
+      ),
+      paidAt: DateTime.now(),
+    );
+  }
+
+  /// Completes the receipt with the server's signed mandate. Best effort: the
+  /// payment is already confirmed, so any failure here only means "no QR code".
+  Future<void> _attachMandate() async {
+    final current = _receipt;
+    if (current == null) return;
+    try {
+      final mandate = await api
+          .getMandate(current.orderId)
+          .timeout(const Duration(seconds: 8));
+      if (_disposed || mandate == null || mandate.orderId != current.orderId) {
+        return;
+      }
+      if (_receipt == null || _receipt!.orderId != current.orderId) return;
+      _receipt = _receipt!.withMandate(mandate, api.publicBaseUrl);
+      notifyListeners();
+    } catch (_) {
+      // Keep the receipt without a QR code.
+    }
+  }
+
+  bool _paypalApproved = false;
+  bool get paypalApproved => _paypalApproved;
+
+  /// Deterministic per-cart idempotency key sent as `Idempotency-Key` (F4).
+  /// Derived purely from the sorted cart items, so the same cart always maps to
+  /// the same key: transport retries AND repeated attempts reuse it, while any
+  /// cart change produces a new key.
+  String? _idempotencyKey;
+
+  String _idempotencyKeyFor(List<OrderItem> items) {
+    final canonical = items.map((i) => '${i.id}=${i.quantity}').join('|');
+    var hash = 0x811c9dc5;
+    for (final unit in canonical.codeUnits) {
+      hash ^= unit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return 'co-${hash.toRadixString(36)}';
+  }
+
+  void _setError(String key, [List<Object?> args = const []]) {
+    _errorKey = key;
+    _errorArgs = args.map((value) => value.toString()).toList(growable: false);
+    _rawError = null;
+  }
+
+  void _clearError() {
+    _errorKey = null;
+    _errorArgs = const [];
+    _rawError = null;
+    _rescue = null;
+  }
+
+  void _setRawError(String message) {
+    _errorKey = null;
+    _errorArgs = const [];
+    _rawError = message;
+    _rescue = null;
+  }
+
+  void _setStatusMessage(String key, [List<Object?> args = const []]) {
+    _statusMessageKey = key;
+    _statusMessageArgs =
+        args.map((value) => value.toString()).toList(growable: false);
+    _rawStatusMessage = null;
+  }
+
+  void _clearStatusMessage() {
+    _statusMessageKey = null;
+    _statusMessageArgs = const [];
+    _rawStatusMessage = null;
+  }
+
+  void setError(String message) {
+    _setRawError(message);
+    notifyListeners();
+  }
+
+  Map<String, int> _resolvedQuantities() {
+    final quantities = <String, int>{};
+    for (final line in chat.lastPreparedCart?.items ?? const []) {
+      quantities[line.productId] = line.quantity;
+    }
+    for (final entry in _manualCart.entries) {
+      quantities.update(
+        entry.key,
+        (quantity) => quantity + entry.value,
+        ifAbsent: () => entry.value,
+      );
+    }
+    for (final entry in _quantityOverrides.entries) {
+      if (entry.value <= 0) {
+        quantities.remove(entry.key);
+      } else {
+        quantities[entry.key] = entry.value;
+      }
+    }
+    return quantities;
+  }
+
+  void addProduct(String productId, {int qty = 1}) {
+    if (qty <= 0) {
+      throw ArgumentError.value(qty, 'qty', 'Must be greater than zero');
+    }
+    final aiQuantity =
+        chat.lastPreparedCart?.items
+            .where((line) => line.productId == productId)
+            .fold<int>(0, (sum, line) => sum + line.quantity) ??
+        0;
+    if (aiQuantity > 0) {
+      _quantityOverrides[productId] = (cart[productId] ?? 0) + qty;
+    } else {
+      _manualCart[productId] = (_manualCart[productId] ?? 0) + qty;
+    }
+    _refreshPolicy();
+    notifyListeners();
+  }
+
+  void setQuantity(String productId, int qty) {
+    final isAiPrepared = chat.lastPreparedCart?.items.any(
+      (line) => line.productId == productId,
+    );
+    if (isAiPrepared ?? false) {
+      _quantityOverrides[productId] = qty;
+    } else if (qty <= 0) {
+      _manualCart.remove(productId);
+    } else {
+      _manualCart[productId] = qty;
+    }
+    _refreshPolicy();
+    notifyListeners();
+  }
+
+  void removeProduct(String productId) {
+    setQuantity(productId, 0);
+  }
+
+  Future<void> clear() async {
+    if (_busy) return;
+    if (hasPendingOrder) {
+      _setError('checkout.errorFinishOrCancelBeforeClear');
+      notifyListeners();
+      return;
+    }
+    _busy = true;
+    _clearError();
+    notifyListeners();
+    try {
+      if (chat.lastPreparedCart != null) {
+        await chat.clearPreparedCart();
+      }
+    } catch (error) {
+      _busy = false;
+      _setError('checkout.errorUnexpected', [error.toString()]);
+      notifyListeners();
+      return;
+    }
+
+    _manualCart.clear();
+    _quantityOverrides.clear();
+    _policyVersion++;
+    _policyFuture = null;
+    _policyStatus = CartPolicyStatus.idle;
+    _clearPolicyReason();
+    _created = null;
+    _captured = null;
+    _receipt = null;
+    _paypalApproved = false;
+    _clearStatusMessage();
+    _clearError();
+    _busy = false;
+    notifyListeners();
+  }
+
+  /// Loads "Take it home" (Channel3) suggestions for the current cart. Read-only:
+  /// results never affect the cart, allowance or payment. Loads only on tap so
+  /// idle carts do not spend search quota (see `TakeHomeCard`).
+  Future<TakeHomeResult> loadTakeHome() => api.fetchTakeHome(_resolveItems());
+
+  List<OrderItem> _resolveItems() {
+    final items = cart.entries
+        .map((entry) => OrderItem(id: entry.key, quantity: entry.value))
+        .toList();
+    items.sort((a, b) => a.id.compareTo(b.id));
+    return items;
+  }
+
+  bool get canCheckout => cart.isNotEmpty;
+
+  /// Accept only a PayPal return link for the order currently awaiting approval.
+  ///
+  /// On a valid cancellation return, the cancellation is now propagated to the
+  /// backend (`POST /api/orders/:orderId/cancel`) so the server releases the
+  /// daily-spend reservation; the local cart is preserved and the pending order
+  /// is only cleared once the backend confirms (F2). Stale or unrelated deep
+  /// links are not acted on and the local state is left recoverable.
+  Future<bool> handlePayPalReturn(Uri uri) async {
+    if (uri.scheme != 'paypalcommerceagent' || uri.host != 'checkout') {
+      return false;
+    }
+    final token = uri.queryParameters['token'];
+    if (_created == null) {
+      // Cold return: the app has no local pending order (e.g. it was restarted
+      // after the user approved on PayPal). Recover the matching pending order
+      // from the backend before deciding how to handle this return link.
+      if (token == null || token.isEmpty) {
+        _setStatusMessage('checkout.statusNoPendingHandle');
+        notifyListeners();
+        return true;
+      }
+      OrderCreateResult? recovered;
+      try {
+        recovered = await api.recoverPendingOrder(token);
+      } on ApiException catch (e) {
+        _applyRescue(e);
+        _setError('checkout.errorCheckoutApi', [e.statusCode, e.message]);
+        notifyListeners();
+        return true;
+      }
+      if (recovered == null || recovered.paypalOrderId != token) {
+        _setStatusMessage('checkout.statusNoPendingHandle');
+        notifyListeners();
+        return true;
+      }
+      _created = recovered;
+      _clearError();
+      if (uri.path == '/cancel') {
+        await _cancelViaBackend();
+      } else {
+        _paypalApproved = true;
+        _setStatusMessage('checkout.statusApprovedCapture');
+      }
+      notifyListeners();
+      return true;
+    }
+    if (token != _created!.paypalOrderId) {
+      _setError('checkout.errorReturnMismatch');
+      notifyListeners();
+      // Not handled: the UI surfaces a "does not match your pending order"
+      // message and no backend call is made (F2).
+      return false;
+    }
+    if (uri.path == '/cancel') {
+      await _cancelViaBackend();
+      return true;
+    }
+    if (uri.path != '/success') return false;
+
+    _paypalApproved = true;
+    _setStatusMessage('checkout.statusApprovedCapture');
+    _clearError();
+    notifyListeners();
+    return true;
+  }
+
+  /// Propagates a PayPal cancellation to the backend. The local cart is kept and
+  /// the pending order is only cleared when the server confirms the cancel; on
+  /// failure the recoverable pending order is preserved and the error is shown
+  /// (F2/F3). This never marks the order as paid.
+  Future<void> _cancelViaBackend() async {
+    final orderId = _created!.orderId;
+    _busy = true;
+    _clearError();
+    notifyListeners();
+    try {
+      await api.cancelOrder(orderId);
+      // Backend confirmed: safe to drop the pending order. Cart is preserved.
+      _created = null;
+      _paypalApproved = false;
+      _setStatusMessage('checkout.statusPaypalCancelled');
+    } on ApiException catch (e) {
+      // Keep the recoverable pending order so the user can retry; surface error.
+      _setError('checkout.errorCancelApi', [e.statusCode, e.message]);
+      _clearStatusMessage();
+    } catch (e) {
+      _setError('checkout.errorUnexpected', [e.toString()]);
+      _clearStatusMessage();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Explains that the matching PayPal return link is required before capture.
+  /// A user assertion from the browser cannot authorize payment.
+  void confirmApprovalInBrowser() {
+    _setStatusMessage('checkout.statusApprovalUnconfirmed');
+    _clearError();
+    notifyListeners();
+  }
+
+  /// Step 1+2: create the order server-side and open the PayPal approval URL.
+  Future<void> startCheckout({Map<String, dynamic>? wellbeingPreferences}) async {
+    if (_busy) return;
+    if (hasPendingOrder) {
+      _setError('checkout.errorExistingOrder');
+      notifyListeners();
+      return;
+    }
+    final items = _resolveItems();
+    if (items.isEmpty) {
+      _setError('checkout.errorCartEmpty');
+      notifyListeners();
+      return;
+    }
+
+    // D-04 gate, enforced here as well as on the buttons: no order is created
+    // for a cart without an allowing verdict. A verdict still in flight is
+    // awaited (bounded by the API timeout); the backend remains the final check.
+    if (_policyStatus == CartPolicyStatus.checking && _policyFuture != null) {
+      _busy = true;
+      _setStatusMessage('checkout.statusCheckingPolicy');
+      notifyListeners();
+      try {
+        await _policyFuture;
+      } finally {
+        _busy = false;
+        _clearStatusMessage();
+      }
+    }
+    if (!policyAllowsCheckout) {
+      if (_policyStatus == CartPolicyStatus.blocked) {
+        if (policyReason == null) {
+          _setError('checkout.errorPolicyBlockedGeneric');
+        } else {
+          _setError('checkout.errorPolicyBlocked', [policyReason]);
+        }
+      } else if (_policyStatus == CartPolicyStatus.error) {
+        if (_policyReasonKey != null) {
+          _setError(_policyReasonKey!);
+        } else if (_policyReason != null) {
+          _setRawError(_policyReason!);
+        } else {
+          _setError('checkout.errorPolicyUnavailableRetry');
+        }
+      } else {
+        _setError('checkout.errorPolicyNotApproved');
+      }
+      notifyListeners();
+      return;
+    }
+    // The cart may have changed while waiting; always send the CURRENT items.
+    final currentItems = _resolveItems();
+
+    _busy = true;
+    _clearError();
+    _captured = null;
+    _receipt = null;
+    _created = null;
+    _paypalApproved = false;
+    _setStatusMessage('checkout.statusCreatingOrder');
+    notifyListeners();
+
+    try {
+      // One deterministic key per cart (F4). Same cart => same key, so both
+      // transport retries and repeated attempts reuse it; a changed cart yields
+      // a new key. Derived from the current items, which are already sorted.
+      _idempotencyKey = _idempotencyKeyFor(currentItems);
+      final result = await api.createOrder(
+        items: currentItems,
+        idempotencyKey: _idempotencyKey,
+        wellbeingPreferences: wellbeingPreferences,
+      );
+      final approvalUrl = result.approvalUrl;
+      final approvalUri = approvalUrl == null
+          ? null
+          : Uri.tryParse(approvalUrl);
+      if (approvalUri == null || approvalUri.scheme != 'https') {
+        throw StateError('PayPal did not return a secure approval link.');
+      }
+      _created = result;
+      _setStatusMessage('checkout.statusOrderCreated');
+      notifyListeners();
+
+      final launched = await _launchApproval(approvalUri);
+      _setStatusMessage(
+        launched
+            ? 'checkout.statusApproveAndReturn'
+            : 'checkout.statusOpenPaypalRetry',
+      );
+      if (!launched) _setError('checkout.errorOpenApprovalPage');
+    } on ApiException catch (e) {
+      _applyRescue(e);
+      _setError('checkout.errorCheckoutApi', [e.statusCode, e.message]);
+      _clearStatusMessage();
+    } catch (e) {
+      _setError('checkout.errorUnexpected', [e.toString()]);
+      _clearStatusMessage();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> reopenApprovalPage() async {
+    final approvalUrl = _created?.approvalUrl;
+    final approvalUri = approvalUrl == null ? null : Uri.tryParse(approvalUrl);
+    if (approvalUri == null || approvalUri.scheme != 'https') {
+      _setError('checkout.errorNoSecureApprovalLink');
+      return;
+    }
+
+    _busy = true;
+    _clearError();
+    notifyListeners();
+    try {
+      final launched = await _launchApproval(approvalUri);
+      if (!launched) {
+        _setError('checkout.errorOpenApprovalPage');
+      } else {
+        _setStatusMessage('checkout.statusReopenApproval');
+      }
+    } catch (error) {
+      _setError('checkout.errorOpenPayPal', [error]);
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Clears every cart source after a confirmed payment.
+  ///
+  /// This is safe to call repeatedly: local clears are idempotent, and the
+  /// prepared-cart request is only sent while the chat still has that cart.
+  Future<void> _clearCartAfterPaid({required bool alreadyCompleted}) async {
+    _manualCart.clear();
+    _quantityOverrides.clear();
+
+    if (chat.lastPreparedCart == null) return;
+    // The paid cart is consumed locally first, so it cannot be paid twice even
+    // if the server cleanup fails. Only the notice depends on that cleanup.
+    final cleaned = await chat.consumePaidCart();
+    if (!cleaned) {
+      _setError(
+        alreadyCompleted
+            ? 'checkout.errorCartClearAfterAlreadyPaid'
+            : 'checkout.errorCartClearAfterCapture',
+        [chat.error ?? ''],
+      );
+    }
+  }
+
+  /// Step 3: capture the approved PayPal order.
+  Future<void> completeCheckout() async {
+    if (_busy) return;
+    if (_created == null) {
+      _setError('checkout.errorNoPendingCapture');
+      notifyListeners();
+      return;
+    }
+    if (!_paypalApproved) {
+      _setError('checkout.errorApprovalRequired');
+      notifyListeners();
+      return;
+    }
+
+    _busy = true;
+    _clearError();
+    _setStatusMessage('checkout.statusCapturing');
+    notifyListeners();
+
+    try {
+      final result = await api.captureOrder(_created!.orderId);
+      if (result.status == 'PAID') {
+        _captured = result;
+        _receipt = _buildReceipt(
+          orderId: result.orderId,
+          captureId:
+              result.paypalCaptureId != 'unknown' ? result.paypalCaptureId : null,
+        );
+        _setStatusMessage('checkout.statusCaptured', [
+          result.status,
+          result.paypalCaptureId != 'unknown'
+              ? ' (capture ${result.paypalCaptureId})'
+              : '',
+        ]);
+        await _clearCartAfterPaid(alreadyCompleted: false);
+        notifyListeners();
+        await _attachMandate();
+      } else if (result.status == 'PAYMENT_PENDING') {
+        _setStatusMessage('checkout.statusPaymentPending');
+      } else {
+        _created = null;
+        _paypalApproved = false;
+        _clearStatusMessage();
+        _setError('checkout.errorPaymentIncomplete');
+      }
+    } on ApiException catch (e) {
+      // F3/Recovery 07.1: recover from stale/ambiguous pending orders WITHOUT
+      // fabricating a payment outcome. A 409 "already captured" is only proof of
+      // payment when the backend has independently verified a real PayPal
+      // COMPLETED capture and signalled it via `details.settled == true`. Any
+      // other conflict (bare idempotent 409, unverified/failed reconciliation)
+      // is unresolved: keep the pending order so the user can retry and the
+      // webhook/reconciler can settle it. Never invent `PAID`/`COMPLETED`.
+      _applyRescue(e);
+      final msg = e.message.toLowerCase();
+      if (e.statusCode == 409 &&
+          msg.contains('already captured') &&
+          e.settled == true) {
+        // Trusted, verified completion. Reflect PAID and clear the pending
+        // state. We still do not invent a capture id (the server did not return
+        // one on this conflict), and this is NOT treated as a cancellation.
+        _captured = OrderCaptureResult(
+          orderId: _created!.orderId,
+          status: 'PAID',
+          paypalCaptureId: 'unknown',
+          paypalStatus: 'COMPLETED',
+        );
+        _receipt = _buildReceipt(orderId: _created!.orderId);
+        _created = null;
+        _paypalApproved = false;
+        _setStatusMessage('checkout.statusAlreadyCompleted');
+        await _clearCartAfterPaid(
+          alreadyCompleted: true,
+        );
+        notifyListeners();
+        await _attachMandate();
+      } else if (e.statusCode == 502 || e.statusCode == 409) {
+        // Ambiguous transport / capture-in-progress / unverified 409: preserve
+        // the recoverable pending order and let the user retry.
+        _setError('checkout.errorCaptureUnconfirmed', [e.statusCode, e.message]);
+        _clearStatusMessage();
+      } else {
+        _setError('checkout.errorCaptureApi', [e.statusCode, e.message]);
+        _clearStatusMessage();
+      }
+    } catch (e) {
+      _setError('checkout.errorUnexpected', [e.toString()]);
+      _clearStatusMessage();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
+  /// Cancels the current pending PayPal order via the backend
+  /// (`POST /api/orders/:orderId/cancel`). The server enforces ownership and
+  /// refuses to cancel already-captured orders, so this is payment-safe. The
+  /// cart is intentionally preserved so the shopper can retry.
+  Future<void> cancelCheckout([String? orderId]) async {
+    if (_busy) return;
+    final target = orderId ?? _created?.orderId;
+    if (target == null) {
+      _setError('checkout.errorNoPendingCancel');
+      notifyListeners();
+      return;
+    }
+    _busy = true;
+    _clearError();
+    notifyListeners();
+    try {
+      final result = await api.cancelOrder(target);
+      _created = null;
+      _paypalApproved = false;
+      _setStatusMessage('checkout.statusOrderCancelled', [result.status]);
+    } on ApiException catch (e) {
+      // F3/Recovery 07.1: do not treat every error as an ordinary cancellation.
+      // Preserve recoverable state and classify specific outcomes. A 409
+      // "already captured" only proves payment when the backend verified a real
+      // PayPal COMPLETED capture (`details.settled == true`); otherwise it is
+      // unresolved and the pending order must be kept, never fabricated as PAID.
+      _applyRescue(e);
+      final msg = e.message.toLowerCase();
+      if (e.statusCode == 409 &&
+          msg.contains('already captured') &&
+          e.settled == true) {
+        // The order is actually paid (server-verified); reflect that instead of
+        // leaving a stale pending order. Not marked cancelled. The cart is
+        // consumed because the payment succeeded.
+        _captured = OrderCaptureResult(
+          orderId: target,
+          status: 'PAID',
+          paypalCaptureId: 'unknown',
+          paypalStatus: 'COMPLETED',
+        );
+        _receipt = _buildReceipt(orderId: target);
+        _created = null;
+        _paypalApproved = false;
+        _setStatusMessage('checkout.statusOrderAlreadyPaid');
+        await _clearCartAfterPaid(alreadyCompleted: true);
+        notifyListeners();
+        await _attachMandate();
+      } else if (e.statusCode == 404) {
+        // Order no longer exists on the server: safe to drop the local pending
+        // reference (nothing to cancel).
+        _created = null;
+        _paypalApproved = false;
+        _setStatusMessage('checkout.statusOrderMissing');
+      } else {
+        // 502 (could not verify PayPal state), an unverified 409, or any other
+        // ambiguous outcome: keep the recoverable pending order so the user can
+        // retry and the webhook/reconciler can settle it.
+        _setError('checkout.errorCancelApi', [e.statusCode, e.message]);
+        _clearStatusMessage();
+      }
+    } catch (e) {
+      _setError('checkout.errorUnexpected', [e.toString()]);
+      _clearStatusMessage();
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+}

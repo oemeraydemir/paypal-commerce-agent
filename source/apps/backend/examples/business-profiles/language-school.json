@@ -1,0 +1,97 @@
+{
+  "business": {
+    "businessId": "language-school",
+    "name": "Lingua Language School",
+    "currency": "GBP",
+    "locale": "en-GB",
+    "timezone": "Europe/London",
+    "maxOrderValueMinor": 40000,
+    "minOrderValueMinor": 1000,
+    "confirmationThresholdMinor": 8000,
+    "aiPurchaseRequiresConfirmation": true,
+    "allowAutonomousPurchase": false
+  },
+  "products": [
+    {
+      "id": "trial-lesson",
+      "name": "Trial Lesson (45 min)",
+      "description": "One-to-one introductory lesson.",
+      "priceMinor": 1500,
+      "category": "lessons",
+      "tags": [
+        "beginner",
+        "trial"
+      ],
+      "occasion": [
+        "start"
+      ]
+    },
+    {
+      "id": "lesson-pack-5",
+      "name": "5 Lessons Pack",
+      "description": "Five one-to-one lessons, 60 min each.",
+      "priceMinor": 15000,
+      "category": "lessons",
+      "tags": [
+        "one-to-one"
+      ],
+      "occasion": [
+        "regular"
+      ]
+    },
+    {
+      "id": "group-course-8w",
+      "name": "8-week Group Course",
+      "description": "Small group course, two evenings per week.",
+      "priceMinor": 22000,
+      "category": "courses",
+      "tags": [
+        "group",
+        "evening"
+      ],
+      "occasion": [
+        "regular"
+      ]
+    },
+    {
+      "id": "conversation-club",
+      "name": "Conversation Club (monthly)",
+      "description": "Weekly relaxed conversation practice for a month.",
+      "priceMinor": 4500,
+      "category": "courses",
+      "tags": [
+        "group",
+        "speaking"
+      ],
+      "occasion": [
+        "regular"
+      ]
+    },
+    {
+      "id": "exam-prep-workshop",
+      "name": "Exam Preparation Workshop",
+      "description": "Saturday workshop for certificate exams.",
+      "priceMinor": 6500,
+      "category": "workshops",
+      "tags": [
+        "exam"
+      ],
+      "occasion": [
+        "exam"
+      ]
+    },
+    {
+      "id": "gift-voucher-100",
+      "name": "Gift Voucher 100",
+      "description": "Redeemable against any lesson or course.",
+      "priceMinor": 10000,
+      "category": "vouchers",
+      "tags": [
+        "gift"
+      ],
+      "occasion": [
+        "gift"
+      ]
+    }
+  ]
+}

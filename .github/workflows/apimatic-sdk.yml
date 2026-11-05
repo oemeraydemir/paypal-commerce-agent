@@ -1,0 +1,33 @@
+# Generates client SDKs from openapi.json with APIMatic (sponsor tool).
+# Manual only: it needs an APIMatic account. Add the key as the repository secret APIMATIC_API_KEY,
+# then run "Actions > APIMatic SDK > Run workflow". Generated SDKs are uploaded as build artifacts.
+# See apimatic/README.md. Command syntax: https://github.com/apimatic/apimatic-cli
+name: APIMatic SDK
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Space-separated APIMatic platform codes'
+        default: 'TS_GENERIC_LIB PYTHON_GENERIC_LIB'
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Fail early when the secret is missing
+        env: { APIMATIC_API_KEY: '${{ secrets.APIMATIC_API_KEY }}' }
+        run: test -n "$APIMATIC_API_KEY" || { echo "Add the APIMATIC_API_KEY repository secret first."; exit 1; }
+      - run: npm install -g @apimatic/cli@1.1.0-alpha.5
+      - name: Validate the spec
+        env: { APIMATIC_API_KEY: '${{ secrets.APIMATIC_API_KEY }}' }
+        run: apimatic api:validate --file=openapi.json --auth-key="$APIMATIC_API_KEY"
+      - name: Generate SDKs
+        env: { APIMATIC_API_KEY: '${{ secrets.APIMATIC_API_KEY }}' }
+        run: |
+          for p in ${{ github.event.inputs.platforms }}; do
+            apimatic sdk:generate --platform="$p" --file=openapi.json --destination="sdk/$p" --force --auth-key="$APIMATIC_API_KEY"
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: apimatic-sdks, path: sdk/ }
