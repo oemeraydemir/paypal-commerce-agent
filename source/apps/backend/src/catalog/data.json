@@ -34,7 +34,8 @@
         "caffeine"
       ],
       "dietary": [
-        "vegan"
+        "vegan",
+        "gluten-free"
       ],
       "occasion": [
         "breakfast",
@@ -357,7 +358,8 @@
         "strong"
       ],
       "dietary": [
-        "vegan"
+        "vegan",
+        "gluten-free"
       ],
       "occasion": [
         "breakfast",
