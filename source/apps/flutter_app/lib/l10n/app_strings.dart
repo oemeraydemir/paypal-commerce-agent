@@ -66,6 +66,8 @@ class AppStrings {
       'menu.scenariosNote':
           'One tap fills the cart. The decision still comes from the server-side policy engine.',
       'menu.scenarioApplied': 'Scenario added to your cart — review it before paying.',
+      'options.hint': 'Choose an option below or reply with its number. Review the cart before checkout.',
+      'options.select': 'Choose option',
       'scenario.everyday': 'Everyday order',
       'scenario.quick': 'Quick coffee',
       'scenario.overLimit': 'Over the limit',
@@ -518,6 +520,8 @@ class AppStrings {
       'menu.scenariosNote':
           'Tek dokunuşla sepet dolar. Karar yine sunucu tarafındaki politika motorundan gelir.',
       'menu.scenarioApplied': 'Senaryo sepete eklendi — ödemeden önce inceleyin.',
+      'options.hint': 'Aşağıdan bir seçenek seçin veya numarasını yazın. Ödemeden önce sepeti inceleyin.',
+      'options.select': 'Seçenek seç',
       'scenario.everyday': 'Günlük sipariş',
       'scenario.quick': 'Hızlı kahve',
       'scenario.overLimit': 'Limit üstü',
