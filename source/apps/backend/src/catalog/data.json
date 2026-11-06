@@ -214,7 +214,8 @@
       ],
       "dietary": [
         "vegan",
-        "vegetarian"
+        "vegetarian",
+        "gluten-free"
       ],
       "occasion": [
         "breakfast"
@@ -223,8 +224,8 @@
       "wellbeing": {
         "allergens": {
           "gluten": {
-            "status": "UNKNOWN",
-            "ingredients": ["oats", "oat milk", "seasonal berries"]
+            "status": "NO_CONFLICT",
+            "ingredients": ["oats", "oat milk"]
           }
         }
       }
