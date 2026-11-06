@@ -226,6 +226,16 @@ class TransactionPassportCard extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, box) {
               final w = box.maxWidth;
+              // The server can report >100% when a cart is over the limit.
+              // This Stack deliberately does not clip (Clip.none), so an
+              // unclamped fill used to paint past the card's right edge.
+              // Clamp both the fill and the threshold marker to the bar.
+              final double fillWidth =
+                  (w * m.usedPercent / 100).clamp(0.0, w).toDouble();
+              final double markerMax = w > 3 ? w - 3 : w;
+              final double markerLeft = (w * m.thresholdPercent / 100 - 1.5)
+                  .clamp(0.0, markerMax)
+                  .toDouble();
               return Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -245,7 +255,7 @@ class TransactionPassportCard extends StatelessWidget {
                     left: 0,
                     top: 3,
                     height: 12,
-                    width: w * m.usedPercent / 100,
+                    width: fillWidth,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
                         gradient: AcGradient.coral,
@@ -256,7 +266,7 @@ class TransactionPassportCard extends StatelessWidget {
                   if (m.thresholdPercent > 0 && m.thresholdPercent < 100)
                     Positioned(
                       key: const Key('passport-threshold-marker'),
-                      left: w * m.thresholdPercent / 100 - 1.5,
+                      left: markerLeft,
                       top: 0,
                       height: 18,
                       width: 3,
@@ -270,16 +280,29 @@ class TransactionPassportCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 4),
+        // Both captions are localized and one is long (TR "Onay eşiği: …").
+        // Plain Text children in a Row overflow horizontally; Flexible lets
+        // each shrink and ellipsize instead of painting over the card edge.
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(
-              '${m.usedPercent}% ${_s('passport.used')}',
-              style: t.bodySmall?.copyWith(color: AppColors.inkMuted),
+            Flexible(
+              child: Text(
+                '${m.usedPercent}% ${_s('passport.used')}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: t.bodySmall?.copyWith(color: AppColors.inkMuted),
+              ),
             ),
-            Text(
-              '${_s('passport.threshold')}: ${_money(m.approvalThresholdMinor)} · max ${_money(m.maxPerPurchaseMinor)}',
-              style: t.bodySmall?.copyWith(color: AppColors.inkMuted),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                '${_s('passport.threshold')}: ${_money(m.approvalThresholdMinor)} · max ${_money(m.maxPerPurchaseMinor)}',
+                maxLines: 2,
+                textAlign: TextAlign.end,
+                overflow: TextOverflow.ellipsis,
+                style: t.bodySmall?.copyWith(color: AppColors.inkMuted),
+              ),
             ),
           ],
         ),

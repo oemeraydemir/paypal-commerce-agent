@@ -83,8 +83,10 @@ class _TakeHomeCardState extends State<TakeHomeCard> {
           children.add(ListTile(
             contentPadding: EdgeInsets.zero,
             dense: true,
-            title: Text(it.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-            subtitle: meta.isEmpty ? null : Text(meta),
+            title: Text(it.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: meta.isEmpty
+                ? null
+                : Text(meta, maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: const Icon(Icons.open_in_new, size: 18),
             onTap: () => _open(it.url),
           ));

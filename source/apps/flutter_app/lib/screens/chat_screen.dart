@@ -212,6 +212,10 @@ class _ChatScreenState extends State<ChatScreen> {
   static const int _tabBarista = 2;
   int _activeTab = _tabHome;
 
+  // Web parity: the storefront has category filters above the product grid.
+  // The Barista tab now carries the same filter state over its compact menu.
+  String _activeCategory = 'all';
+
   @override
   void initState() {
     super.initState();
@@ -418,7 +422,28 @@ class _ChatScreenState extends State<ChatScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => _CartSheet(catalog: _catalog),
+      builder: (ctx) {
+        final media = MediaQuery.of(ctx);
+        final keyboardInset = media.viewInsets.bottom;
+        // A cart can be taller than the viewport: several product rows, the
+        // Transaction Passport, take-home ideas, the allowance/policy text and
+        // three button rows. A non-scrolling Column used to overflow
+        // ("A RenderFlex overflowed by N pixels on the bottom") and clip the
+        // checkout buttons. Cap the sheet below the status bar and let it
+        // scroll; short carts still size to their content.
+        final visibleHeight = media.size.height - keyboardInset;
+        final maxSheetHeight =
+            (visibleHeight > 0 ? visibleHeight : media.size.height) * 0.9;
+        return SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: maxSheetHeight),
+            child: SingleChildScrollView(
+              child: _CartSheet(catalog: _catalog),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -648,6 +673,21 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _goToTab(int tab) => setState(() => _activeTab = tab);
+
+  /// Web parity: the web "Try a scenario" buttons fill the cart in one tap.
+  /// This only stages items. The server policy preview still decides whether
+  /// checkout is allowed, and the shopper still approves in PayPal.
+  void _applyScenario(_ScenarioDef scenario) {
+    final checkout = context.read<CheckoutProvider>();
+    if (checkout.busy || checkout.hasPendingOrder) return;
+    for (final id in checkout.cart.keys.toList()) {
+      checkout.setQuantity(id, 0);
+    }
+    for (final entry in scenario.items.entries) {
+      checkout.addProduct(entry.key, qty: entry.value);
+    }
+    _openCartSheet();
+  }
 
   Widget _buildHomeTab() {
     final scheme = Theme.of(context).colorScheme;
@@ -948,6 +988,170 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  /// Web parity for the Barista tab.
+  ///
+  /// The storefront has a filterable product menu and one-tap demo scenarios.
+  /// Flutter used to show neither on the Barista tab: the menu lived only on
+  /// the Café tab, so tapping "Barista" looked like a completely different,
+  /// much emptier app. This compact strip keeps the menu discoverable without
+  /// pushing the chat input off screen — everything sits inside the empty-
+  /// Barista SingleChildScrollView, so tall localized copy can never paint the
+  /// yellow/black overflow stripes again.
+  Widget _buildBaristaMenu() {
+    return FutureBuilder<List<Product>>(
+      future: _catalogFuture,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(child: Text(t(context, 'catalog.error'))),
+                  TextButton(
+                    onPressed: _retryCatalog,
+                    child: Text(t(context, 'catalog.retry')),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        if (!snap.hasData) {
+          return const SizedBox(
+            height: 96,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          );
+        }
+        final products = snap.data!.where((p) => p.available).toList();
+        if (products.isEmpty) return const SizedBox.shrink();
+
+        final categories = <String>['all'];
+        for (final p in products) {
+          if (p.category.isNotEmpty && !categories.contains(p.category)) {
+            categories.add(p.category);
+          }
+        }
+        // Never mutate state during build: a stale filter (e.g. after a
+        // language switch or a refreshed catalog) simply falls back to "all".
+        final activeCat =
+            categories.contains(_activeCategory) ? _activeCategory : 'all';
+        final visible = activeCat == 'all'
+            ? products
+            : products.where((p) => p.category == activeCat).toList();
+        final ids = products.map((p) => p.id).toSet();
+
+        return Column(
+          key: const Key('barista-menu'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    t(context, 'menu.title'),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                        ),
+                  ),
+                ),
+                TextButton(
+                  key: const Key('barista-see-full-menu'),
+                  onPressed: () => _goToTab(_tabCafe),
+                  child: Text(
+                    t(context, 'menu.seeFull'),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final cat in categories)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: _CategoryChip(
+                        key: Key('barista-category-$cat'),
+                        label: cat == 'all'
+                            ? t(context, 'menu.categoryAll')
+                            : _categoryLabel(cat),
+                        selected: cat == activeCat,
+                        onTap: () => setState(() => _activeCategory = cat),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              key: const Key('barista-menu-list'),
+              height: 172,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: visible.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, i) => _MenuMiniCard(
+                  key: Key('barista-menu-${visible[i].id}'),
+                  product: visible[i],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              t(context, 'menu.scenarios'),
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              t(context, 'menu.scenariosNote'),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.inkMuted,
+                    height: 1.3,
+                  ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final sc in _baristaScenarios)
+                  if (sc.items.keys.every(ids.contains))
+                    _ScenarioChip(
+                      key: Key('barista-scenario-${sc.labelKey}'),
+                      label: t(context, sc.labelKey),
+                      hint: t(context, sc.hintKey),
+                      total: _scenarioTotal(sc, products),
+                      onTap: () => _applyScenario(sc),
+                    ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _categoryLabel(String category) => category.isEmpty
+      ? category
+      : '${category[0].toUpperCase()}${category.substring(1)}';
+
+  String _scenarioTotal(_ScenarioDef scenario, List<Product> products) {
+    final byId = <String, Product>{for (final p in products) p.id: p};
+    var minor = 0;
+    for (final entry in scenario.items.entries) {
+      final product = byId[entry.key];
+      if (product != null) minor += product.priceMinor * entry.value;
+    }
+    return '€${(minor / 100).toStringAsFixed(2)}';
+  }
+
   Widget _buildBaristaBody(DateFormat timeFormat) {
     return Consumer<ChatProvider>(
       builder: (ctx, chat, _) {
@@ -956,25 +1160,26 @@ class _ChatScreenState extends State<ChatScreen> {
           return Column(
             children: [
               Expanded(
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _HeroCard(
-                          onPromptSelected: (prompt) {
-                            _controller.text = prompt;
-                            _send();
-                          },
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _HeroCard(
+                        compact: true,
+                        onPromptSelected: (prompt) {
+                          _controller.text = prompt;
+                          _send();
+                        },
+                      ),
+                      const SizedBox(height: 18),
+                      _buildBaristaMenu(),
+                      if (chat.loading)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 12),
+                          child: _AssistantTypingBubble(),
                         ),
-                        if (chat.loading)
-                          const Padding(
-                            padding: EdgeInsets.only(top: 12),
-                            child: _AssistantTypingBubble(),
-                          ),
-                      ],
-                    ),
+                    ],
                   ),
                 ),
               ),
@@ -1023,59 +1228,69 @@ class _ChatScreenState extends State<ChatScreen> {
                         )
                       : const SizedBox.shrink(),
             ),
+            // Web parity: Barista is a conversation surface, not a payment
+            // page. The status strip and the paid receipt appear only in the
+            // conversation branch, exactly as in the original app. No order
+            // status / server-check controls are exposed here.
             Consumer<CheckoutProvider>(
-              builder: (ctx, checkout, _) => Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _CheckoutStatus(checkout: checkout),
-                  if (checkout.receipt != null)
-                    ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxHeight: MediaQuery.of(ctx).size.height * 0.5,
+              builder: (ctx, checkout, _) {
+                final hasStatus = checkout.error != null ||
+                    checkout.statusMessage != null ||
+                    checkout.rescue != null ||
+                    (checkout.created != null && checkout.captured == null);
+                if (!hasStatus) return const SizedBox.shrink();
+                // Cap this panel instead of letting an unbounded Column push
+                // the whole page past the bottom (yellow overflow stripes).
+                return ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(ctx).size.height * 0.32,
+                  ),
+                  child: SingleChildScrollView(
+                    child: _CheckoutStatus(checkout: checkout),
+                  ),
+                );
+              },
+            ),
+            Consumer<CheckoutProvider>(
+              builder: (ctx, checkout, _) {
+                final receipt = checkout.receipt;
+                if (receipt == null) return const SizedBox.shrink();
+                final lang = Provider.of<LocaleProvider>(
+                  ctx,
+                  listen: false,
+                ).languageCode;
+                // A real flex sibling of the chat list: both share the leftover
+                // height, so the outer Column can never overflow.
+                return Expanded(
+                  flex: 2,
+                  child: SingleChildScrollView(
+                    child: PaidReceiptCard(
+                      receipt: receipt,
+                      lang: lang,
+                      catalogNames: {for (final p in _catalog) p.id: p.name},
+                      onClose: checkout.dismissReceipt,
+                      evidenceSection: EvidencePackageSection(
+                        api: checkout.api,
+                        orderId: receipt.orderId,
+                        lang: lang,
                       ),
-                      child: SingleChildScrollView(
-                        child: PaidReceiptCard(
-                          receipt: checkout.receipt!,
-                          lang: Provider.of<LocaleProvider>(
-                            ctx,
-                            listen: false,
-                          ).languageCode,
-                          catalogNames: {
-                            for (final p in _catalog) p.id: p.name,
-                          },
-                          onClose: checkout.dismissReceipt,
-                          evidenceSection: EvidencePackageSection(
-                            api: checkout.api,
-                            orderId: checkout.receipt!.orderId,
-                            lang: Provider.of<LocaleProvider>(
-                              ctx,
-                              listen: false,
-                            ).languageCode,
-                          ),
-                          refundSection: RefundSection(
-                            api: checkout.api,
-                            orderId: checkout.receipt!.orderId,
-                            lang: Provider.of<LocaleProvider>(
-                              ctx,
-                              listen: false,
-                            ).languageCode,
-                          ),
-                          pickupSection: checkout.pickupBooking != null
-                              ? PickupLinkSection(
-                                  api: checkout.api,
-                                  orderId: checkout.receipt!.orderId,
-                                  lang: Provider.of<LocaleProvider>(
-                                    ctx,
-                                    listen: false,
-                                  ).languageCode,
-                                  booking: checkout.pickupBooking!,
-                                )
-                              : null,
-                        ),
+                      refundSection: RefundSection(
+                        api: checkout.api,
+                        orderId: receipt.orderId,
+                        lang: lang,
                       ),
+                      pickupSection: checkout.pickupBooking != null
+                          ? PickupLinkSection(
+                              api: checkout.api,
+                              orderId: receipt.orderId,
+                              lang: lang,
+                              booking: checkout.pickupBooking!,
+                            )
+                          : null,
                     ),
-                ],
-              ),
+                  ),
+                );
+              },
             ),
             _inputRow(),
           ],
@@ -1116,6 +1331,16 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
+                    // The menu must stay reachable even after the Barista chat
+                    // fills with messages and the compact menu strip scrolls
+                    // out of the empty state.
+                    if (_activeTab == _tabBarista)
+                      IconButton(
+                        key: const Key('barista-open-menu'),
+                        onPressed: () => _goToTab(_tabCafe),
+                        tooltip: t(context, 'menu.title'),
+                        icon: const Icon(Icons.restaurant_menu_outlined),
+                      ),
                     if (voice.available)
                       IconButton(
                         onPressed: listening ? _voice.stop : _voice.start,
@@ -1348,7 +1573,11 @@ class _ServiceStatusChip extends StatelessWidget {
 class _HeroCard extends StatelessWidget {
   final ValueChanged<String> onPromptSelected;
 
-  const _HeroCard({required this.onPromptSelected});
+  /// The Barista tab also shows the menu and the scenarios below this card, so
+  /// it uses a shorter variant. The Café tab keeps the full editorial version.
+  final bool compact;
+
+  const _HeroCard({required this.onPromptSelected, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1363,29 +1592,34 @@ class _HeroCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppColors.outlineVariant),
       ),
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(compact ? 14 : 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const BrandMark(size: 44),
-          const SizedBox(height: 14),
+          BrandMark(size: compact ? 34 : 44),
+          SizedBox(height: compact ? 10 : 14),
           Text(
             t(context, 'welcome.title'),
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.4,
-                ),
+            style: (compact
+                    ? Theme.of(context).textTheme.titleLarge
+                    : Theme.of(context).textTheme.headlineSmall)
+                ?.copyWith(
+              color: AppColors.ink,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.4,
+            ),
           ),
           const SizedBox(height: 6),
           Text(
             t(context, 'welcome.body'),
+            maxLines: compact ? 2 : null,
+            overflow: compact ? TextOverflow.ellipsis : null,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: AppColors.inkMuted,
                   height: 1.35,
                 ),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: compact ? 12 : 16),
           Wrap(
             spacing: 8,
             runSpacing: 6,
@@ -1398,9 +1632,231 @@ class _HeroCard extends StatelessWidget {
                 label: t(context, 'welcome.chip2'),
                 onTap: () => onPromptSelected(t(context, 'welcome.prompt2')),
               ),
+              // Web parity: the storefront offers three prompt chips.
+              _PromptChip(
+                key: const Key('welcome-chip3'),
+                label: t(context, 'welcome.chip3'),
+                onTap: () => onPromptSelected(t(context, 'welcome.prompt3')),
+              ),
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One-tap demo scenarios, mirroring `SCENARIOS` in `public/app.js`.
+/// They only stage cart lines; the decision always comes from the server.
+class _ScenarioDef {
+  final String labelKey;
+  final String hintKey;
+  final Map<String, int> items;
+
+  const _ScenarioDef(this.labelKey, this.hintKey, this.items);
+}
+
+const List<_ScenarioDef> _baristaScenarios = <_ScenarioDef>[
+  _ScenarioDef('scenario.everyday', 'hint.needsApproval', <String, int>{
+    'veg_breakfast': 1,
+    'coffee': 1,
+  }),
+  _ScenarioDef('scenario.quick', 'hint.autoAllowed', <String, int>{
+    'coffee': 1,
+  }),
+  _ScenarioDef('scenario.overLimit', 'hint.blocked', <String, int>{
+    'veg_breakfast': 1,
+    'premium_cake': 1,
+  }),
+  _ScenarioDef('scenario.team', 'hint.blocked', <String, int>{
+    'office_pastry_box': 1,
+  }),
+  _ScenarioDef('scenario.alcohol', 'hint.blockedRule', <String, int>{
+    'mulled_wine': 1,
+  }),
+];
+
+/// Web-style category filter chip.
+class _CategoryChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _CategoryChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.green : AppColors.white,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected ? AppColors.green : AppColors.outline,
+          ),
+        ),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: selected ? AppColors.white : AppColors.ink,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact product tile for the Barista menu strip. Fixed width and height keep
+/// the horizontal list bounded, so it cannot outgrow the surrounding Column.
+class _MenuMiniCard extends StatelessWidget {
+  final Product product;
+
+  const _MenuMiniCard({super.key, required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 132,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: categoryTint(product.category),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppColors.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 84,
+            width: double.infinity,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: productArtImage(product),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 4, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  product.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.ink,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          product.priceFormatted,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.green,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Consumer<CheckoutProvider>(
+                      builder: (context, checkout, _) => SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          iconSize: 22,
+                          onPressed: checkout.busy
+                              ? null
+                              : () => checkout.addProduct(product.id),
+                          icon: const Icon(Icons.add_circle),
+                          color: AppColors.green,
+                          tooltip: t(context, 'action.addToCart'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScenarioChip extends StatelessWidget {
+  final String label;
+  final String hint;
+  final String total;
+  final VoidCallback onTap;
+
+  const _ScenarioChip({
+    super.key,
+    required this.label,
+    required this.hint,
+    required this.total,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 152,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppColors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.outline),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: AppColors.ink,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '$total · $hint',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 11, color: AppColors.inkMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1410,7 +1866,7 @@ class _PromptChip extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _PromptChip({required this.label, required this.onTap});
+  const _PromptChip({super.key, required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -1424,17 +1880,25 @@ class _PromptChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: AppColors.outline),
         ),
+        // Long localized prompt labels ("Vegetarian breakfast under €20",
+        // "Kahve ve bir tatlı"... ) used to overflow this Row by up to 162px
+        // on a 360dp screen and paint Flutter's yellow/black stripes. Let the
+        // label take only the remaining width and ellipsize instead.
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(Icons.auto_awesome, size: 14, color: AppColors.green),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppColors.ink,
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.ink,
+                ),
               ),
             ),
           ],
@@ -1868,22 +2332,45 @@ class _PreparedCartCard extends StatelessWidget {
                       product?.priceFormatted ?? t(context, 'cart.priceAtCheckout');
                   return Text(
                     '${entry.value}× $name · $unitPrice',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium,
                   );
                 }),
                 const Divider(),
+                // Both children used to be unconstrained in a Row: on a narrow
+                // screen the long TR "Gözden geçir ve öde" button plus the
+                // subtotal produced "RIGHT OVERFLOWED BY N PIXELS". Let each
+                // shrink and ellipsize instead.
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${t(context, 'cart.subtotal')}$totalFormatted'),
-                    FilledButton.icon(
-                      icon: const Icon(Icons.payment),
-                      label: Text(t(context, 'cart.reviewPay')),
-                      onPressed: checkout.busy ||
-                              checkout.hasPendingOrder ||
-                              !checkout.policyAllowsCheckout
-                          ? null
-                          : checkout.startCheckout,
+                    Flexible(
+                      child: Text(
+                        '${t(context, 'cart.subtotal')}$totalFormatted',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.payment, size: 18),
+                        label: Text(
+                          t(context, 'cart.reviewPay'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onPressed: checkout.busy ||
+                                checkout.hasPendingOrder ||
+                                !checkout.policyAllowsCheckout
+                            ? null
+                            : checkout.startCheckout,
+                      ),
                     ),
                   ],
                 ),
@@ -2152,28 +2639,90 @@ class _CartSheet extends StatelessWidget {
               const SizedBox(height: 8),
               if (entries.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(t(context, 'cart.empty')),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(t(context, 'cart.empty')),
+                      // The empty-state copy promises "tap a product chip",
+                      // but the chips only existed on the Home tab. After a
+                      // paid order the cart is consumed and checkout stays
+                      // disabled with no way to recover from this sheet.
+                      // Show real catalogue chips here so the shopper can
+                      // build a fresh cart and reach "Checkout with PayPal".
+                      if (catalog.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: [
+                            for (final product in catalog.take(6))
+                              ActionChip(
+                                key: Key('cart-quick-add-${product.id}'),
+                                avatar: const Icon(Icons.add, size: 16),
+                                label: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxWidth:
+                                        MediaQuery.of(context).size.width - 96,
+                                  ),
+                                  child: Text(
+                                    '${product.name} · ${product.priceFormatted}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                onPressed: () =>
+                                    checkout.addProduct(product.id),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
                 )
               else
                 ...entries.map((entry) {
                   final product = productOf(entry.key);
+                  // ListTile lays out leading/trailing at their intrinsic
+                  // widths. An unbounded price label plus two quantity buttons
+                  // used to squeeze the title into a horizontal
+                  // "RIGHT OVERFLOWED BY N PIXELS". Give the price a fixed
+                  // box (scaling down rather than wrapping/clipping a price)
+                  // and let long product names ellipsize.
                   return ListTile(
-                    title: Text(product.name),
+                    title: Text(
+                      product.name,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text(
                       t(context, 'cart.qty').replaceAll('%s', '${entry.value}'),
                     ),
-                    leading: Text(
-                      '${product.priceFormatted} × ${entry.value}',
-                      style: Theme.of(context).textTheme.labelLarge,
+                    leading: SizedBox(
+                      width: 76,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${product.priceFormatted} × ${entry.value}',
+                          maxLines: 1,
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ),
                     ),
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          tooltip:
-                              'Remove one ${product.name}',
+                          tooltip: 'Remove one ${product.name}',
                           icon: const Icon(Icons.remove_circle_outline),
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 40,
+                            height: 40,
+                          ),
                           onPressed: () => checkout.setQuantity(
                             entry.key,
                             entry.value - 1,
@@ -2182,6 +2731,12 @@ class _CartSheet extends StatelessWidget {
                         IconButton(
                           tooltip: 'Add one ${product.name}',
                           icon: const Icon(Icons.add_circle_outline),
+                          iconSize: 20,
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: 40,
+                            height: 40,
+                          ),
                           onPressed: () => checkout.setQuantity(
                             entry.key,
                             entry.value + 1,
@@ -2283,37 +2838,70 @@ class _CartSheet extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: checkout.busy || checkout.hasPendingOrder
-                          ? null
-                          : checkout.clear,
-                      child: Text(t(context, 'action.clear')),
+              // Both actions must share one height. The checkout label used to
+              // wrap to two lines while the clear label did not, so the Row
+              // left the buttons vertically misaligned (42dp vs 56dp in the
+              // device UI dump). A fixed row height + stretch aligns them;
+              // the 2:3 split gives the longer PayPal label more room.
+              SizedBox(
+                height: 52,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: OutlinedButton(
+                        key: const Key('cart-clear'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        onPressed: checkout.busy || checkout.hasPendingOrder
+                            ? null
+                            : checkout.clear,
+                        child: Text(
+                          t(context, 'cart.clear'),
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: FilledButton.icon(
-                      icon: const Icon(Icons.payment),
-                      label: Text(t(context, 'cart.checkout')),
-                      onPressed: (checkout.busy ||
-                              checkout.hasPendingOrder ||
-                              !checkout.policyAllowsCheckout)
-                          ? null
-                          : () {
-                              Navigator.of(ctx).pop();
-                              checkout.startCheckout(
-                                wellbeingPreferences: context
-                                    .read<ShopperProfileProvider>()
-                                    .preferences
-                                    .toWellbeingJson(),
-                              );
-                            },
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 3,
+                      child: FilledButton.icon(
+                        key: const Key('cart-checkout'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: Size.zero,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.payment, size: 18),
+                        label: Text(
+                          t(context, 'cart.checkout'),
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onPressed: (checkout.busy ||
+                                checkout.hasPendingOrder ||
+                                !checkout.policyAllowsCheckout)
+                            ? null
+                            : () {
+                                Navigator.of(ctx).pop();
+                                checkout.startCheckout(
+                                  wellbeingPreferences: context
+                                      .read<ShopperProfileProvider>()
+                                      .preferences
+                                      .toWellbeingJson(),
+                                );
+                              },
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 16),
             ],

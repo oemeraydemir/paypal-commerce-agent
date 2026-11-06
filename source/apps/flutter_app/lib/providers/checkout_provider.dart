@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'package:flutter_app/l10n/app_strings.dart';
@@ -343,11 +344,27 @@ class CheckoutProvider extends ChangeNotifier {
   bool _paypalApproved = false;
   bool get paypalApproved => _paypalApproved;
 
-  /// Deterministic per-cart idempotency key sent as `Idempotency-Key` (F4).
-  /// Derived purely from the sorted cart items, so the same cart always maps to
-  /// the same key: transport retries AND repeated attempts reuse it, while any
-  /// cart change produces a new key.
+  /// Idempotency key for the CURRENT checkout attempt (F4).
+  ///
+  /// Deterministic per cart, so transport retries and ambiguous create failures
+  /// reuse it (the backend can then deduplicate an order that may already have
+  /// been created), while a changed cart produces a new key.
+  ///
+  /// The key ALSO carries a durable attempt counter. The backend treats PAID
+  /// orders as reusable for a key and its idempotency middleware caches the
+  /// original create response, so reusing a key after a finished order would
+  /// hand back the OLD, already-paid PayPal order instead of opening a fresh
+  /// checkout. The counter is rotated only after a TERMINAL outcome (paid,
+  /// cancelled, server-confirmed missing/failed) — never after an ambiguous
+  /// failure — so a genuine retry stays safe and a new checkout stays fresh.
   String? _idempotencyKey;
+  int _checkoutAttempt = 0;
+  String? _lastFinishedOrderId;
+  Future<void>? _attemptStateLoad;
+
+  static const String _attemptPrefsKey = 'aicafe.checkout.attempt';
+  static const String _finishedOrderPrefsKey =
+      'aicafe.checkout.lastFinishedOrder';
 
   String _idempotencyKeyFor(List<OrderItem> items) {
     final canonical = items.map((i) => '${i.id}=${i.quantity}').join('|');
@@ -356,7 +373,51 @@ class CheckoutProvider extends ChangeNotifier {
       hash ^= unit;
       hash = (hash * 0x01000193) & 0xFFFFFFFF;
     }
-    return 'co-${hash.toRadixString(36)}';
+    return 'co-${hash.toRadixString(36)}-a$_checkoutAttempt';
+  }
+
+  /// Loads the durable attempt state once, so an app restart after a paid order
+  /// cannot fall back to the key of that order. SharedPreferences is best
+  /// effort (widget tests / unsupported hosts): the in-memory counter still
+  /// protects the current process.
+  Future<void> _ensureAttemptStateLoaded() {
+    final pending = _attemptStateLoad;
+    if (pending != null) return pending;
+    final future = _loadAttemptState();
+    _attemptStateLoad = future;
+    return future;
+  }
+
+  Future<void> _loadAttemptState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stored = prefs.getInt(_attemptPrefsKey);
+      // Never move backwards if this process already rotated the attempt.
+      if (stored != null && stored > _checkoutAttempt) {
+        _checkoutAttempt = stored;
+      }
+      _lastFinishedOrderId ??= prefs.getString(_finishedOrderPrefsKey);
+    } catch (_) {
+      // Best effort: in-memory rotation remains active.
+    }
+  }
+
+  /// Starts a fresh checkout attempt after a terminal outcome. Must NOT be
+  /// called for transport retries or ambiguous failures (F4).
+  Future<void> _rotateCheckoutAttempt([String? finishedOrderId]) async {
+    if (finishedOrderId != null) _lastFinishedOrderId = finishedOrderId;
+    _checkoutAttempt++;
+    _idempotencyKey = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_attemptPrefsKey, _checkoutAttempt);
+      final last = _lastFinishedOrderId;
+      if (last != null) {
+        await prefs.setString(_finishedOrderPrefsKey, last);
+      }
+    } catch (_) {
+      // Best effort: the in-memory counter is authoritative for this process.
+    }
   }
 
   void _setError(String key, [List<Object?> args = const []]) {
@@ -489,6 +550,9 @@ class CheckoutProvider extends ChangeNotifier {
     _paypalApproved = false;
     _clearStatusMessage();
     _clearError();
+    // Clearing the cart starts a new shopping session, never a replay of a
+    // previously finished order with the same items.
+    await _rotateCheckoutAttempt();
     _busy = false;
     notifyListeners();
   }
@@ -589,6 +653,7 @@ class CheckoutProvider extends ChangeNotifier {
       _created = null;
       _paypalApproved = false;
       _setStatusMessage('checkout.statusPaypalCancelled');
+      await _rotateCheckoutAttempt(orderId);
     } on ApiException catch (e) {
       // Keep the recoverable pending order so the user can retry; surface error.
       _setError('checkout.errorCancelApi', [e.statusCode, e.message]);
@@ -673,15 +738,33 @@ class CheckoutProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // One deterministic key per cart (F4). Same cart => same key, so both
-      // transport retries and repeated attempts reuse it; a changed cart yields
-      // a new key. Derived from the current items, which are already sorted.
+      await _ensureAttemptStateLoaded();
+      // One key per (cart, attempt). Transport retries and ambiguous create
+      // failures reuse it; a terminal outcome rotates the attempt. Derived from
+      // the current items, which are already sorted.
       _idempotencyKey = _idempotencyKeyFor(currentItems);
-      final result = await api.createOrder(
+      var result = await api.createOrder(
         items: currentItems,
         idempotencyKey: _idempotencyKey,
         wellbeingPreferences: wellbeingPreferences,
       );
+
+      // Defence in depth: the backend idempotency layer can replay a FINISHED
+      // order for a reused key (its cached 201 still says PAYMENT_PENDING).
+      // Never open that stale approval link: rotate once and create a new order.
+      if (_lastFinishedOrderId != null &&
+          result.orderId == _lastFinishedOrderId) {
+        await _rotateCheckoutAttempt();
+        _idempotencyKey = _idempotencyKeyFor(currentItems);
+        _setStatusMessage('checkout.statusCreatingOrder');
+        notifyListeners();
+        result = await api.createOrder(
+          items: currentItems,
+          idempotencyKey: _idempotencyKey,
+          wellbeingPreferences: wellbeingPreferences,
+        );
+      }
+
       final approvalUrl = result.approvalUrl;
       final approvalUri = approvalUrl == null
           ? null
@@ -795,12 +878,16 @@ class CheckoutProvider extends ChangeNotifier {
               ? ' (capture ${result.paypalCaptureId})'
               : '',
         ]);
+        await _rotateCheckoutAttempt(result.orderId);
         await _clearCartAfterPaid(alreadyCompleted: false);
         notifyListeners();
         await _attachMandate();
       } else if (result.status == 'PAYMENT_PENDING') {
         _setStatusMessage('checkout.statusPaymentPending');
       } else {
+        // Terminal non-paid outcome: unlock and rotate so a later attempt
+        // cannot replay this order.
+        await _rotateCheckoutAttempt(_created?.orderId);
         _created = null;
         _paypalApproved = false;
         _clearStatusMessage();
@@ -829,6 +916,7 @@ class CheckoutProvider extends ChangeNotifier {
           paypalStatus: 'COMPLETED',
         );
         _receipt = _buildReceipt(orderId: _created!.orderId);
+        await _rotateCheckoutAttempt(_created!.orderId);
         _created = null;
         _paypalApproved = false;
         _setStatusMessage('checkout.statusAlreadyCompleted');
@@ -872,6 +960,7 @@ class CheckoutProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final result = await api.cancelOrder(target);
+      await _rotateCheckoutAttempt(target);
       _created = null;
       _paypalApproved = false;
       _setStatusMessage('checkout.statusOrderCancelled', [result.status]);
@@ -896,6 +985,7 @@ class CheckoutProvider extends ChangeNotifier {
           paypalStatus: 'COMPLETED',
         );
         _receipt = _buildReceipt(orderId: target);
+        await _rotateCheckoutAttempt(target);
         _created = null;
         _paypalApproved = false;
         _setStatusMessage('checkout.statusOrderAlreadyPaid');
@@ -905,6 +995,7 @@ class CheckoutProvider extends ChangeNotifier {
       } else if (e.statusCode == 404) {
         // Order no longer exists on the server: safe to drop the local pending
         // reference (nothing to cancel).
+        await _rotateCheckoutAttempt(target);
         _created = null;
         _paypalApproved = false;
         _setStatusMessage('checkout.statusOrderMissing');
