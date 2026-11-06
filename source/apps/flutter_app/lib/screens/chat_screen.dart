@@ -1225,6 +1225,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           cart: chat.lastPreparedCart!,
                           catalog: _catalog,
                           mode: chat.lastPreparedCartMode,
+                          onReview: _openCartSheet,
                         )
                       : const SizedBox.shrink(),
             ),
@@ -2286,10 +2287,16 @@ class _PreparedCartCard extends StatelessWidget {
   /// Backend mode of the reply that produced this cart (`ai` / `rule-based`).
   final ChatMode? mode;
 
+  /// Invoked when the user asks to review/pay the prepared cart in the Chat
+  /// surface. Payment must NOT happen here: this navigates to the Cart sheet,
+  /// where the real (PayPal sandbox) checkout runs with wellbeing prefs.
+  final VoidCallback onReview;
+
   const _PreparedCartCard({
     required this.cart,
     required this.catalog,
     this.mode,
+    required this.onReview,
   });
 
   @override
@@ -2365,11 +2372,7 @@ class _PreparedCartCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        onPressed: checkout.busy ||
-                                checkout.hasPendingOrder ||
-                                !checkout.policyAllowsCheckout
-                            ? null
-                            : checkout.startCheckout,
+                        onPressed: onReview,
                       ),
                     ),
                   ],

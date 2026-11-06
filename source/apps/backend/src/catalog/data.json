@@ -219,7 +219,15 @@
       "occasion": [
         "breakfast"
       ],
-      "available": true
+      "available": true,
+      "wellbeing": {
+        "allergens": {
+          "gluten": {
+            "status": "UNKNOWN",
+            "ingredients": ["oats", "oat milk", "seasonal berries"]
+          }
+        }
+      }
     },
     {
       "id": "croissant",
