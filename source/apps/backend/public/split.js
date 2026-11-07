@@ -104,7 +104,11 @@
   var STATE_LABEL = { open: 'share.open', joined: 'share.joined', started: 'share.started', paid: 'share.paid', failed: 'share.failed' };
   function mineShare() { return bill && bill.shares.filter(function (s) { return s.mine; })[0]; }
   function openSlots() { return bill ? bill.shares.filter(function (s) { return !s.participantBound; }).length : 0; }
-  function anyMoney() { return bill && bill.shares.some(function (s) { var st = shareState(s); return st === 'paid' || st === 'started'; }); }
+  // A "started" share only has an uncaptured PayPal checkout; a "paid" share has
+  // moved money. They must NOT be conflated: the owner may explicitly abandon the
+  // former, but a captured payment can only be undone by a merchant-approved refund.
+  function startedShares() { return bill ? bill.shares.filter(function (s) { return shareState(s) === 'started'; }) : []; }
+  function paidShares() { return bill ? bill.shares.filter(function (s) { return shareState(s) === 'paid'; }) : []; }
   function terminal() { return bill && (bill.status === 'SETTLED' || bill.status === 'CANCELLED'); }
 
   // ---- join ------------------------------------------------------------------------------------
@@ -151,7 +155,13 @@
       if (bill.isOwner) { drop(CKEY); }
       var p = load(PKEY); if (p && p.billId === bill.id) drop(PKEY);
     }
-    if (bill.status === 'CANCELLED') drop(SPKEY);
+    if (bill.status === 'CANCELLED') {
+      drop(SPKEY);
+      // A discarded checkout must not leave a stale "Confirm and pay now" button
+      // in any participant's browser after PayPal redirects back.
+      var cancelledPending = load(PKEY);
+      if (cancelledPending && cancelledPending.billId === bill.id) drop(PKEY);
+    }
     // Someone joined: rotate the organiser's QR so it never shows an already-used invitation.
     var open = openSlots();
     if (lastOpen !== null && open < lastOpen) { invite = null; clearStoredInvite(); }
@@ -248,11 +258,17 @@
   }
 
   // ---- cancel (organiser) ----------------------------------------------------------------------
-  function cancelBill() {
-    if (busy.cancel || !window.confirm(t('room.cancelConfirm'))) return;
+  // Cancellation never happens silently. Discarding a started-but-uncaptured
+  // PayPal checkout is an EXPLICIT, separately worded owner decision: the server
+  // re-verifies with PayPal that nothing was captured before it closes the bill.
+  function cancelBill(hasStarted) {
+    if (busy.cancel) return;
+    var question = hasStarted ? t('room.cancelConfirmStarted') : t('room.cancelConfirm');
+    if (!window.confirm(question)) return;
     busy.cancel = true; render();
-    api('/api/bills/' + encodeURIComponent(billId) + '/cancel', { method: 'POST', body: '{}' }).then(function (b) {
-      bill = b; onBill();
+    var body = hasStarted ? JSON.stringify({ abandonUncaptured: true }) : '{}';
+    api('/api/bills/' + encodeURIComponent(billId) + '/cancel', { method: 'POST', body: body }).then(function (b) {
+      bill = b; onBill(); status('', '');
     }).catch(function (e) { status('bad', t('room.cancelFailed') + e.message); })
       .then(function () { busy.cancel = false; render(); });
   }
@@ -358,9 +374,20 @@
         }
         inv.appendChild(card); root.appendChild(inv);
       }
-      if (!anyMoney()) {
-        var cn = el('button', 'danger full', busy.cancel ? '…' : t('room.cancelBill')); cn.type = 'button'; cn.disabled = !!busy.cancel;
-        cn.onclick = cancelBill; root.appendChild(cn);
+      // The owner always sees an answer here. Previously this control vanished as
+      // soon as any share had an orderId, leaving the organiser with a bill that
+      // could not be cancelled and no explanation why.
+      var paidCount = paidShares().length, startedCount = startedShares().length;
+      if (paidCount > 0) {
+        // Money moved: cancelling would erase evidence of a real capture. Refunds
+        // stay a human-approved merchant action, so explain instead of hiding.
+        root.appendChild(el('div', 'msg warn', t('room.cannotCancelPaid')));
+      } else {
+        var cn = el('button', 'danger full', busy.cancel ? '…' : t(startedCount ? 'room.cancelBillStarted' : 'room.cancelBill'));
+        cn.type = 'button'; cn.disabled = !!busy.cancel;
+        cn.onclick = function () { cancelBill(startedCount > 0); };
+        root.appendChild(cn);
+        if (startedCount) root.appendChild(el('p', 'mut', t('room.cancelStartedHint')));
       }
     }
     root.appendChild(backLink());

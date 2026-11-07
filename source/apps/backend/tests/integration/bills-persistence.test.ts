@@ -224,6 +224,63 @@ describe('bill repository: CART_READY crash recovery (structural, pg-mem)', () =
   });
 });
 
+describe('bill repository: owner abandons started checkouts atomically (pg-mem)', () => {
+  const seedOrder = (orderId: string, status: string) =>
+    pool.query(
+      `INSERT INTO orders (id, session_id, status, origin, items, total_minor, currency, paypal_order_id, created_at, updated_at)
+       VALUES ($1,'sess',$2,'HUMAN','[]',100,'EUR',$3,now(),now())`,
+      [orderId, status, `PP-${orderId}`]
+    );
+
+  test('cancels the pending order, releases the claim, unbinds the share and closes the bill', async () => {
+    await repos.bills.saveGroup(makeGroup('g-abandon', ['ab1', 'ab2']));
+    await repos.bills.claimShareForPayment('ab1', 'ord-ab1');
+    await seedOrder('ord-ab1', 'PAYMENT_PENDING');
+
+    const result = await repos.bills.abandonStartedCheckoutsAndCancel('g-abandon', 'u-owner', ['ord-ab1']);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.abandoned).toEqual([{ shareId: 'ab1', orderId: 'ord-ab1' }]);
+
+    const group = await repos.bills.getGroup('g-abandon');
+    expect(group?.status).toBe(BillStatus.CANCELLED);
+    const share = await pool.query('SELECT order_id FROM bill_shares WHERE id=$1', ['ab1']);
+    expect(share.rows[0].order_id).toBeNull();
+    const claim = await pool.query('SELECT 1 FROM bill_share_claims WHERE share_id=$1', ['ab1']);
+    expect(claim.rows).toHaveLength(0);
+    const order = await pool.query('SELECT status FROM orders WHERE id=$1', ['ord-ab1']);
+    expect(order.rows[0].status).toBe('ORDER_CANCELLED');
+  });
+
+  test('refuses when a share was already paid', async () => {
+    await repos.bills.saveGroup(makeGroup('g-abandon-paid', ['ap1', 'ap2']));
+    await repos.bills.claimShareForPayment('ap1', 'ord-ap1');
+    await seedOrder('ord-ap1', 'PAID');
+    const result = await repos.bills.abandonStartedCheckoutsAndCancel('g-abandon-paid', 'u-owner', ['ord-ap1']);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('PAYMENT_CAPTURED');
+    const group = await repos.bills.getGroup('g-abandon-paid');
+    expect(group?.status).not.toBe(BillStatus.CANCELLED);
+  });
+
+  test('refuses when the caller did not verify every started checkout', async () => {
+    await repos.bills.saveGroup(makeGroup('g-abandon-changed', ['ac1', 'ac2']));
+    await repos.bills.claimShareForPayment('ac1', 'ord-ac1');
+    await seedOrder('ord-ac1', 'PAYMENT_PENDING');
+    const result = await repos.bills.abandonStartedCheckoutsAndCancel('g-abandon-changed', 'u-owner', []);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('CHECKOUT_CHANGED');
+    const order = await pool.query('SELECT status FROM orders WHERE id=$1', ['ord-ac1']);
+    expect(order.rows[0].status).toBe('PAYMENT_PENDING'); // untouched
+  });
+
+  test('refuses a non-owner', async () => {
+    await repos.bills.saveGroup(makeGroup('g-abandon-owner', ['ao1', 'ao2']));
+    const result = await repos.bills.abandonStartedCheckoutsAndCancel('g-abandon-owner', 'someone-else', []);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe('NOT_OWNER');
+  });
+});
+
 describe('bill repository: cancellation survives a restart', () => {
   test('a CANCELLED status written by saveGroup is read back by getGroup / loadAllGroups', async () => {
     const g = makeGroup('g-cancel', ['sc1', 'sc2']);

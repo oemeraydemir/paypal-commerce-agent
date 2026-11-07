@@ -110,6 +110,7 @@ logic, not PayPal behaviour; only the sandbox flow above proves the real integra
 - **AI agent** (Gemini → Groq → … → OpenAI chain) with catalog/cart tools only — no payment tool exists.
 - **Server-owned policy**: per-purchase limit, approval threshold, daily budget, blocked dietary attributes.
 - **PayPal Orders API** (sandbox): create, human approval, capture, signature-verified webhooks, idempotency.
+- **Split Bill with an honest way out**: the organiser always sees why a split can or cannot be closed. A checkout that was *started but never captured* can be explicitly discarded — the server first asks PayPal for proof that no capture exists, then atomically cancels the order, releases its claim and daily-spend reservation, unbinds the share and closes the bill mandate. A share that was actually **paid** can never be erased: the UI says a café-approved refund is required instead of silently hiding the control.
 - **Human-approved refunds**: AI/merchant *proposes*; only an authenticated merchant approval calls PayPal;
   write-ahead state, crash recovery and capture-total reconciliation.
 - **MCP server** (`/api/mcp`): external agents can search, prepare a cart and start checkout — never pay.

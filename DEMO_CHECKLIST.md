@@ -28,7 +28,7 @@ list is the pass/fail gate.
 - [ ] No statement claims an item is **allergen-free** or **safe**.
 - [ ] Allergen preferences are sent as **guidance only**: they prefer/flag items but are never filtered hard server-side, never declared safe, and always labelled unverified. Dietary preferences (vegan/vegetarian/gluten-free) ARE used server-side in catalog discovery, and the UI never claims a match is a safety guarantee.
 - [ ] No live-money PayPal flow shown; sandbox only.
-- [ ] Test counts quoted match `docs/EVIDENCE.md` and keep the historical/re-measured distinction. Current backend run (re-measured **2026-11-07**): **141 suites / 1351 tests pass** after six stale expectations were updated for the intentional gluten-free labels and Groq model change; `flutter analyze` clean (widget tests blocked in sandbox; owner-machine run 163/163).
+- [ ] Test counts quoted match `docs/EVIDENCE.md` and keep the historical/re-measured distinction. Current backend run (re-measured **2026-11-07**, after the Split Bill cancellation fix): **141 suites / 1361 tests pass** (289 s). Six stale expectations were updated for the intentional gluten-free labels and Groq model change, and ten regression tests were added for the owner-abandon path; `tsc --noEmit` clean. `flutter analyze` clean (widget tests blocked in sandbox; owner-machine run 163/163).
 - [ ] Links in `README.md`, `docs/JUDGING.md`, `docs/DETAILS.md` resolve (no broken demo-checklist/arch links).
 
 ## Open items before submitting (carried over from the jury self-review)

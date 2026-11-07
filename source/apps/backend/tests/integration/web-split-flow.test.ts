@@ -21,6 +21,7 @@ jest.mock('../../src/paypal/client', () => ({
 }));
 const createOrder = paypalClient.createOrder as jest.Mock;
 const captureOrder = paypalClient.captureOrder as jest.Mock;
+const getOrder = paypalClient.getOrder as jest.Mock;
 
 jest.setTimeout(60_000);
 
@@ -56,6 +57,7 @@ beforeEach(() => {
       { payments: { captures: [{ id: `CAP-${++capSeq}`, status: 'COMPLETED', amount: { value: '2.00', currency_code: 'EUR' } }] } },
     ],
   }));
+  getOrder.mockReset().mockResolvedValue({ status: 'CREATED', purchase_units: [{}] });
 });
 
 async function open(path: string, storage: Record<string, string> = {}): Promise<JSDOM> {
@@ -186,6 +188,39 @@ describe('web Split Bill (jsdom + real server)', () => {
     (await waitFor(() => qa(room, 'button').find((b) => /Cancel split bill/.test(b.textContent || '')), 'cancel button')).click();
     await waitFor(() => (q(room, '#room')?.textContent || '').includes('cancelled'), 'cancelled state');
     expect(ls(room, 'aicafe.split.active')).toBeNull();
+  });
+
+  test('the cancel control stays visible after a checkout starts, and the owner can discard it', async () => {
+    // Regression: the organiser used to lose the cancel button entirely as soon
+    // as any share had a started PayPal order, with no way out and no explanation.
+    const shop = await open('/', base0);
+    (await waitFor(() => { const b = q(shop, '#split-open') as HTMLButtonElement; return b && !b.disabled && b; }, 'split enabled')).click();
+    q(shop, '#split-go')!.click();
+    const active = await waitFor(() => ls(shop, 'aicafe.split.active'), 'active bill');
+    const billId = JSON.parse(active).billId as string;
+    const ownerStore = { 'aicafe.session': ls(shop, 'aicafe.session')!, 'aicafe.split.active': active, 'aicafe.cart': cartJson };
+
+    // Start (but never confirm) the organiser's own PayPal checkout.
+    const first = await open(`/split#b=${billId}`, ownerStore);
+    (await waitFor(() => qa(first, 'button').find((b) => /Pay my share/.test(b.textContent || '')), 'pay button')).click();
+    const pend = await waitFor(() => ls(first, 'aicafe.pending'), 'pending payment stored');
+
+    // Re-open the room like a browser refresh after returning from PayPal.
+    const room = await open(`/split#b=${billId}`, { ...ownerStore, 'aicafe.pending': pend });
+    await waitFor(() => qa(room, '.share').length === 2, 'shares rendered');
+    const cancelBtn = await waitFor(
+      () => qa(room, 'button').find((b) => /Cancel split bill/.test(b.textContent || '')),
+      'cancel button visible after a started checkout'
+    );
+    expect(cancelBtn.textContent).toMatch(/discard the started payment/);
+    expect((q(room, '#room')?.textContent || '')).toMatch(/started but not confirmed/);
+
+    room.window.confirm = () => true;
+    cancelBtn.click();
+    await waitFor(() => (q(room, '#room')?.textContent || '').includes('cancelled'), 'cancelled state');
+    // Both the active-bill marker and the stale "Confirm and pay now" marker go away.
+    expect(ls(room, 'aicafe.split.active')).toBeNull();
+    expect(ls(room, 'aicafe.pending')).toBeNull();
   });
 
   test('a split above the spending policy is refused in the storefront, like normal checkout', async () => {

@@ -27,7 +27,8 @@ import { paypalClient } from '../paypal/client';
 import { validateOrderItems } from '../orders/validation';
 import { CatalogService } from '../catalog/service';
 import { OrderService } from '../orders/service';
-import { OrderOrigin, OrderStatus } from '../orders/domain';
+import { Order, OrderOrigin, OrderStatus } from '../orders/domain';
+import { classifyPayPalOrder, cancelUncapturedOrder } from '../orders/payment-lifecycle';
 import { BillService, deriveBillProgress, deriveBillStatus } from '../bills/service';
 import { buildEvidencePackage } from '../evidence/service';
 import { formatMoney } from '../utils/money';
@@ -76,6 +77,53 @@ function billMandateError(reason: string): AppError {
 function abandonOrder(orderId: string, reservationId?: string): void {
   if (reservationId) dailySpendTracker.cancelReservation(reservationId);
   orderService.updateStatus(orderId, OrderStatus.ORDER_CANCELLED);
+}
+
+/**
+ * Evidence check BEFORE an owner discards started split-bill checkouts.
+ *
+ * A started checkout has NOT moved money: the buyer may have opened (or even
+ * approved) a PayPal order, but nothing was captured. PayPal is the source of
+ * truth, so we ask it directly. Only `NOT_APPROVED`, `IN_PROGRESS` (approved,
+ * no capture) and `DECLINED` (definitive failure) are safe to abandon. A
+ * captured, pending, mismatched or unclassifiable order — and any lookup that
+ * fails — fails CLOSED: the bill stays open and nothing is cancelled.
+ */
+async function verifiedStartedCheckouts(group: BillGroup): Promise<Array<{ share: BillShare; order: Order }>> {
+  const started: Array<{ share: BillShare; order: Order }> = [];
+  for (const share of group.shares) {
+    if (!share.orderId) continue;
+    const order = orderService.getById(share.orderId);
+    if (!order) continue;
+    if (order.status === OrderStatus.PAID || order.status === OrderStatus.ORDER_CONFIRMED) {
+      throw new AppError(409, 'A share has already been paid; the bill cannot be cancelled. A refund must be approved by the café.', {
+        code: 'BILL_HAS_PAYMENTS',
+      });
+    }
+    if (order.status !== OrderStatus.PAYMENT_PENDING) {
+      throw new AppError(409, 'A started checkout changed state; the bill was not cancelled. Refresh and try again.', {
+        code: 'CHECKOUT_CHANGED',
+      });
+    }
+    if (order.paypalOrderId) {
+      let remote: any;
+      try {
+        remote = await paypalClient.getOrder(order.paypalOrderId);
+      } catch {
+        throw new AppError(503, 'The started PayPal checkout could not be verified; nothing was cancelled. Please retry shortly.', {
+          code: 'PAYPAL_STATUS_UNVERIFIED', retryable: true,
+        });
+      }
+      const state = classifyPayPalOrder(remote).state;
+      if (state !== 'NOT_APPROVED' && state !== 'IN_PROGRESS' && state !== 'DECLINED') {
+        throw new AppError(409, `PayPal shows this checkout as ${state}; the bill was not cancelled.`, {
+          code: 'PAYMENT_STATUS_UNVERIFIED', paypalState: state,
+        });
+      }
+    }
+    started.push({ share, order });
+  }
+  return started;
 }
 
 /** P2: create the PayPal order for a share and durably record it before returning the approve link. */
@@ -295,6 +343,45 @@ router.post('/bills/:id/cancel', requireSession, billWriteLimiter, async (req, r
   try {
     const { userId } = req.session!;
     const repos = getRepos();
+    const current = billService.getById(req.params.id);
+    if (!current || current.createdByUserId !== userId) throw new AppError(404, 'Bill not found');
+    if (current.status === BillStatus.CANCELLED) {
+      return res.json(serializeGroup(current, userId));
+    }
+
+    // Opt-in, explicit owner decision. Without this flag the original guard
+    // stands: a bill with a live checkout is never cancelled implicitly.
+    if (req.body?.abandonUncaptured === true) {
+      const started = await verifiedStartedCheckouts(current);
+      if (repos) {
+        const result = await repos.bills.abandonStartedCheckoutsAndCancel(
+          req.params.id, userId, started.map((s) => s.order.id)
+        );
+        if (!result.ok) {
+          const notFound = result.reason === 'BILL_NOT_FOUND' || result.reason === 'NOT_OWNER';
+          throw new AppError(notFound ? 404 : 409, `The bill was not cancelled (${result.reason}). Refresh and try again.`, {
+            code: result.reason,
+          });
+        }
+        // Reconcile the in-memory read model with the durable decision: cancel
+        // the local orders (which releases their daily-spend reservations) and
+        // unbind the shares so a stale capture can never be offered again.
+        const released = new Set(result.abandoned.map((a) => a.orderId));
+        for (const { share, order } of started) {
+          if (!released.has(order.id)) continue;
+          cancelUncapturedOrder(order, 'cancel');
+          share.orderId = undefined;
+        }
+        const group = billService.applyPersistedCancellation(req.params.id, userId);
+        return res.json(serializeGroup(group, userId));
+      }
+      for (const { share, order } of started) {
+        cancelUncapturedOrder(order, 'cancel');
+        share.orderId = undefined;
+      }
+      return res.json(serializeGroup(billService.cancel(req.params.id, userId), userId));
+    }
+
     if (repos) {
       const closed = await repos.bills.cancelGroupAndCloseMandate(req.params.id, userId);
       if (!closed) throw new AppError(409, 'Bill has a payment in progress or cannot be cancelled.');

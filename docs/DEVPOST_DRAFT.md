@@ -114,6 +114,7 @@ Full payment path (Sandbox only, no real money):
 2. Add items to the cart, choose Checkout with PayPal, log in at the PayPal Sandbox approval page, approve, return to the store and press "Confirm and pay now".
 3. After capture, open the receipt to scan the QR-coded signed Cart Mandate, then verify it at /api/mandates/verify.
 4. In /dashboard.html, let the Ops Copilot propose a refund and click "Approve & refund" as the merchant. The AI can only propose.
+5. Split Bill recovery (no money moves): add items, click "Split the bill", choose 2 people, open the split room, press "Pay my share with PayPal" and return to /split WITHOUT confirming. The organiser still sees "Cancel split bill and discard the started payment"; confirm it. The server asks PayPal for proof that nothing was captured, then cancels the order, releases its reservation and closes the bill. If a share was actually paid, the room explains that only a café-approved refund can undo it instead of hiding the control.
 
 Run it locally (Node.js 20+, no keys needed for the basic demo):
 git clone https://github.com/oemeraydemir/paypal-commerce-agent.git
@@ -186,7 +187,7 @@ Verified live on **2026-11-07** against `https://paypal-commerce-agent.onrender.
 
 Current re-measured evidence:
 
-- Backend: **141 suites / 1351 tests pass, re-measured 2026-11-07 on the current source** (234 s), PayPal and AI mocked. Six stale expectations were updated for the intentional gluten-free catalog labels and the Groq tool-capable model defaults; no assertion was removed.
+- Backend: **141 suites / 1361 tests pass, re-measured 2026-11-07 on the current source** (289 s), PayPal and AI mocked; `tsc --noEmit` clean. Six stale expectations were updated for the intentional gluten-free catalog labels and the Groq tool-capable model defaults, and ten regression tests were added for the Split Bill owner-abandon path. No assertion was removed.
 
 Other evidence with dates, do not present as current without re-running:
 - Flutter: 163 tests pass and `flutter analyze` clean on the owner machine, 2026-10-27; re-run after the later commits.

@@ -3,11 +3,14 @@ import { createApp } from '../../src/app';
 import { paypalClient } from '../../src/paypal/client';
 import { newSession, resetSessionState, TestSession } from '../helpers/session';
 import { BillService } from '../../src/bills/service';
+import { OrderService } from '../../src/orders/service';
+import { OrderStatus } from '../../src/orders/domain';
 
 jest.mock('../../src/paypal/client', () => ({
   paypalClient: { createOrder: jest.fn(), captureOrder: jest.fn(), getOrder: jest.fn() },
 }));
 const createOrder = paypalClient.createOrder as jest.Mock;
+const getOrder = paypalClient.getOrder as jest.Mock;
 
 const app = createApp();
 let owner: TestSession;
@@ -30,7 +33,19 @@ beforeEach(async () => {
     status: 'CREATED',
     links: [{ rel: 'approve', href: 'https://x/approve' }],
   });
+  // Default: PayPal confirms nothing was captured for a started checkout.
+  getOrder.mockReset().mockResolvedValue({ status: 'CREATED', purchase_units: [{}] });
 });
+
+/** Creates a 2-person bill and starts (but never captures) the owner's share. */
+async function billWithStartedCheckout() {
+  const id = await makeBill(2);
+  const bill = await request(app).get(`/api/bills/${id}`).set(owner.headers);
+  const shareId = bill.body.shares.find((s: any) => s.participantBound).id;
+  const pay = await request(app).post(`/api/bills/${id}/shares/${shareId}/pay`).set(owner.headers);
+  expect(pay.status).toBe(201);
+  return { id, shareId, orderId: pay.body.orderId as string };
+}
 
 describe('same-cart guard', () => {
   test('whole-cart checkout is refused while the owner has an active split for that cart', async () => {
@@ -101,15 +116,79 @@ describe('cancel + invite guards', () => {
     expect(extra.status).toBe(409);
   });
 
-  test('a bill with a started PayPal checkout can no longer be cancelled', async () => {
-    const id = await makeBill(2);
-    const bill = await request(app).get(`/api/bills/${id}`).set(owner.headers);
-    const shareId = bill.body.shares.find((s: any) => s.participantBound).id;
-    const pay = await request(app).post(`/api/bills/${id}/shares/${shareId}/pay`).set(owner.headers);
-    expect(pay.status).toBe(201); // PayPal is enabled (mocked) in the test environment
-    const c = await request(app).post(`/api/bills/${id}/cancel`).set(owner.headers);
+  test('a started PayPal checkout is never cancelled implicitly (the owner must opt in)', async () => {
+    const { id } = await billWithStartedCheckout();
+    const c = await request(app).post(`/api/bills/${id}/cancel`).set(owner.headers).send({});
     expect(c.status).toBe(409);
     expect(c.body.code ?? c.body.details?.code).toBe('BILL_HAS_PAYMENTS');
+  });
+});
+
+describe('owner explicitly abandons a started, uncaptured checkout', () => {
+  test('the bill is cancelled, the share is unbound and a stale capture is refused', async () => {
+    const { id, shareId, orderId } = await billWithStartedCheckout();
+    const c = await request(app).post(`/api/bills/${id}/cancel`).set(owner.headers).send({ abandonUncaptured: true });
+    expect(c.status).toBe(200);
+    expect(c.body.status).toBe('CANCELLED');
+    expect(c.body.shares.find((s: any) => s.id === shareId).orderId).toBeUndefined();
+    expect(OrderService.getInstance().getById(orderId)?.status).toBe(OrderStatus.ORDER_CANCELLED);
+
+    // A buyer returning from the abandoned PayPal page must not be able to capture.
+    const capture = await request(app).post(`/api/orders/${orderId}/capture`).set(owner.headers).send({});
+    expect(capture.status).toBe(400);
+
+    // The same-cart guard lifts, so the organiser can pay normally again.
+    const normal = await request(app)
+      .post('/api/orders/create')
+      .set(owner.headers)
+      .set('Idempotency-Key', 'k-abandon-1')
+      .send({ items: cart });
+    expect(normal.status).not.toBe(409);
+
+    // Cancelling twice is idempotent.
+    const again = await request(app).post(`/api/bills/${id}/cancel`).set(owner.headers).send({ abandonUncaptured: true });
+    expect(again.status).toBe(200);
+    expect(again.body.status).toBe('CANCELLED');
+  });
+
+  test('an APPROVED but uncaptured checkout can also be discarded', async () => {
+    getOrder.mockResolvedValue({ status: 'APPROVED', purchase_units: [{}] });
+    const { id } = await billWithStartedCheckout();
+    const c = await request(app).post(`/api/bills/${id}/cancel`).set(owner.headers).send({ abandonUncaptured: true });
+    expect(c.status).toBe(200);
+    expect(c.body.status).toBe('CANCELLED');
+  });
+
+  test('fails closed when PayPal shows a COMPLETED capture; the bill stays open', async () => {
+    getOrder.mockResolvedValue({
+      status: 'COMPLETED',
+      purchase_units: [{ payments: { captures: [{ id: 'CAP-1', status: 'COMPLETED' }] } }],
+    });
+    const { id } = await billWithStartedCheckout();
+    const c = await request(app).post(`/api/bills/${id}/cancel`).set(owner.headers).send({ abandonUncaptured: true });
+    expect(c.status).toBe(409);
+    expect(c.body.code ?? c.body.details?.code).toBe('PAYMENT_STATUS_UNVERIFIED');
+    const still = await request(app).get(`/api/bills/${id}`).set(owner.headers);
+    expect(still.body.status).not.toBe('CANCELLED');
+  });
+
+  test('fails closed when PayPal cannot be reached; nothing is cancelled', async () => {
+    getOrder.mockRejectedValue(new Error('PayPal timeout'));
+    const { id } = await billWithStartedCheckout();
+    const c = await request(app).post(`/api/bills/${id}/cancel`).set(owner.headers).send({ abandonUncaptured: true });
+    expect(c.status).toBe(503);
+    const still = await request(app).get(`/api/bills/${id}`).set(owner.headers);
+    expect(still.body.status).not.toBe('CANCELLED');
+  });
+
+  test('a genuinely PAID share is never cancellable, even with the explicit flag', async () => {
+    const { id, orderId } = await billWithStartedCheckout();
+    OrderService.getInstance().updateStatus(orderId, OrderStatus.PAID);
+    const c = await request(app).post(`/api/bills/${id}/cancel`).set(owner.headers).send({ abandonUncaptured: true });
+    expect(c.status).toBe(409);
+    expect(c.body.code ?? c.body.details?.code).toBe('BILL_HAS_PAYMENTS');
+    const still = await request(app).get(`/api/bills/${id}`).set(owner.headers);
+    expect(still.body.status).not.toBe('CANCELLED');
   });
 });
 

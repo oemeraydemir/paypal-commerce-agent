@@ -326,6 +326,20 @@ export type BillJoinResult =
   | { ok: false; reason: 'INVALID_OR_EXPIRED' | 'ALREADY_USED' | 'FULL' | 'ALREADY_PARTICIPANT' | 'BILL_NOT_FOUND' };
 
 /**
+ * Result of an owner explicitly abandoning started (uncaptured) split-bill
+ * checkouts and cancelling the bill in one transaction. `abandoned` lists the
+ * share/order pairs whose claim was released, so the in-memory read model can
+ * be reconciled without guessing.
+ */
+export type BillAbandonResult =
+  | { ok: true; abandoned: Array<{ shareId: string; orderId: string }> }
+  | {
+      ok: false;
+      reason: 'BILL_NOT_FOUND' | 'NOT_OWNER' | 'PAYMENT_CAPTURED' | 'CHECKOUT_CHANGED';
+      abandoned: [];
+    };
+
+/**
  * Split Bill P3 repository. Decisions that MUST be atomic across instances are
  * performed by the DB (atomic UPDATEs / a transaction) and are NEVER routed
  * through the fire-and-forget write queue; the write queue is only used for
@@ -367,6 +381,17 @@ export interface BillRepository {
     eventId: string;
   }): Promise<BillMandateResult>;
   cancelGroupAndCloseMandate(billId: string, ownerUserId: string): Promise<boolean>;
+  /**
+   * Owner explicitly discards started, uncaptured PayPal checkouts and cancels
+   * the bill atomically. The caller has already verified with PayPal that no
+   * capture exists for each `orderId`; this method re-checks the DB state and
+   * refuses if anything moved or changed in the meantime.
+   */
+  abandonStartedCheckoutsAndCancel(
+    billId: string,
+    ownerUserId: string,
+    orderIds: string[]
+  ): Promise<BillAbandonResult>;
   reconcileMandateReservations(): Promise<{ settled: number; expired: number; cancelled: number }>;
   /** Registers a freshly minted invite nonce (PENDING). */
   insertInviteNonce(row: InviteNonceRow): Promise<void>;

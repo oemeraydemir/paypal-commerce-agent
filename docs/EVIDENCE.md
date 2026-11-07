@@ -3,13 +3,19 @@
 > **Backend counts re-measured on 2026-10-25 (audit pass, commands run in that session):** `tsc --noEmit` clean;
 > `npm test` **83 suites / 928 tests pass on 2026-10-27** (commit 364824d; six regression tests were added afterwards, so the next run should show 85 / 934);
 > **Backend re-measured on 2026-11-05 (final polish):** `npm test` **141 suites / 1351 tests pass, re-measured 2026-11-05** (includes the scope fail-closed, evidence, checkout-rescue, web-scopes and iOS design-token regressions); `flutter analyze` reports no issues.
-> **Backend re-measured on 2026-11-07 (current submission source):** `npm test` **141 suites / 1351 tests pass** in 234 s. Six stale expectations were updated for intentional changes — coffee/espresso (35f078f) and Oat Porridge (95ef131) declared gluten-free to fix checkout 403, and Groq defaults switched to tool-capable models after a live probe. No test was weakened: the UNKNOWN wellbeing branch, the dietary BLOCK rule and the "no matching breakfast" behaviour are still asserted with explicit fixtures. PayPal and AI remain mocked.
+> **Backend re-measured on 2026-11-07 (pre-fix baseline, superseded by the 1361-test run below):** `npm test` **141 suites / 1351 tests pass** in 234 s. Six stale expectations were updated for intentional changes — coffee/espresso (35f078f) and Oat Porridge (95ef131) declared gluten-free to fix checkout 403, and Groq defaults switched to tool-capable models after a live probe. No test was weakened: the UNKNOWN wellbeing branch, the dietary BLOCK rule and the "no matching breakfast" behaviour are still asserted with explicit fixtures. PayPal and AI remain mocked.
 > `newman` against a local keyless server, public and private dashboard mode: **58 requests, 73 assertions, 0 failed**.
 > NOT re-run in that session: Flutter (no SDK there; the owner's 2026-10-27 run, 163 tests, is row E14b and
 > `docs/PLATFORM_STATUS.md`), the real-Chrome AG Grid test, `test:smoke` against a real PostgreSQL. The older rows below keep
 > their original dates. The
 > PayPal Sandbox and real-AI-provider rows remain **BLOCKED** — this environment has no credentials. The
 > Flutter result needs `HTTP_PROXY` unset (otherwise the local test host is reached through the proxy).
+> **Backend re-measured again on 2026-11-07 (after the Split Bill cancellation fix):** `npm test`
+> **141 suites / 1361 tests pass, 0 failed** in 289 s; `tsc --noEmit` clean; log
+> `Video_Kit/test_split_cancel_fix.log` (outside the repo). Ten new regression tests cover the
+> owner-abandon path: API guards (opt-in, PayPal COMPLETED, PayPal unreachable, genuinely paid
+> share), the jsdom `/split` cancel control, and four pg-mem repository cases. The earlier
+> 1351-test run in the line above is the pre-fix baseline.
 
 PASS = executed with evidence. FAIL = executed and failed. BLOCKED = could not run here (no credentials, service
 access or SDK). NOT TESTED = not attempted. Nothing here is a statement about the deployed Render service,
@@ -19,7 +25,7 @@ PayPal Sandbox or real AI providers unless a row says so.
 
 | Kind | What it proves | Result in this pass |
 |---|---|---|
-| Unit / integration, PayPal and AI **mocked**, pg-mem | application logic | 141 suites, 1351 tests, all pass (`npm test`, re-measured **2026-11-07 on the current source**; also 2026-11-05; 137 / 1320 on 2026-11-04; 83 suites / 928 on 2026-10-27; 79 / 883 on 2026-10-26; 60 / 636 on 20 Oct) |
+| Unit / integration, PayPal and AI **mocked**, pg-mem | application logic | **141 suites, 1361 tests, all pass** (`npm test`, re-measured **2026-11-07 on the current source** after the Split Bill cancellation fix; 141 / 1351 earlier the same day; also 2026-11-05; 137 / 1320 on 2026-11-04; 83 suites / 928 on 2026-10-27; 79 / 883 on 2026-10-26; 60 / 636 on 20 Oct) |
 | **Real PostgreSQL 16** (local), PayPal mocked | durability, constraints, concurrency | 13 tests pass (`jest -c jest.smoke.config.js`: `pg-migrate`, `pg-durability`, `pg-capture-claim-route`) |
 | Local application over HTTP (`newman`), no PayPal or AI keys | API contract and rejections | public dashboard mode and private mode (`DASHBOARD_PUBLIC=false`) each: 58 requests, 73 assertions, 0 failed (measured 2026-10-25; the 20 Oct snapshot was 50 requests / 57 assertions) |
 | Real PayPal Sandbox | PayPal behaviour | BLOCKED |

@@ -20,6 +20,7 @@ import {
   CaptureClaimRepository,
   BillRepository,
   BillJoinResult,
+  BillAbandonResult,
   InviteNonceRow,
   RefundRepository,
   RefundRow,
@@ -1346,6 +1347,75 @@ class PgBillRepository implements BillRepository {
       }
       await this.closeActiveBillMandate(client, billId, ownerUserId, 'CANCELLED', 'BILL_CANCELLED');
       return true;
+    });
+  }
+
+  /**
+   * Owner explicitly abandons started-but-uncaptured share checkouts and cancels
+   * the bill in ONE transaction. The caller has already asked PayPal for proof
+   * that no capture exists; this re-checks the durable state and refuses if any
+   * share has since been paid, or if a checkout changed while we were looking.
+   *
+   * Everything that cancelling an in-flight checkout requires happens here:
+   * order -> ORDER_CANCELLED, claim released, share/order binding cleared,
+   * group -> CANCELLED and the bill mandate reservation closed. Releasing the
+   * claim BEFORE the group status changed would open a window for a concurrent
+   * `/pay` to bind a fresh order to an already-cancelled bill.
+   */
+  async abandonStartedCheckoutsAndCancel(
+    billId: string,
+    ownerUserId: string,
+    orderIds: string[]
+  ): Promise<BillAbandonResult> {
+    return withTransaction(this.db, async (client) => {
+      await client.query('SELECT user_id FROM spending_mandates WHERE user_id = $1 FOR UPDATE', [ownerUserId]);
+      const { rows } = await client.query('SELECT * FROM bill_groups WHERE id = $1 FOR UPDATE', [billId]);
+      const group = rows[0];
+      if (!group) return { ok: false, reason: 'BILL_NOT_FOUND', abandoned: [] };
+      if (group.created_by_user_id !== ownerUserId) return { ok: false, reason: 'NOT_OWNER', abandoned: [] };
+
+      const { rows: joined } = await client.query(
+        `SELECT bs.id AS share_id, bs.order_id AS order_id, o.status AS status
+           FROM bill_shares bs JOIN orders o ON o.id = bs.order_id
+          WHERE bs.bill_id = $1`,
+        [billId]
+      );
+      for (const row of joined) {
+        if (row.status === 'PAID' || row.status === 'ORDER_CONFIRMED') {
+          return { ok: false, reason: 'PAYMENT_CAPTURED', abandoned: [] };
+        }
+        // Only the exact PAYMENT_PENDING checkouts the caller verified may be
+        // discarded. Anything else (including a newly started checkout) is a
+        // change we cannot safely fold into this decision.
+        if (row.status !== 'PAYMENT_PENDING' || !orderIds.includes(row.order_id)) {
+          return { ok: false, reason: 'CHECKOUT_CHANGED', abandoned: [] };
+        }
+      }
+
+      const abandoned: Array<{ shareId: string; orderId: string }> = [];
+      for (const row of joined) {
+        await client.query(
+          `UPDATE orders SET status = 'ORDER_CANCELLED', updated_at = now()
+             WHERE id = $1 AND status = 'PAYMENT_PENDING'`,
+          [row.order_id]
+        );
+        // Verify by reading back instead of trusting rowCount: pg-mem reports
+        // UPDATE row counts differently from real PostgreSQL.
+        const check = await client.query('SELECT status FROM orders WHERE id = $1', [row.order_id]);
+        if (check.rows[0]?.status !== 'ORDER_CANCELLED') {
+          return { ok: false, reason: 'CHECKOUT_CHANGED', abandoned: [] };
+        }
+        await client.query('DELETE FROM bill_share_claims WHERE share_id = $1 AND order_id = $2', [row.share_id, row.order_id]);
+        await client.query(
+          'UPDATE bill_shares SET order_id = NULL, updated_at = now() WHERE id = $1 AND order_id = $2',
+          [row.share_id, row.order_id]
+        );
+        abandoned.push({ shareId: row.share_id, orderId: row.order_id });
+      }
+
+      await client.query(`UPDATE bill_groups SET status = 'CANCELLED', updated_at = now() WHERE id = $1`, [billId]);
+      await this.closeActiveBillMandate(client, billId, ownerUserId, 'CANCELLED', 'BILL_CANCELLED');
+      return { ok: true, abandoned };
     });
   }
 

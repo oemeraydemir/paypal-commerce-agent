@@ -5,7 +5,7 @@ Status refreshed **2026-11-07**. The video is already uploaded (`https://youtu.b
 
 ## 1. Make the repository complete and public
 
-- [x] Everything in `source/`, `docs/`, `openapi.json`, `DEMO_VIDEO_SCRIPT.md` is committed and pushed (judges only see what is on the remote). Confirm with `git status` and `git log -1` after the final push: HEAD must match `origin/main`. Backend re-measured 2026-11-07: 141 suites / 1351 tests pass.
+- [x] Everything in `source/`, `docs/`, `openapi.json`, `DEMO_VIDEO_SCRIPT.md` is committed and pushed (judges only see what is on the remote). Confirm with `git status` and `git log -1` after the final push: HEAD must match `origin/main`. Backend re-measured 2026-11-07 after the Split Bill cancellation fix: 141 suites / 1361 tests pass (289 s), `tsc --noEmit` clean.
 - [x] Repository is **public** (`private: false`), `LICENSE` (MIT) shows in the About box; description, homepage and 18 topics are set. Spam issue #1 closed; 0 open issues. A `hackathon-submission` release exists.
 - [x] README has the submission summary, a two-minute no-keys quick start, a Tools-used table, an explicit "How AI and PayPal are used" section and ten screenshots captured from the live deployment.
 - [ ] CI is green on the pushed commit (backend, real-PostgreSQL smoke, Flutter) — verify in the Actions tab.
