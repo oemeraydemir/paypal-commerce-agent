@@ -16,6 +16,16 @@
 > owner-abandon path: API guards (opt-in, PayPal COMPLETED, PayPal unreachable, genuinely paid
 > share), the jsdom `/split` cancel control, and four pg-mem repository cases. The earlier
 > 1351-test run in the line above is the pre-fix baseline.
+>
+> **Deployed-service re-verification 2026-11-08 (signed-out, no money moved):** Render `/api/health`
+> reports `buildCommit: 2261f2f…`, `paypal.environment: sandbox`, `storage: postgres / durable`,
+> `channel3.enabled: true`. A fresh session → wellbeing preferences → 2-person Split Bill →
+> `POST /bills/:id/shares/:shareId/pay` → **201** with a real Sandbox `approvalUrl` (never approved or
+> captured); default `POST /bills/:id/cancel` → **409**; `POST .../cancel {"abandonUncaptured":true}`
+> → **200 CANCELLED**; `GET /bills/:id` → CANCELLED, zero shares still bound to an order; repeat pay
+> → **409 Bill was cancelled**; repeat cancel → idempotent **200**. Log
+> `Video_Kit/live_split_cancel_check.log` (outside the repo). YouTube
+> `https://youtu.be/X2y7Iw5WNhE` is **Public** (`playabilityStatus: OK`, oEmbed 200, 172 s).
 
 PASS = executed with evidence. FAIL = executed and failed. BLOCKED = could not run here (no credentials, service
 access or SDK). NOT TESTED = not attempted. Nothing here is a statement about the deployed Render service,
@@ -30,7 +40,7 @@ PayPal Sandbox or real AI providers unless a row says so.
 | Local application over HTTP (`newman`), no PayPal or AI keys | API contract and rejections | public dashboard mode and private mode (`DASHBOARD_PUBLIC=false`) each: 58 requests, 73 assertions, 0 failed (measured 2026-10-25; the 20 Oct snapshot was 50 requests / 57 assertions) |
 | Real PayPal Sandbox | PayPal behaviour | BLOCKED |
 | Real AI providers | provider behaviour | BLOCKED |
-| Deployed Render service | deployment | BLOCKED |
+| Deployed Render service | deployment + live no-capture API smoke | PASS (2026-11-07 order creation 201; 2026-11-08 build `2261f2f` Split Bill owner-abandon path) — full buyer approval/capture not re-run on this build |
 
 ## Rows
 
@@ -57,5 +67,6 @@ PayPal Sandbox or real AI providers unless a row says so.
 | E18 | Approved Sandbox capture on the deployed app | PASS (owner, 2026-10-27) | order `ac830417…2e91bb2a`, EUR 18.00, PAID, capture `5AU4••••990S`, signed mandate valid | repeated capture, partial refund and webhook replay still open (`docs/PAYMENT_E2E.md`) |
 | E19 | Real AI provider answers | BLOCKED | no keys | LIVE_VERIFICATION |
 | E20 | Render commit, durable storage | PASS (owner, 2026-10-27) | commit 364824d live, PostgreSQL migrations up to date in the boot log | smoke test against real PostgreSQL still not run |
+| E21 | Split Bill owner-abandon path on the deployed service | PASS (2026-11-08, no money moved) | `buildCommit: 2261f2f`; started share checkout 201 + real Sandbox approvalUrl, default cancel 409, opt-in cancel 200 CANCELLED, re-read has zero stale order bindings, repeat pay 409, repeat cancel 200; `Video_Kit/live_split_cancel_check.log` | full buyer approval → capture on this build still open |
 
 Release decision: **READY WITH EXPLICIT LIMITS** (webhook replay, partial refund and real-microphone voice still open). Not production-ready; PayPal Sandbox prototype.

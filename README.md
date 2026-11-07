@@ -16,7 +16,7 @@ refund queue. External AI agents can shop through an MCP server.
 |---|---|
 | **Live demo** | <https://paypal-commerce-agent.onrender.com> (free-tier Render; the first load can take ~60 s while the instance wakes) |
 | **Public code** | This repository, open source under [MIT](./LICENSE) |
-| **Demo video** | 2:52 split-screen walkthrough (web + Flutter) with English narration; shot order and script in [DEMO_VIDEO_SCRIPT.md](./DEMO_VIDEO_SCRIPT.md), link on the Devpost submission page |
+| **Demo video** | 2:52 split-screen walkthrough (web + Flutter) with English narration — **watch it on [YouTube](https://youtu.be/X2y7Iw5WNhE)** (public); shot order and script in [DEMO_VIDEO_SCRIPT.md](./DEMO_VIDEO_SCRIPT.md) |
 | **PayPal** | Orders API v2, **Sandbox only**: create → human approval → capture → refund |
 | **AI tools** | Google Gemini (primary) with Groq / OpenRouter / Cerebras / OpenAI fallbacks — see [Tools used](#tools-used) |
 | **Clients** | Web storefront + Flutter Android/iOS app, both on one backend |

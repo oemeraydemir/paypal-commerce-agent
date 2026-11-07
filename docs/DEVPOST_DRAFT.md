@@ -5,9 +5,12 @@ Every `PASTE` block is plain text with no table markup, so it can be selected an
 into Devpost. All text is English. Claims are limited to what the repository and the live deployment
 actually do; anything not re-verified on the current build is marked as such below.
 
-**Only one form field is still yours to fill:** `[TEAM NAME]`. The video is already uploaded at
-`https://youtu.be/X2y7Iw5WNhE`, but it is currently **Private** with a placeholder title and an empty
-description — see section 8 for the exact YouTube Studio settings before publishing. See also
+**Status re-verified 2026-11-08:** the video at `https://youtu.be/X2y7Iw5WNhE` is now **Public**
+(`playabilityStatus: OK`, `isPrivate: false`, `isUnlisted: false`, oEmbed 200) and is 2:52 long, so the
+official *"publicly visible"* requirement is met. Its metadata is **still the placeholder set** —
+title `AICafe`, a 193-character description, no chapters, and YouTube's auto frame grab instead of the
+custom cover. Section 8 lists the exact remaining YouTube Studio edits. The form field `[TEAM NAME]`
+and all personal declarations are still yours to fill. See also
 [DEVPOST_ANSWER_AUDIT.md](./DEVPOST_ANSWER_AUDIT.md) for the field-by-field audit of the Claude.ai draft.
 
 **Name decision:** use `AI Café — The AI prepares, you approve, PayPal pays` everywhere (form, YouTube
@@ -170,7 +173,7 @@ PayPal, PayPal Sandbox, agentic commerce, AI agent, hackathon, Devpost, Flutter,
 
 ## 8. What still needs a human (blocking)
 
-- [ ] `AICafe_Final.mp4` (2:52.17, under the 3-minute limit) is already uploaded at **https://youtu.be/X2y7Iw5WNhE**, but it is **Private**, titled only `AICafe`, and has an empty description. In YouTube Studio set `Sichtbarkeit` = **Öffentlich / Public** (the official rules say *"publicly visible"*, so do **not** use Unlisted), paste the title, description, chapters and tags from section 7, upload `Video_Kit/youtube_thumbnail.jpg`, set "not made for children", no paid promotion, **AI use = Yes** (realistic AI narration), language English, category Science & Technology, and allow embedding. Verify the link plays in a **signed-out** browser before submitting.
+- [ ] `AICafe_Final.mp4` (2:52.17, under the 3-minute limit) is uploaded at **https://youtu.be/X2y7Iw5WNhE** and is **already Public** (verified signed-out on 2026-11-08: `playabilityStatus: OK`, oEmbed 200, 172 s). **Do not change the visibility.** What remains in YouTube Studio: replace the title `AICafe` with the section 7 title, replace the 193-character placeholder description with the section 7 description **including the chapters**, replace the 20 built-with keywords with the section 7 tag line, and upload `Video_Kit/youtube_thumbnail.jpg` (the live `hqdefault.jpg` is still YouTube's 480×360 auto frame grab). Then set "not made for children", no paid promotion, **AI use = Yes** (realistic AI narration), language English, category Science & Technology, and allow embedding; those six settings cannot be checked from outside Studio. Playback in a **signed-out** browser is already confirmed.
 - [ ] Replace `[TEAM NAME]` with the real team name. A solo entry is fine.
 - [ ] Paste sections 1–7 into the Devpost form and submit before 12 Nov 2026, 21:00 GMT+1.
 - [ ] Warm the Render service shortly before judging (free tier).
@@ -180,8 +183,10 @@ PayPal, PayPal Sandbox, agentic commerce, AI agent, hackathon, Devpost, Flutter,
 
 Verified live on **2026-11-07** against `https://paypal-commerce-agent.onrender.com`:
 
-- `GET /api/health` → `status: ok`, `buildCommit: 987af54`, `paypal.environment: sandbox`, `paypal.enabled: true`, `storage: postgres / durable`, `mandates.keyPersistence: configured`, `ai.enabled: true` with providers `groq` and `gemini`.
+- `GET /api/health` → `status: ok`, `buildCommit: 2261f2f…` (re-checked **2026-11-08**; earlier records saying `987af54` are historical), `paypal.environment: sandbox`, `paypal.enabled: true`, `storage: postgres / durable`, `mandates.keyPersistence: configured`, `ai.enabled: true` with providers `groq` and `gemini`, `channel3.enabled: true`.
 - A fresh session followed by `PUT /api/wellbeing/preferences` and `POST /api/orders/create` returned **201 PAYMENT_PENDING** with a real PayPal Sandbox `approvalUrl`.
+- **Split Bill owner-abandon path verified live on `2261f2f` (2026-11-08), no money moved:** a 2-person bill, one share's `POST /bills/:id/shares/:shareId/pay` → **201** with a real Sandbox `approvalUrl` (never approved/captured); default `POST /bills/:id/cancel` → **409** (fail closed); `POST .../cancel` with `{"abandonUncaptured":true}` → **200 CANCELLED**; `GET /bills/:id` → CANCELLED with zero shares still bound to an order; a second pay attempt → **409 Bill was cancelled**; a second cancel → idempotent **200**. Log `Video_Kit/live_split_cancel_check.log` (outside the repo).
+- **YouTube video verified Public and signed-out playable (2026-11-08):** `https://youtu.be/X2y7Iw5WNhE`, 172 s, `isPrivate: false`, `isUnlisted: false`. Metadata is still the placeholder set.
 - Repository is public, MIT licensed, with description, homepage, 18 topics, ten live-deployment screenshots in the README, and a `hackathon-submission` release. Zero open issues.
 - Channel3 is live: `GET /api/health` reports `channel3.enabled: true`; a fresh-session `POST /api/discover/take-home` returned real retailer offers.
 
@@ -212,6 +217,6 @@ Caveats published with the entry:
 - [x] Sufficiently documented — README, judging map, evidence, known limitations, video script, screenshots, this submission copy.
 - [x] Public code repository with a license (MIT) and clear setup/run instructions.
 - [x] Video under 3 minutes — 2:52.17, English narration, no third-party music or footage.
-- [ ] Video is **Public** on YouTube (currently Private) and linked on the form as https://youtu.be/X2y7Iw5WNhE — **the only blocking content item**.
+- [x] Video is **Public** on YouTube (verified signed-out 2026-11-08) and linked on the form as https://youtu.be/X2y7Iw5WNhE. Remaining content work is the title/description/chapters/tags/thumbnail — see section 8.
 - [x] Text description and tools list — sections 3 and 4 above.
 - [ ] Team name filled in on the form.

@@ -4,7 +4,9 @@ Screenshots for AI Café are captured from a **running instance**, not from desi
 the inventory below were taken from the live Render deployment
 (<https://paypal-commerce-agent.onrender.com>) at build `987af54`, with the storefront's customer-facing
 merchant links removed. No credentials or merchant keys appear in any capture. They use the current light
-iOS-style theme (light blue / white), not the older orange one. This file explains how to reproduce them.
+iOS-style theme (light blue / white), not the older orange one. The later commits (`f747493`, `2261f2f`)
+changed tests, docs and the Split Bill cancellation path only — no storefront theme change — so these
+shots still match the currently deployed UI. This file explains how to reproduce them.
 
 The four later shots (`07`–`10`) were captured with `Video_Kit/capture_shots_extra.mjs`; the first six with
 `Video_Kit/capture_shots.mjs`. Both drive a headless Chromium against the live deployment.

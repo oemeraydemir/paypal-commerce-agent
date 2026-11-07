@@ -1,7 +1,7 @@
 # Submission checklist (Devpost, deadline 12 Nov 2026, 21:00 GMT+1)
 
 Order matters: do the top block first, because everything below depends on it.
-Status refreshed **2026-11-07**. The video is already uploaded (`https://youtu.be/X2y7Iw5WNhE`) but is **Private**; only publishing it as Public with metadata, plus the form submission, remain for the account owner. Full field-by-field audit: [DEVPOST_ANSWER_AUDIT.md](./DEVPOST_ANSWER_AUDIT.md).
+Status refreshed **2026-11-08**. The video at `https://youtu.be/X2y7Iw5WNhE` is **already Public** and verified signed-out playable; its title, description, chapters, tags and custom thumbnail still need to be set. Render has redeployed `2261f2f` and the Split Bill owner-abandon path was verified live. What remains for the account owner: YouTube metadata, the form submission and the declaration fields. Full field-by-field audit: [DEVPOST_ANSWER_AUDIT.md](./DEVPOST_ANSWER_AUDIT.md).
 
 ## 1. Make the repository complete and public
 
@@ -12,9 +12,10 @@ Status refreshed **2026-11-07**. The video is already uploaded (`https://youtu.b
 
 ## 2. Prove it runs
 
-- [x] Deployed to Render; `GET /api/health` verified 2026-11-07: `status: ok`, `buildCommit: 987af54`, `paypal.environment: sandbox`, `paypal.enabled: true`, `storage: postgres / durable`, `mandates.keyPersistence: configured`, `ai.enabled: true` with `groq` + `gemini`.
+- [x] Deployed to Render; `GET /api/health` re-verified **2026-11-08**: `status: ok`, `buildCommit: 2261f2f…` (the Split Bill cancellation fix), `paypal.environment: sandbox`, `paypal.enabled: true`, `storage: postgres / durable`, `mandates.keyPersistence: configured`, `ai.enabled: true` with `groq` + `gemini`, `channel3.enabled: true`. Earlier `987af54` readings are historical.
 - [x] `PAYPAL_ENABLED=true` with **sandbox** credentials, `MANDATE_SIGNING_KEY`, `PUBLIC_BASE_URL`, `DATABASE_URL`, `OPS_COPILOT_KEY`, and one of `GEMINI_API_KEY` / `GROQ_API_KEY` are set on Render (dashboard audit below).
 - [x] Live order-creation smoke on 2026-11-07: fresh session → `PUT /api/wellbeing/preferences` → `POST /api/orders/create` returns **201 PAYMENT_PENDING** with a real PayPal Sandbox `approvalUrl`.
+- [x] Split Bill owner-abandon path verified live on build `2261f2f` on **2026-11-08**, with no money moved: started share checkout → **201** with a real Sandbox `approvalUrl`; default cancel → **409** (fail closed); opt-in `{"abandonUncaptured":true}` → **200 CANCELLED**; re-read shows zero stale order bindings; repeat pay → **409 Bill was cancelled**; repeat cancel → idempotent **200**. Log `Video_Kit/live_split_cancel_check.log` (outside the repo).
 - [ ] `npm run e2e:sandbox -- <render-url>` run once on the current build; result pasted into `docs/PAYMENT_E2E.md` with the date. (Order creation is verified; full buyer approval → capture is not re-run on this build.)
 - [ ] Refund approved from the dashboard against a sandbox payment (cheapest real evidence of the refund path).
 - [ ] Split Bill with two sandbox buyers until it shows SETTLED (only claim it in the video if you saw it — the video says "with friends" and quotes no number).
@@ -37,7 +38,8 @@ Confirmed on the Render dashboard (values masked, never shared). Every key the c
 - [x] Nothing in the video says "allergen-safe", "verified PayPal integration" beyond what step 2 proved, or that Flutter enforces the guard. Allergy language is always "unverified"; the split-bill narration quotes no number; "e-invoice" is the app's own UI label.
 - [x] The "For cafés" control center and the human-approved refund queue are shown and narrated.
 - [ ] Confirm the mandate card (limit, cart, remaining, per-person split, refunded so far) and the Agent timeline are legible in the final encode before publishing.
-- [ ] Uploaded at **https://youtu.be/X2y7Iw5WNhE** but **Private** (`AICafe`, empty description). Set `Sichtbarkeit` = **Öffentlich / Public** — the official rules require a *"publicly visible"* video, so Unlisted is not enough. Paste title, description, chapters and tags from [DEVPOST_DRAFT.md](./DEVPOST_DRAFT.md#7-youtube-upload-copy--paste), upload `Video_Kit/youtube_thumbnail.jpg`, set "not made for children", no paid promotion, **AI use = Yes**, language English, category Science & Technology, allow embedding. Then verify playback in a signed-out browser.
+- [x] Uploaded at **https://youtu.be/X2y7Iw5WNhE** and **Public** — verified signed-out on 2026-11-08 (`playabilityStatus: OK`, `isPrivate: false`, `isUnlisted: false`, oEmbed 200, `lengthSeconds: 172`). The official *"publicly visible"* rule is satisfied; do not switch to Unlisted.
+- [ ] Metadata still placeholder: title `AICafe`, 193-character description, no chapters, 20 built-with keywords (no `channel3`), and YouTube's auto 480×360 frame grab. Paste title, description, chapters and tags from [DEVPOST_DRAFT.md](./DEVPOST_DRAFT.md#7-youtube-upload-copy--paste), upload `Video_Kit/youtube_thumbnail.jpg`, and in Studio set "not made for children", no paid promotion, **AI use = Yes**, language English, category Science & Technology, allow embedding. Those six settings are not observable from outside Studio.
 
 ## 4. Devpost form
 

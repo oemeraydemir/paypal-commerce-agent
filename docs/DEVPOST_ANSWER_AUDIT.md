@@ -1,17 +1,43 @@
-# Devpost answer audit — AI Café (2026-11-07)
+# Devpost answer audit — AI Café (2026-11-07, status refreshed 2026-11-08)
 
 This audits the Claude.ai answer set field by field against the **current** repository, the **live**
 Render deployment, the submitted video and the **official** hackathon page
 <https://paypalaihackathon.devpost.com/>. Verdicts: **OK** = use as-is, **CHANGE** = must be edited,
 **YOU** = your declaration, I cannot answer it.
 
+## 0. STATUS UPDATE — re-verified 2026-11-08 (read this first)
+
+The audit below was written when the video was still Private and the Split Bill fix had not been
+deployed. Both of those changed. Re-checked signed-out, with no session:
+
+- **Blocker 1 (Private video) — RESOLVED.** `https://youtu.be/X2y7Iw5WNhE` now returns
+  `playabilityStatus: "OK"`, `isPrivate: false`, `isUnlisted: false`; YouTube oEmbed answers **200**.
+  The video is **Public**, which is what the written rule requires. `lengthSeconds: 172` = 2:52.
+- **Blocker 2 (Unlisted) — RESOLVED.** Visibility is Public, not Unlisted. Leave it that way.
+- **Blocker 3 — STILL OPEN, but narrower.** Signed-out metadata now shows: title still `AICafe` (the
+  placeholder), description **193 characters** (a short elevator pitch, not the section 6 paste block),
+  keywords are the 20 Devpost "Built with" tags (no `channel3`), no chapters, and `hqdefault.jpg` is
+  **480×360 4:3** — YouTube's automatic frame grab, so `Video_Kit/youtube_thumbnail.jpg` has **not**
+  been uploaded. Paste the title/description/tags from section 6 and upload the custom cover.
+- **The Split Bill fix is live.** `/api/health` reports `buildCommit: 2261f2f…` (was `f747493`). The
+  exact section 5 testing step was executed against Render on 2026-11-08: session → wellbeing
+  preferences → 2-person bill → `POST /bills/:id/shares/:shareId/pay` returned **201** with a real
+  Sandbox `approvalUrl` (never approved, never captured) → default `POST /bills/:id/cancel` returned
+  **409** (fail closed) → `POST .../cancel` with `{"abandonUncaptured":true}` returned **200 CANCELLED**
+  → `GET /bills/:id` shows CANCELLED with **zero** shares still bound to an order → a second pay
+  attempt returns **409 Bill was cancelled** → a second cancel is idempotent **200**. No money moved.
+  Log: `Video_Kit/live_split_cancel_check.log` (outside the repo, never committed).
+
+Everything else in this audit still stands. In particular the six "YOU" declaration fields, the
+`[TEAM NAME]` placeholder and the Channel3 sponsor checkbox are still the account owner's to fill.
+
 ## 1. Blocking items — fix these first
 
 | # | Problem | Evidence | Action |
 |---|---|---|---|
-| 1 | **Video is Private.** The upload page says *"Als Privat gespeichert"*. Signed-out playback returns `LOGIN_REQUIRED / "Privates Video"` for `https://youtu.be/X2y7Iw5WNhE`. | Curled the watch page without a session. | Set visibility to **Öffentlich / Public** before submitting. |
-| 2 | **"Unlisted is allowed" is not what the rules say.** | Official requirements: *"Must be uploaded to YouTube, publicly visible, with the link on the submission form."* | Use **Public**, not "Nicht gelistet". The form may accept unlisted, but the written rule says publicly visible. |
-| 3 | **YouTube title is just `AICafe` and the description is empty.** | Upload page screenshot. | Paste the title, description, tags and chapters in section 6. |
+| 1 | ~~**Video is Private.**~~ **RESOLVED 2026-11-08.** | Signed-out watch page: `playabilityStatus: OK`, `isPrivate: false`, `isUnlisted: false`; oEmbed 200. | **Nothing to do.** Keep it Public. |
+| 2 | ~~**"Unlisted is allowed" is not what the rules say.**~~ **RESOLVED 2026-11-08.** | Official requirements: *"Must be uploaded to YouTube, publicly visible, with the link on the submission form."* The upload is Public. | **Nothing to do.** Do not switch to Unlisted. |
+| 3 | **YouTube metadata is still the placeholder set.** Title `AICafe`, 193-character description (no links, no chapters), 20 Devpost built-with tags instead of the prepared YouTube tags, and the auto 480×360 frame grab instead of the custom cover. | Signed-out watch page + `hqdefault.jpg` measured 2026-11-08. | Paste the title, description, chapters and tags from section 6 and upload `Video_Kit/youtube_thumbnail.jpg`. |
 | 4 | **RESOLVED — the backend suite is green again.** The 2026-11-07 run had 5 failed suites / 6 failed tests (1345 of 1351 passing); all six were **stale expectations**, not product bugs. | Six test files updated for the intentional gluten-free catalog labels (35f078f, 95ef131) and the Groq tool-capable model defaults. Fresh full run: **141 suites / 1351 tests pass, 0 failed**, 234 s; log `Video_Kit/test_after_fix.log` (outside the repo). | Quote **"141 suites / 1361 tests pass, re-measured 2026-11-07"** — the ten Split Bill owner-abandon regression tests were added after this first green run (final run 289 s, `Video_Kit/test_split_cancel_fix.log`). No assertion was dropped: the UNKNOWN wellbeing branch, the dietary BLOCK rule and the "no matching breakfast" behaviour are still asserted with explicit fixtures. |
 | 5 | **Channel3 contradiction.** `docs/JUDGING.md` said Channel3 was "deliberately not integrated", but the code, a live route, a UI panel, tests and `/api/health` all show a real integration. | `src/channel3/client.ts`, `src/routes/take-home.ts`, `app.js` `#takehome`, `channel3.enabled: true` in health. A fresh-session `POST /api/discover/take-home` returned real retailer offers on 2026-11-07. | **Mark Channel3** on the form (there is a **$1,500 Best Use of Channel3** prize). Docs are now corrected — see section 8. |
 
@@ -105,8 +131,9 @@ typescript, nodejs, express, paypal, paypal-sandbox, paypal-orders-api, flutter,
 2. Barista tab: type "I want a lunch for around 12 euros". A cart with server prices and a policy verdict appears.
 3. Cart tab → Pay. PayPal Sandbox opens; log in with the sandbox BUYER below (or your own sandbox buyer), approve, return to the store and press "Confirm and pay now".
 4. The order page opens (Profile → Recent orders also lists it): items, signed Cart Mandate (Verify), evidence package.
-5. Merchant side: /dashboard.html (Agent Control Center, AG Grid). "For cafés" at /merchant.html is a guided walkthrough. If the dashboard asks for a key: [OPS KEY].
-6. Run locally with no keys: see README "Quick start" (npm ci && npm run demo). Plain "npm run dev" keeps the dashboard private; "npm run demo" opens it in public view.
+5. Split Bill recovery (no money moves): add items, click "Split the bill", choose 2 people, open the split room, press "Pay my share with PayPal" and return to /split WITHOUT confirming. The organiser still sees "Cancel split bill and discard the started payment"; confirm it. The server asks PayPal for proof that nothing was captured, then cancels the order, releases its reservation and closes the bill. Verified live on build 2261f2f on 2026-11-08. If a share was actually paid, the room explains that only a café-approved refund can undo it instead of hiding the control.
+6. Merchant side: /dashboard.html (Agent Control Center, AG Grid). "For cafés" at /merchant.html is a guided walkthrough. If the dashboard asks for a key: [OPS KEY].
+7. Run locally with no keys: see README "Quick start" (npm ci && npm run demo). Plain "npm run dev" keeps the dashboard private; "npm run demo" opens it in public view.
 Sandbox buyer: [email] / [password]   (test account, no real money; PayPal Sandbox only)
 ```
 
@@ -118,7 +145,7 @@ The page is in German. Set these before publishing:
 
 | Field (German) | Set to | Why |
 |---|---|---|
-| `Sichtbarkeit` | **Öffentlich** (Public), not Privat / Nicht gelistet | Blockers 1 and 2. |
+| `Sichtbarkeit` | **Öffentlich** (Public) — **already set and verified 2026-11-08**; do not change | Blockers 1 and 2 are resolved. |
 | `Titel` | Paste the title below (replace `AICafe`) | A one-word title hurts findability and the "Best Demo Delivery" criterion. |
 | `Beschreibung` | Paste the description + chapters below | Currently empty. |
 | `Thumbnail` → `Datei hochladen` | Upload `Video_Kit/youtube_thumbnail.jpg` (1280×720, 87 KB) | Custom cover generated from the actual split-screen frame. |
@@ -194,14 +221,15 @@ PayPal, PayPal Sandbox, agentic commerce, AI agent, hackathon, Devpost, Flutter,
 - Gallery: added `07-profile-allowances.png`, `08-barista-cart.png`, `09-take-home-channel3.png`, `10-profile-diet-budget.png`, captured from the live deployment with `Video_Kit/capture_shots_extra.mjs`.
 - `Video_Kit/youtube_thumbnail.jpg`: ready-to-upload 1280×720 cover.
 - **Six stale test expectations repaired** in `tests/unit/ai-client.test.ts`, `tests/unit/policy.test.ts`, `tests/integration/wellbeing.test.ts`, `tests/integration/web-wellbeing.test.ts` and `tests/unit/fallback-planner-intent.test.ts`. They now match the intentional catalog/model changes while still asserting the old behaviours with explicit fixtures. Full suite at that point: **141 / 141 suites, 1351 / 1351 tests pass**.
-- **Split Bill cancellation fix (10 new regression tests).** The organiser's cancel control used to disappear as soon as any share had a started checkout, and the API refused to cancel. `/split` now always shows an answer: an explicitly worded "Cancel split bill and discard the started payment" for started-but-uncaptured checkouts, and an honest "a refund must be approved by the café" note for a genuinely paid share. `POST /api/bills/:id/cancel` accepts an opt-in `abandonUncaptured` flag; the server asks PayPal for proof that nothing was captured (fail closed on COMPLETED / unknown / unreachable), then atomically cancels the pending orders, releases claims and daily-spend reservations, unbinds the shares and closes the bill mandate. Default cancel semantics are unchanged. Section 6 testing instructions gained a matching step 5, and the README "What it does" list gained a Split Bill bullet. Final full suite: **141 / 141 suites, 1361 / 1361 tests pass** in 289 s. **Render must redeploy this commit before a judge can try step 5 on the live URL.**
+- **Split Bill cancellation fix (10 new regression tests).** The organiser's cancel control used to disappear as soon as any share had a started checkout, and the API refused to cancel. `/split` now always shows an answer: an explicitly worded "Cancel split bill and discard the started payment" for started-but-uncaptured checkouts, and an honest "a refund must be approved by the café" note for a genuinely paid share. `POST /api/bills/:id/cancel` accepts an opt-in `abandonUncaptured` flag; the server asks PayPal for proof that nothing was captured (fail closed on COMPLETED / unknown / unreachable), then atomically cancels the pending orders, releases claims and daily-spend reservations, unbinds the shares and closes the bill mandate. Default cancel semantics are unchanged. Section 6 testing instructions gained a matching step 5, and the README "What it does" list gained a Split Bill bullet. Final full suite: **141 / 141 suites, 1361 / 1361 tests pass** in 289 s. **Render has redeployed this commit (`2261f2f`) and the exact step-5 flow was verified live on 2026-11-08** — see section 0.
 - `docs/EVIDENCE.md`, `docs/DEVPOST_DRAFT.md`, `DEMO_CHECKLIST.md`, `docs/SUBMISSION_CHECKLIST.md`: test counts re-measured and dated 2026-11-07; the YouTube link and the "Public, not Unlisted" rule are now stated correctly; Channel3 added to the tools, built-with list, testing instructions and tags; chapters added to the YouTube description; the project-name inconsistency resolved.
 
-## 9. Final pre-submit check
+## 9. Final pre-submit check (re-checked 2026-11-08)
 
-- [ ] Video plays in a **signed-out** browser — currently **fails** (private).
-- [ ] Title, description, tags, chapters, thumbnail, audience and AI-use settings filled in.
+- [x] Video plays in a **signed-out** browser — **verified Public** (`playabilityStatus: OK`, oEmbed 200), 172 s.
+- [ ] Title, description, chapters, tags and custom thumbnail still need pasting/uploading in YouTube Studio. Audience ("not made for children"), paid promotion, AI-use = Yes, language English, category Science & Technology and embedding can only be confirmed by the account owner in Studio.
 - [ ] Repository public, MIT in About, README has "How AI and PayPal are used" and sponsor integrations — **done**.
-- [ ] Render awake, PostgreSQL durable, `/`, `/dashboard.html`, `/merchant.html`, `/api/health` and the agent manifest all **200** — **verified 2026-11-07**.
-- [ ] Channel3 decision made and docs/form say the same thing — **done, mark it on the form**.
+- [x] Render awake on `buildCommit: 2261f2f`, PostgreSQL durable, `/`, `/dashboard.html`, `/merchant.html`, `/api/health` and the agent manifest all **200** — endpoints verified 2026-11-07, build and Split Bill flow re-verified 2026-11-08.
+- [x] Split Bill owner-abandon path works on the **deployed** build (409 default → 200 CANCELLED with opt-in, no stale order bindings) — verified 2026-11-08.
+- [ ] Channel3 decision made and docs/form say the same thing — **docs are done, mark it on the form**.
 - [x] Test counts match reality — **141 suites / 1361 tests pass**, re-measured 2026-11-07 after the six stale expectations were updated and the ten Split Bill cancellation regressions were added. `docs/EVIDENCE.md`, `docs/DEVPOST_DRAFT.md`, `DEMO_CHECKLIST.md` and `docs/SUBMISSION_CHECKLIST.md` now agree.
