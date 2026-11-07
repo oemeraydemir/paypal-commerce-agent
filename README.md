@@ -1,18 +1,28 @@
 # AI Café
 
 **Shop by intent. Review every item. Approve every payment.**
-**Niyete göre alışveriş · Her ürünü incele · Her ödemeyi onayla.**
 
 > AI Café is a trust-first agentic commerce platform for cafés. AI prepares the order, users control spending, and PayPal securely completes the payment.
->
+
 An agentic-commerce prototype for the *PayPal + AI hackathon*. A shopper describes what they want and
 what they can spend. An AI agent searches the catalog and prepares a cart, but **it can never move
 money**: prices come from the server, a spending policy is enforced on the server, and only the human
 can approve the payment on PayPal (sandbox). Merchants get an AG Grid dashboard and a human-approved
 refund queue. External AI agents can shop through an MCP server.
 
-- **Live demo (free-tier Render deployment, may be asleep):** https://paypal-commerce-agent.onrender.com — first load can take ~60 s while the instance wakes. If it does not respond, run it locally (see Quick start) — the same code runs with no keys needed.
+## At a glance — hackathon submission
+
+| | |
+|---|---|
+| **Live demo** | <https://paypal-commerce-agent.onrender.com> (free-tier Render; the first load can take ~60 s while the instance wakes) |
+| **Public code** | This repository, open source under [MIT](./LICENSE) |
+| **Demo video** | 2:52 split-screen walkthrough (web + Flutter), linked on the Devpost submission page |
+| **PayPal** | Orders API v2, **Sandbox only**: create → human approval → capture → refund |
+| **AI tools** | Google Gemini (primary) with Groq / OpenRouter / Cerebras / OpenAI fallbacks — see [Tools used](#tools-used) |
+| **Clients** | Web storefront + Flutter Android/iOS app, both on one backend |
+
 - **For judges:** **[docs/JUDGING.md](docs/JUDGING.md)** maps the judging criteria to code, tests and evidence; [docs/PLATFORM_STATUS.md](docs/PLATFORM_STATUS.md) separates what was verified for the web app from the Flutter app; [docs/PAYMENT_E2E.md](docs/PAYMENT_E2E.md) is the repeatable Sandbox payment check.
+- **Run it yourself:** [Quick start](#quick-start-local-2-minutes-no-keys-needed) needs only Node.js 20+ and no API keys. The [live demo](#at-a-glance--hackathon-submission) is the same code with PayPal Sandbox enabled.
 - **License:** MIT · **More detail:** [docs/DETAILS.md](./docs/DETAILS.md) · [Architecture](./ARCHITECTURE.md)
 
 ## Quick start (local, ~2 minutes, no keys needed)
@@ -99,6 +109,26 @@ logic, not PayPal behaviour; only the sandbox flow above proves the real integra
 - **Automation events (optional, not production-grade)**: signed `order.paid` / `order.policy_blocked` / `refund.completed` POSTs to a public https Zapier/n8n/Make URL. In-memory only, no outbox: events can be lost or repeated, so consumers must dedupe on the event id and check the timestamped HMAC. Private, loopback and link-local destinations are refused.
 - **AG Grid dashboard**, Flutter Android/iOS shopper app, OpenAPI spec and Postman collection.
 
+## Tools used
+
+The hackathon asks which AI/PayPal/sponsor tools were used and how. This is the honest inventory:
+
+| Tool | How it is used in AI Café |
+|---|---|
+| **PayPal Orders API v2 (Sandbox)** | Creates the order, returns the approval URL, captures after the human approves, and issues refunds. Webhooks are signature-verified. Live money cannot be configured. |
+| **PayPal Agent Toolkit** | Read-only Ops Copilot: it can inspect orders and **propose** a refund, never execute one. Only an authenticated merchant click calls PayPal. |
+| **Google Gemini** (primary), **Groq**, **OpenRouter**, **Cerebras**, **OpenAI** (fallbacks) | The AI barista turns a natural-language goal into a cart. It only receives catalog/cart tools — **no payment tool exists**. Without a key, a clearly labelled rule-based planner runs instead. |
+| **AG Grid** | Merchant order board with sorting, filtering, pinning and CSV export. Community features only (no Enterprise grouping/status bar). |
+| **Model Context Protocol (MCP)** | `/api/mcp` lets external agents search the menu, prepare a cart, check policy and start checkout — but never pay. Tool names in the discovery manifest come from the real registry. |
+| **Render** | Hosts the single web service (API + static web demo) and a managed PostgreSQL database on the free tier. |
+| **APIMatic** | TypeScript and Python SDKs generated locally from `openapi.json` and committed under `sdks/`. Nothing is uploaded to the APIMatic cloud portal. |
+| **Postman** | Request collection for the API, including the three mandate endpoints. |
+| **Flutter** | Native Android/iOS shopper app with the same server-owned prices, policy and approval flow. |
+| **Ed25519 / Node.js crypto** | Signs the Cart Mandate, the tamper-evident audit record of what was proposed and who held payment authority. |
+| **PostgreSQL** | Durable orders, sessions, refunds, reservations and idempotency keys. Without it the app runs in memory and loses state on restart. |
+
+The workflow is deliberately split: **the AI proposes, the server fixes prices and enforces policy, the human authorises in PayPal, and the merchant approves any refund.** No step lets the model move money.
+
 ## Other businesses — honest scope
 
 The catalog, currency, limits and brand come from a profile file. **One deployment serves exactly one
@@ -131,8 +161,22 @@ Single instance only; `/api/orders` is a public read-only demo endpoint; PayPal 
 
 ## Screenshots
 
-Screenshots are captured from a running instance, not from design mocks. The capture guide and
-the current inventory (if any) are in [docs/screenshots/README.md](docs/screenshots/README.md).
+Captured from the **live deployment**, not from design mocks. No credentials or merchant keys are shown.
+
+| Storefront | AI barista |
+|---|---|
+| ![Storefront home](docs/screenshots/01-storefront.png) | ![AI barista](docs/screenshots/02-barista.png) |
+
+| Cart and wellbeing panel | For cafés (merchant walkthrough) |
+|---|---|
+| ![Cart](docs/screenshots/03-cart-wellbeing.png) | ![For cafés](docs/screenshots/04-for-cafes.png) |
+
+| Public agent manifest | Merchant dashboard (AG Grid) |
+|---|---|
+| ![Agent manifest](docs/screenshots/05-agent-manifest.png) | ![Dashboard](docs/screenshots/06-dashboard.png) |
+
+Full inventory, the reproduction steps and the shots that still require a Sandbox payment run are in
+[docs/screenshots/README.md](docs/screenshots/README.md).
 
 ## Repository layout
 

@@ -1,8 +1,10 @@
 # Screenshots — capture guide & inventory
 
-Screenshots for AI Café are captured from a **running instance**, not from design mocks. This file explains
-how to reproduce them. No screenshots are committed to the repository yet; the inventory below is filled in
-as images are added.
+Screenshots for AI Café are captured from a **running instance**, not from design mocks. The six images in
+the inventory below were taken from the live Render deployment
+(<https://paypal-commerce-agent.onrender.com>) at build `987af54`, with the storefront's customer-facing
+merchant links removed. No credentials or merchant keys appear in any capture. This file explains how to
+reproduce them.
 
 ## How to capture
 
@@ -41,7 +43,19 @@ Only shots 6, 7 and 10 need the PayPal Sandbox sequence from `docs/PAYMENT_E2E.m
 
 | File | Shows | Status |
 |---|---|---|
-| _(none yet)_ | — | No screenshots committed; capture from a running instance per the steps above. |
+| `01-storefront.png` | Storefront home: hero, trust-first positioning, product grid | Captured from the live deployment |
+| `02-barista.png` | AI barista chat with quick scenario chips and the "you approve the payment" notice | Captured from the live deployment |
+| `03-cart-wellbeing.png` | Cart with a real item, server prices and the wellbeing panel | Captured from the live deployment |
+| `04-for-cafes.png` | "For cafés": setup path, honest scope and the live server readiness checklist | Captured from the live deployment |
+| `05-agent-manifest.png` | Public `/.well-known/agent-commerce.json` with MCP tool names and payment guardrails | Captured from the live deployment |
+| `06-dashboard.png` | Agent Control Center: AG Grid order board, policy metrics and read-only Ops Copilot | Captured from the live deployment |
+
+The public agent manifest (planned as `11-agent-manifest.png`) is covered by `05-agent-manifest.png`.
+The other planned shots — the policy BLOCK/ALLOW carts, the Flutter "Why these items?" and unverified
+allergen panels, the PayPal approval and paid receipt, the AG Grid filtered views, the refund queue and
+the newman summary — were **not** captured in this pass. The ones showing a paid order, a PayPal approval
+or a refund require the Sandbox payment run from
+[../../docs/PAYMENT_E2E.md](../../docs/PAYMENT_E2E.md); they are intentionally not faked with mock data.
 
 ## Notes
 

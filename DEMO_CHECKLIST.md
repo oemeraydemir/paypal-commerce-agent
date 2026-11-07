@@ -34,10 +34,10 @@ list is the pass/fail gate.
 ## Open items before submitting (carried over from the jury self-review)
 
 - [ ] Warm the Render service shortly before judging starts (free tier needs about a minute) and say so in the testing instructions.
-- [ ] Repository: set the About description and topics on GitHub; keep the license visible in the About box.
+- [x] Repository: About description, website and 18 topics set via the GitHub API; MIT license visible in the About box. Spam issue #1 closed. README now has a submission summary, a Tools-used table and six live-deployment screenshots.
 - [x] APIMatic: SDK generated from `openapi.json` (TypeScript + Python, committed under `sdks/`); portal config is in `apimatic/`. Generated locally via the APIMatic CLI; nothing has been uploaded to the APIMatic cloud portal.
 - [ ] Postman (optional): add requests for the three mandate endpoints, then update every quoted newman count together.
-- [ ] Render: **redeploy the current source** (the deployed app was found one version behind: order creation answered 200 instead of 201), then check `/api/health` and that order creation answers 201; `MANDATE_SIGNING_KEY` and `PUBLIC_BASE_URL` must be set in production.
+- [x] Render: redeployed the current source (verified 2026-11-07: `/api/health` reports `buildCommit: 987af54`, `paypal: sandbox`, durable PostgreSQL; a fresh session + wellbeing preferences + `POST /api/orders/create` answers **201** with a real Sandbox approval URL). `MANDATE_SIGNING_KEY` and `PUBLIC_BASE_URL` are set in production.
 - [ ] Local demo: confirm `http://localhost:3000/api/health` returns JSON (another project's server can occupy port 3000); otherwise start the backend on another port and set `BASE`.
 - [ ] Real-AI evidence: run `npm run ai:check` with the provider shown in the video and name that provider in the video.
 - [ ] If the video shows the Flutter app: `flutter test` was 163/163 on 2026-10-27; re-run it after any change and update `docs/PLATFORM_STATUS.md`.
