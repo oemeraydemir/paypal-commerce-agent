@@ -60,9 +60,11 @@ const AI_PROVIDER_DEFS: Record<AIProviderId, AIProviderDefinition> = {
     keyEnv: 'GROQ_API_KEY',
     modelEnv: 'GROQ_MODEL',
     // `llama-3.3-70b-versatile` is no longer listed by Groq (verified 2026-10-23 with
-    // `npm run ai:check`: it is absent from GET /models). Both entries below are listed
-    // and both passed a real tool round trip + the injection probe.
-    defaultModels: 'openai/gpt-oss-120b,openai/gpt-oss-20b',
+    // `npm run ai:check`: it is absent from GET /models). `openai/gpt-oss-120b` is listed
+    // but answers HTTP 400 to the tool/injection probe with the current Groq key (verified
+    // 2026-11-07), so it is not used. The two entries below are both listed AND both pass
+    // a real tool round trip + the injection probe.
+    defaultModels: 'openai/gpt-oss-20b,qwen/qwen3.8-27b',
   },
   cerebras: {
     baseURL: 'https://api.cerebras.ai/v1',
