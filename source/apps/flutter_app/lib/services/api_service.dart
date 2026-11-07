@@ -346,6 +346,11 @@ class ApiService {
         body: jsonEncode({
           'sessionId': sessionId,
           'message': message,
+          // Same deterministic catalog-discovery intent the web storefront uses:
+          // the backend returns profile-honoring (dietary/allergen) numbered
+          // options directly instead of routing through the (possibly exhausted)
+          // LLM path, so both surfaces behave identically.
+          'intent': 'catalog_discovery',
           if (preferences != null) 'preferences': preferences.toJson(),
         }),
       );

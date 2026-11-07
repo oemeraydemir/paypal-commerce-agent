@@ -64,7 +64,11 @@ function explicitCartAction(message:string):boolean {
   return /\b(?:prepare|make)\s+(?:the\s+|a\s+)?cart\b|\badd\s+(?:this|that|it|these|those)?\s*\w*\s*to\s+(?:the\s+)?cart\b|\b(?:order|buy)\s+(?:this|these|the)\b|sepete\s+ekle|sepeti\s+hazırla|sipariş\s+ver|satın\s+al/i.test(message);
 }
 export function profileSignature(profile:ShoppingPreferences):string {
-  return JSON.stringify({dietary:[...new Set(profile.dietary||[])].sort(),maxBudgetMinor:profile.maxBudgetMinor??null});
+  return JSON.stringify({
+    dietary:[...new Set(profile.dietary||[])].sort(),
+    allergens:[...new Set(profile.allergens||[])].sort(),
+    maxBudgetMinor:profile.maxBudgetMinor??null,
+  });
 }
 /** Uses only available catalog items. Prices are omitted until prepare_cart revalidates a selection. */
 export function buildCatalogDiscovery(message:string,profile:ShoppingPreferences,menu:CatalogService=catalog):CatalogDiscovery|null {
@@ -72,7 +76,11 @@ export function buildCatalogDiscovery(message:string,profile:ShoppingPreferences
   const quantity=quantityFor(message), dietary=dietaryFor(message,profile), requested=messageBudgetMinor(message);
   const budgets=[profile.maxBudgetMinor,requested].filter((v):v is number=>v!==undefined);
   const maxBudgetMinor=budgets.length?Math.min(...budgets):undefined;
-  const effectivePreferences:ShoppingPreferences={dietary,...(maxBudgetMinor!==undefined?{maxBudgetMinor}:{})};
+  const effectivePreferences:ShoppingPreferences={
+    dietary,
+    ...((profile.allergens&&profile.allergens.length)?{allergens:[...new Set(profile.allergens)]}:{}),
+    ...(maxBudgetMinor!==undefined?{maxBudgetMinor}:{}),
+  };
   const options=menu.search({category})
     .filter(p=>meetsDietaryPreferences(p,dietary))
     .filter(p=>maxBudgetMinor===undefined||p.priceMinor*quantity<=maxBudgetMinor)

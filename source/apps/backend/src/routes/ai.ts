@@ -27,8 +27,12 @@ const activeCatalogOptions = new Map<string, { createdAt: number; profileKey: st
 
 const WINDOW_MS = 60 * 1000;
 const MAX_HISTORY = 20;
+const ALLERGEN_KEYS = ['peanut', 'tree-nut', 'dairy', 'egg', 'soy', 'shellfish', 'gluten', 'fish'] as const;
 const preferencesSchema = z.object({
   dietary: z.array(z.enum(['vegetarian', 'vegan', 'gluten-free'])).max(3).default([]),
+  // Local, unverified allergen concerns. Guidance-only: the catalog publishes no
+  // allergen data, so these prefer/flag items but never declare anything safe.
+  allergens: z.array(z.enum(ALLERGEN_KEYS)).max(8).default([]),
   maxBudgetMinor: z.number().int().min(100).max(10000).optional(),
 }).strict();
 

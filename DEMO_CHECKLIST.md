@@ -26,7 +26,7 @@ list is the pass/fail gate.
 ## Honesty gates (do not ship if any fail)
 
 - [ ] No statement claims an item is **allergen-free** or **safe**.
-- [ ] No claim that Flutter allergen preferences are filtered **server-side** (they are stored locally).
+- [ ] Allergen preferences are sent as **guidance only**: they prefer/flag items but are never filtered hard server-side, never declared safe, and always labelled unverified. Dietary preferences (vegan/vegetarian/gluten-free) ARE used server-side in catalog discovery, and the UI never claims a match is a safety guarantee.
 - [ ] No live-money PayPal flow shown; sandbox only.
 - [ ] Test counts quoted match `docs/EVIDENCE.md` and keep the historical/re-measured distinction. Current backend run (2026-11-05): **141 suites / 1351 tests pass**; `flutter analyze` clean (widget tests blocked in sandbox; owner-machine run 163/163).
 - [ ] Links in `README.md`, `docs/JUDGING.md`, `docs/DETAILS.md` resolve (no broken demo-checklist/arch links).

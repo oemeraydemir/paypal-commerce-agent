@@ -3,15 +3,14 @@
 /// Two groups of preferences are kept, and they behave differently:
 ///
 /// - **[dietary]** / **[maxBudgetMinor]** are **shared with the server** on
-///   every `POST /api/ai/chat` request (the backend uses them to guide cart
-///   planning). [toJson] is deliberately kept server-shaped so these are what
+///   every `POST /api/ai/chat` request (the backend uses them as hard planning
+///   constraints). [toJson] is deliberately kept server-shaped so these are what
 ///   get transmitted.
-/// - **[allergens]** are **local only**. The current backend API has no allergen
-///   field: the catalog schema does not emit `contains` / `may_contain` /
-///   `unknown` data and the chat endpoint rejects unknown preference keys. So
-///   allergen preferences are never sent to the server and are never used to
-///   filter anything server-side. They exist so the client can show honest,
-///   explicit "allergy information is unverified" messaging.
+/// - **[allergens]** are also sent in the chat request, but the backend treats
+///   them as **unverified guidance** — the catalog publishes no allergen data,
+///   so the agent uses them to prefer/flag items, never to filter hard or to
+///   claim anything is safe. They remain local in spirit: honest, explicit
+///   "allergy information is unverified" messaging is preserved.
 class ShopperPreferences {
   static const dietaryOptions = <String, String>{
     'vegetarian': 'Vegetarian',
@@ -91,12 +90,13 @@ class ShopperPreferences {
   /// True when there is nothing for the server-side guard to enforce.
   bool get isGuardEmpty => dietary.isEmpty && allergens.isEmpty;
 
-  /// Server-shaped representation sent in `POST /api/ai/chat` body. It must
-  /// contain ONLY fields the backend schema accepts (`dietary`,
-  /// `maxBudgetMinor`). Allergens are intentionally excluded — the backend
-  /// rejects unknown preference keys.
+  /// Server-shaped representation sent in `POST /api/ai/chat` body. It contains
+  /// only fields the backend schema accepts (`dietary`, `allergens`,
+  /// `maxBudgetMinor`). Allergens are sent as unverified guidance: the backend
+  /// uses them to prefer/flag items, never to hard-filter or claim safety.
   Map<String, dynamic> toJson() => {
     'dietary': dietary.toList()..sort(),
+    if (allergens.isNotEmpty) 'allergens': allergens.toList()..sort(),
     if (maxBudgetMinor != null) 'maxBudgetMinor': maxBudgetMinor,
   };
 

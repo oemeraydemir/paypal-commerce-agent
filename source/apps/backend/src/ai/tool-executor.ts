@@ -22,6 +22,10 @@ const catalogService = new CatalogService();
 
 export interface ShoppingPreferences {
   dietary: string[];
+  /** Local, unverified allergen concerns noted by the shopper (guidance only —
+   *  never a safety guarantee). The catalog publishes no allergen data, so these
+   *  are used to prefer/flag items, never to declare anything safe. */
+  allergens?: string[];
   maxBudgetMinor?: number;
 }
 

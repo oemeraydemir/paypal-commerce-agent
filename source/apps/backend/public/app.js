@@ -645,6 +645,7 @@
   // ---- Chat ---------------------------------------------------------------------------------
   function prefs() {
     var out = { dietary: savedProfile.dietary.slice() };
+    if (savedProfile.allergens && savedProfile.allergens.length) out.allergens = savedProfile.allergens.slice();
     if (savedProfile.maxBudgetMinor !== null && savedProfile.maxBudgetMinor !== undefined) out.maxBudgetMinor = savedProfile.maxBudgetMinor;
     return out;
   }

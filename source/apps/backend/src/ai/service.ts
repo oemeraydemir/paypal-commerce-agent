@@ -87,6 +87,9 @@ Remember: You help DISCOVER and PREPARE orders. The actual payment happens throu
       preferences.dietary.length > 0
         ? `Dietary preferences that every recommended and prepared item must meet: ${preferences.dietary.join(', ')}.`
         : '',
+      preferences.allergens && preferences.allergens.length > 0
+        ? `The shopper noted these allergen concerns (stored locally, unverified): ${preferences.allergens.join(', ')}. Prefer items whose labelled diet avoids them (e.g. a gluten-free label for gluten), flag any option that may contain one, and NEVER claim an item is safe or allergen-free — tell the shopper to confirm with the café before ordering.`
+        : '',
       preferences.maxBudgetMinor !== undefined
         ? `Maximum total cart budget: ${preferences.maxBudgetMinor} ${currentBusiness.currency} minor units. Never exceed it.`
         : '',
@@ -95,7 +98,7 @@ Remember: You help DISCOVER and PREPARE orders. The actual payment happens throu
       {
         role: 'system',
         content: preferenceInstructions
-          ? `${this.systemPrompt}\n\nSHOPPER PROFILE (apply as hard constraints):\n${preferenceInstructions}`
+          ? `${this.systemPrompt}\n\nSHOPPER PROFILE (honor diet as constraints; treat allergen notes as unverified cautions):\n${preferenceInstructions}`
           : this.systemPrompt,
       },
       ...(conversationHistory as unknown as OpenAI.Chat.ChatCompletionMessageParam[]),
