@@ -1657,10 +1657,8 @@
     if (d.orderId && d.source !== 'local') receipt.appendChild(evidenceBlock(d.orderId));
     // The refund request is an optional extra: it must never stop the receipt from rendering.
     if (d.orderId && d.source !== 'local') { try { receipt.appendChild(refundBlock(d.orderId)); } catch (e) { /* receipt still shown */ } }
-    if (d.source !== 'local') {
-      var link = el('a', 'rlink', i18nT('receipt.controlCenter')); link.href = '/dashboard.html'; link.setAttribute('rel', 'noopener');
-      receipt.appendChild(link);
-    }
+    // The customer-facing receipt must NOT expose the merchant Control Center:
+    // a buyer never sees the café's ops dashboard. (Removed the /dashboard.html link.)
     var print = el('button', '', i18nT('order.print')); print.type = 'button';
     print.onclick = function () { window.print(); }; box.appendChild(print);
     // Notify the app shell so it can record the paid order in this-browser history
