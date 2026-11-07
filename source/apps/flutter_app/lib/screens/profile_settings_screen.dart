@@ -204,9 +204,15 @@ class _ProfileSettingsScreenState extends State<ProfileSettingsScreen> {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: children,
+      // A transparent Material inside the decorated box gives the CheckboxListTile a
+      // Material ancestor to paint its background / ink splash onto (otherwise the
+      // Container's BoxDecoration hides them — a Flutter framework assertion).
+      child: Material(
+        color: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: children,
+        ),
       ),
     );
   }
