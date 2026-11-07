@@ -16,12 +16,12 @@ refund queue. External AI agents can shop through an MCP server.
 |---|---|
 | **Live demo** | <https://paypal-commerce-agent.onrender.com> (free-tier Render; the first load can take ~60 s while the instance wakes) |
 | **Public code** | This repository, open source under [MIT](./LICENSE) |
-| **Demo video** | 2:52 split-screen walkthrough (web + Flutter), linked on the Devpost submission page |
+| **Demo video** | 2:52 split-screen walkthrough (web + Flutter) with English narration; shot order and script in [DEMO_VIDEO_SCRIPT.md](./DEMO_VIDEO_SCRIPT.md), link on the Devpost submission page |
 | **PayPal** | Orders API v2, **Sandbox only**: create → human approval → capture → refund |
 | **AI tools** | Google Gemini (primary) with Groq / OpenRouter / Cerebras / OpenAI fallbacks — see [Tools used](#tools-used) |
 | **Clients** | Web storefront + Flutter Android/iOS app, both on one backend |
 
-- **For judges:** **[docs/JUDGING.md](docs/JUDGING.md)** maps the judging criteria to code, tests and evidence; [docs/PLATFORM_STATUS.md](docs/PLATFORM_STATUS.md) separates what was verified for the web app from the Flutter app; [docs/PAYMENT_E2E.md](docs/PAYMENT_E2E.md) is the repeatable Sandbox payment check.
+- **For judges:** **[docs/JUDGING.md](docs/JUDGING.md)** maps the judging criteria to code, tests and evidence; [docs/PLATFORM_STATUS.md](docs/PLATFORM_STATUS.md) separates what was verified for the web app from the Flutter app; [docs/PAYMENT_E2E.md](docs/PAYMENT_E2E.md) is the repeatable Sandbox payment check; [docs/DEVPOST_DRAFT.md](docs/DEVPOST_DRAFT.md) is the submission copy and [docs/SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md) tracks what is left.
 - **Run it yourself:** [Quick start](#quick-start-local-2-minutes-no-keys-needed) needs only Node.js 20+ and no API keys. The [live demo](#at-a-glance--hackathon-submission) is the same code with PayPal Sandbox enabled.
 - **License:** MIT · **More detail:** [docs/DETAILS.md](./docs/DETAILS.md) · [Architecture](./ARCHITECTURE.md)
 

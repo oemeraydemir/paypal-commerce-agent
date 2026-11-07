@@ -41,7 +41,9 @@ list is the pass/fail gate.
 - [ ] Local demo: confirm `http://localhost:3000/api/health` returns JSON (another project's server can occupy port 3000); otherwise start the backend on another port and set `BASE`.
 - [ ] Real-AI evidence: run `npm run ai:check` with the provider shown in the video and name that provider in the video.
 - [ ] If the video shows the Flutter app: `flutter test` was 163/163 on 2026-10-27; re-run it after any change and update `docs/PLATFORM_STATUS.md`.
-- [ ] YouTube video link and team name are filled in on the Devpost form.
+- [x] Final demo video produced (2026-11-07): `AICafe_Final.mp4`, 2:52.17, split-screen web + Flutter, English narration in nine beat-aligned blocks, no third-party music or footage. Shot order and exact narration: [DEMO_VIDEO_SCRIPT.md](./DEMO_VIDEO_SCRIPT.md).
+- [x] Devpost form copy written and fact-checked against the video and the live deployment: [docs/DEVPOST_DRAFT.md](./docs/DEVPOST_DRAFT.md). Includes the project name, description, tools list, built-with list, private testing instructions and the YouTube title/description/tags.
+- [ ] Upload the video to YouTube as Public or Unlisted, paste the link into the Devpost form, replace `[TEAM NAME]`, and submit. This can only be done by the account owner.
 
 ## Packaging note
 

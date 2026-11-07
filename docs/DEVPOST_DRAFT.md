@@ -1,99 +1,191 @@
-# AI Café — Devpost Project Description (draft)
+# AI Café — Devpost submission copy (final)
 
-> Copy-friendly draft for the Devpost form. Every claim matches a feature that exists in this repository;
-> where something was not verified live it says so (see `docs/PLATFORM_STATUS.md`). No invented metrics.
-> Before publishing, replace **[YOUTUBE LINK]** and **[TEAM NAME]**, and confirm the repository URL below is the public one.
+Copy-friendly text for the **PayPal AI Hackathon** form (deadline 12 Nov 2026, 21:00 GMT+1).
+Every `PASTE` block is plain text with no table markup, so it can be selected and pasted straight
+into Devpost. All text is English. Claims are limited to what the repository and the live deployment
+actually do; anything not re-verified on the current build is marked as such below.
 
-## One-liner
+**Two fields only you can fill:** `[YOUTUBE LINK]` and `[TEAM NAME]`. See section 8.
 
-**AI Café is a trust-first agentic commerce platform for cafés. AI prepares the order, users control spending, and PayPal securely completes the payment.**
+---
 
-In more detail: AI Café is a conversational coffee-shop assistant: you chat in natural language,  
-it proposes a basket within your budget and dietary preferences, shows you why it  
-picked each item, and hands the approved basket to PayPal — while an AI agent can  
-**never** move money on its own.
+## 1. Project name — PASTE
 
-## The problem
+```
+AI Café — The AI prepares, you approve, PayPal pays
+```
 
-Buying a "vegetarian breakfast for two under €20" from a cafe means juggling a  
-menu, dietary rules, a budget, and a checkout. An AI agent that can *talk* to you  
-is helpful, but an AI agent that can *spend your money* is scary. We built a  
-commerce agent with a hard boundary: the agent prepares carts; a human always  
-approves payment.
+## 2. One-liner / tagline — PASTE
 
-## How it works
+```
+A trust-first agentic commerce platform for cafés: AI prepares the order, the server fixes prices and enforces policy, and only a human can approve the payment with PayPal.
+```
 
-1. **Agent, not a search box.** The backend routes a prompt through a multi-provider  
-   LLM layer (Gemini, Groq, Cerebras, OpenRouter, OpenAI with automatic fallback)  
-   with three structured tools: search products, get product details, prepare a  
-   cart. If every AI provider is unavailable it degrades to a truthful,  
-   rule-based planner — it never pretends to be an AI.
-2. **Policy gate.** Every proposed cart is checked server-side against the  
-   merchant's policy (per-purchase cap, confirmation threshold, daily budget,  
-   alcohol rules). A visible meter shows the verdict: auto-allow, require  
-   confirmation, or block.
-3. **Explainability.** The "Why these items?" panel explains the basket from the  
-   shopper's real preferences and the policy decision, in English or Turkish.
-4. **Durable checkout.** Orders go through a PayPal sandbox lifecycle  
-   (create → approve → capture) with webhook signature verification and  
-   idempotency keys, plus a signed Cart Mandate that records who held payment  
-   authority. A merchant-facing control center (AG Grid dashboard) shows every  
-   order, policy event, and a refund queue with merchant approval.
-5. **Two clients, one backend.** A vanilla-JS storefront (CSP-safe, no unsafe  
-   inline script) and a Flutter app (Android/Web) share the same API, the same  
-   policy, and the same honest fallbacks.
+## 3. Full description — PASTE
 
-## What makes it defensible
+```
+AI Café is a working prototype of agentic commerce with a hard boundary: an AI agent can prepare an order, but it can never move money.
 
-- **The agent cannot pay.** The AI layer only ever produces a *proposed* cart;  
-  payment authorization lives in human-in-the-loop flows. No AI pathway can  
-  approve a capture or a refund.
-  - **Server-side trust.** Prices, policy, and order totals are enforced on the  
-    backend; the client never enforces limits. Tenancy is a server-side fact —  
-    client-supplied tenant/business overrides are refused.
-- **Security defaults.** Helmet CSP (no `unsafe-inline` for scripts), a CORS  
-  single-origin policy, request-size limits, error redaction, and webhook  
-  signature checks are all in place and tested.
+THE PROBLEM
+Ordering "a lunch for around 12 euros" from a café means juggling a menu, dietary notes, a budget and a checkout. An agent that can talk to you is useful; an agent that can spend your money, or quietly ignore an allergy note, is not something people will trust. We built the boundary into the architecture instead of asking users to trust the model.
 
-## Built with
+HOW IT WORKS
+1. Shop by intent. On web or in the Flutter app, the shopper describes a goal and a budget. A tool-calling AI barista (Google Gemini by default, with Groq, OpenRouter, Cerebras and OpenAI in an automatic fallback chain) searches the real catalog and proposes a cart. It only receives catalog and cart tools: no payment tool exists anywhere in the system. If no model is reachable, a clearly labelled rule-based planner takes over instead of pretending to be AI.
+2. The server owns the truth. Prices, totals, the per-purchase limit, the approval threshold and the daily budget are computed and enforced on the backend. The client never sets a price and never enforces a limit. The policy verdict (AUTO_ALLOW, REQUIRE_CONFIRMATION or BLOCK) is visible in the UI.
+3. Wellbeing stays honest. The shopper saves dietary preferences and allergen notes once, on web and mobile. The wellbeing panel checks the cart against those notes and always labels them unverified. We never claim a dish is safe or allergen-free. Dietary preferences guide catalog discovery; allergen notes are guidance only.
+4. The human pays. Checkout creates a PayPal Orders API v2 order in the Sandbox and returns an approval URL. The buyer logs in with a PayPal Sandbox personal test account and approves. No card is typed and no real money moves. Capture is signature-verified by webhook and protected with idempotency keys.
+5. Everything is auditable. Each paid order produces an itemised e-invoice with a QR-coded, Ed25519-signed Cart Mandate: a tamper-evident record of what the AI proposed, what the server priced, what policy decided and who held payment authority. Anyone can scan and verify it. The agent discovery manifest, an MCP server at /api/mcp and a Postman collection make the same read-only boundary available to external agents: they can search, prepare a cart and start checkout, never pay.
+6. The café stays in control. The "For cafés" page and the merchant dashboard show a live AG Grid order board, policy events and a refund queue. A read-only Ops Copilot built on the PayPal Agent Toolkit can inspect an order and PROPOSE a refund. Only an authenticated merchant clicking "Approve & refund" calls PayPal. Refunds use write-ahead state, crash recovery and capture-total reconciliation.
 
-TypeScript/Express backend, vanilla JS + Flutter storefronts, AG Grid dashboard,  
-PayPal Commerce (sandbox), OpenAI-compatible multi-provider routing, PostgreSQL  
-(optional; in-memory fallback for demos).
+ONE BACKEND, TWO CLIENTS
+A vanilla-JavaScript web storefront and a Flutter Android/iOS app share the same API, the same server-owned prices, the same policy and the same approval flow. The submitted 2:52 video shows both side by side.
 
-## Tools and how they were used (Devpost "Tools" field)
+WHY THIS IS DEFENSIBLE
+The workflow is deliberately split: the AI proposes, the server fixes prices and enforces policy, the human authorises in PayPal, and the merchant approves any refund. No code path lets the model approve a capture or a refund. Helmet CSP without unsafe-inline scripts, single-origin CORS, request-size limits, error redaction, webhook signature checks and a session-token model back that up, with a large automated test suite.
 
-| Tool | How it is used |
-|---|---|
-| PayPal Developer platform, **Sandbox only** | Orders v2 (create and capture, with idempotency keys), Payments refund, signed webhook verification (`PAYMENT.CAPTURE.COMPLETED`), and the PayPal Agent Toolkit for the read-only merchant Ops Copilot |
-| AI models (Gemini, Groq, Cerebras, OpenRouter, OpenAI, chosen by a fallback chain) | Tool-calling shopping agent: search products, read details, prepare a cart. It has **no payment tool**. A rule-based planner answers when no model is reachable and is labelled as such |
-| MCP server | Lets an external agent search and prepare a cart; it can never pay |
-| AG Grid Community | Merchant dashboard: orders grid, policy-event grid, sorting, filtering, pinning, CSV export, refund queue |
-| Render + PostgreSQL | Hosting and durable orders, sessions, webhook ids and refunds |
-| Postman / OpenAPI | `postman/` collection and `openapi.json` describe the API; the collection runs green with newman |
+TRY IT
+Hosted demo: https://paypal-commerce-agent.onrender.com (free tier, allow about 60 seconds for the first load). Public repository: https://github.com/oemeraydemir/paypal-commerce-agent, MIT licensed, with a two-minute no-keys quick start in the README. Full judging map, evidence and known limitations are in docs/.
 
-Not used on purpose: Bryntum, Channel3, Elastic (no meaningful fit for a 25-item cafe menu).
+HONEST SCOPE
+PayPal Sandbox only; live money cannot be configured. One deployment serves one merchant; there is no multi-tenancy. The "e-invoice" is an itemised order record, not a tax invoice, and makes no VAT claims. The Cart Mandate is our own signed audit format, not AP2 or an official PayPal Agent Ready integration.
+```
 
-## What is verified (be exact on the form)
+## 4. Tools used — PASTE
 
-- Backend: TypeScript build clean; **1351 Jest tests / 141 suites pass** (PayPal and AI mocked; verified 2026-11-05); Postman collection 58 requests / 73 assertions, 0 failed in both dashboard modes (measured 2026-10-25, before the settlement change; re-run it).
-- **Real PayPal Sandbox payment, run end to end on the deployed app (2026-10-27):** AI-prepared cart, server policy decision, buyer approval at PayPal, capture, status PAID, signed Cart Mandate verified, dashboard updated. Webhook replay and partial refund are documented in `docs/PAYMENT_E2E.md` and are listed as not yet evidenced until that table says otherwise.
-- Flutter app: **163 tests pass** and `flutter analyze` reports no issues (owner machine, 2026-10-27, commit 75fc8c7 plus later changes); web and debug APK builds succeed; an Android emulator run matched the web run for language, cart, policy and checkout messaging. Real microphone speech recognition is **not** verified. Details and limits: `docs/PLATFORM_STATUS.md`.
-- Automated total: **1514 tests** (1351 backend Jest + 163 Flutter), backend measured 2026-11-05, Flutter measured on the owner machine on 2026-10-27 (re-run after the iOS theme change).
+Devpost asks which tools, models or AI services were used **and how**. This is the honest inventory.
 
-## Requirement checklist (hackathon rules)
+```
+PayPal Orders API v2 and Payments Refunds API (Sandbox only) — creates the order, returns the human approval URL, captures after buyer approval and issues merchant-approved refunds. Webhooks are signature-verified; live money cannot be configured.
 
-- [ ] Public repository with all source, assets and run instructions: **https://github.com/oemeraydemir/paypal-commerce-agent**. License (MIT) visible in the About box.
-- [ ] Working demo: hosted URL (free tier, first load can take about a minute) and local run instructions in the README.
-- [ ] Demo video under 3 minutes, public on YouTube: **[YOUTUBE LINK]**. Shows the project running on the device it was built for; no third-party trademarks or copyrighted music.
-- [ ] Text description, tools list (above) and the built-with list.
-- [ ] Team: **[TEAM NAME]** (use the real name; a solo entry is fine).
+PayPal Agent Toolkit — powers the read-only Ops Copilot. It inspects orders and proposes a refund; it can never execute one.
 
-## Honest caveats (published with the entry)
+Google Gemini (primary AI model), with Groq, OpenRouter, Cerebras and OpenAI as an automatic fallback chain — the tool-calling AI barista turns a natural-language goal and budget into a proposed cart. It only receives catalog and cart tools; no payment tool exists. Without a key, a labelled rule-based planner runs instead.
 
-- The PayPal lifecycle is covered by the mocked unit/integration suite; the live Sandbox sequence (buyer approval,
-  capture, webhook replay, refund) is a repeatable procedure in `docs/PAYMENT_E2E.md` and needs a Sandbox buyer login.
-- The order page shows an itemised, printable **order record** with the signed Cart Mandate QR. It is not a  
-  tax invoice and makes no VAT claims.
-- Voice shopping uses the device's on-device recognizer; the transcript is always  
-  editable and nothing is sent until the user presses Send.
+Model Context Protocol (MCP) — /api/mcp lets external agents search the menu, prepare a cart, check policy and start checkout, but never pay.
+
+AG Grid Community — merchant order board with sorting, filtering, pinning and CSV export, plus the human-approved refund queue.
+
+Render — hosts the single Node.js web service (API plus static web demo) on the free tier.
+
+PostgreSQL — durable orders, sessions, refunds, reservations and idempotency keys; without it the app runs in memory and says so.
+
+APIMatic — TypeScript and Python SDKs generated locally from openapi.json and committed under sdks/. Nothing is uploaded to the APIMatic cloud portal.
+
+Postman — request collection for the API, including the three mandate verification endpoints.
+
+Flutter — native Android/iOS shopper client using the same server-owned prices, policy and approval flow.
+
+Node.js crypto / Ed25519 — signs the Cart Mandate and the automation event HMACs.
+
+OBS, ffmpeg and ElevenLabs (demo production only) — capture the split-screen walkthrough and produce its English voiceover. Not part of the application runtime.
+```
+
+## 5. "Built with" short list — PASTE
+
+```
+TypeScript, Node.js, Express, vanilla JavaScript, Flutter and Dart, PostgreSQL, PayPal REST APIs (Sandbox), Google Gemini, AG Grid Community, MCP, OpenAPI 3, Postman, Render
+```
+
+## 6. Testing instructions — PASTE in the **private** testing-instructions field
+
+```
+Live demo: https://paypal-commerce-agent.onrender.com
+The Render free tier sleeps; allow about 60 seconds for the first request, then reload.
+GET /api/health should report status ok, paypal.environment sandbox, durable PostgreSQL storage and ai.enabled true.
+
+Quick path with no credentials:
+1. Open the live URL. Browse the menu, open the AI barista tab, type a request such as "I want a lunch for around 12 euros", and review the proposed cart.
+2. Open Profile and save a dietary preference and an allergen note. Watch the wellbeing panel label them unverified.
+3. Open "For cafés" for the merchant walkthrough, and /dashboard.html for the AG Grid order board and refund queue.
+
+Full payment path (Sandbox only, no real money):
+1. Use a PayPal Developer Sandbox PERSONAL (buyer) account. Credentials belong in this private field only and are never committed to the repository.
+2. Add items to the cart, choose Checkout with PayPal, log in at the PayPal Sandbox approval page and approve.
+3. After capture, open the receipt to scan the QR-coded signed Cart Mandate, then verify it at /api/mandates/verify.
+4. In /dashboard.html, let the Ops Copilot propose a refund and click "Approve & refund" as the merchant. The AI can only propose.
+
+Run it locally (Node.js 20+, no keys needed for the basic demo):
+git clone https://github.com/oemeraydemir/paypal-commerce-agent.git
+cd paypal-commerce-agent/source/apps/backend
+npm install
+npm run demo
+Then open http://localhost:3000. For the real Sandbox checkout, copy .env.example to .env and add Sandbox credentials as described in the README; never commit .env.
+
+Repeatable end-to-end Sandbox payment and refund procedure: docs/PAYMENT_E2E.md.
+```
+
+## 7. YouTube upload copy — PASTE
+
+Title:
+
+```
+AI Café — The AI prepares, you approve, PayPal pays | PayPal AI Hackathon
+```
+
+Description:
+
+```
+AI Café is a trust-first agentic commerce prototype for the PayPal AI Hackathon.
+
+An AI barista turns a natural-language request and a budget into a proposed cart. The server fixes every price and enforces the spending policy. The AI has no payment tool: only a human can approve the payment in PayPal Sandbox, and only a merchant can approve a refund.
+
+This 2:52 split-screen walkthrough shows the web storefront and the Flutter app on one backend, including the wellbeing guard, split bill, the QR-coded Ed25519-signed Cart Mandate, the read-only Ops Copilot, the human-approved refund queue and the "For cafés" control center.
+
+Rule of the project: the AI proposes, the server prices, the human authorises, PayPal moves the money.
+
+Live demo: https://paypal-commerce-agent.onrender.com
+Public source (MIT): https://github.com/oemeraydemir/paypal-commerce-agent
+
+PayPal Sandbox only. No real money, no live credentials. English narration, no third-party music or footage.
+```
+
+Tags:
+
+```
+PayPal, PayPal Sandbox, agentic commerce, AI agent, hackathon, Devpost, Flutter, Gemini, MCP, AG Grid, fintech, human in the loop, Ed25519, Render
+```
+
+## 8. What still needs a human (blocking)
+
+- [ ] Upload `AICafe_Final.mp4` (2:52.17, under the 3-minute limit) to YouTube as **Public** or **Unlisted**, then replace `[YOUTUBE LINK]` here and on the Devpost form. Devpost will not accept a local file.
+- [ ] Replace `[TEAM NAME]` with the real team name. A solo entry is fine.
+- [ ] Paste sections 1–7 into the Devpost form and submit before 12 Nov 2026, 21:00 GMT+1.
+- [ ] Warm the Render service shortly before judging (free tier).
+- [ ] Re-run `flutter test` and the Postman/newman collection after the latest commits, then update any quoted counts.
+
+## 9. Verified claims and honest caveats
+
+Verified live on **2026-11-07** against `https://paypal-commerce-agent.onrender.com`:
+
+- `GET /api/health` → `status: ok`, `buildCommit: 987af54`, `paypal.environment: sandbox`, `paypal.enabled: true`, `storage: postgres / durable`, `mandates.keyPersistence: configured`, `ai.enabled: true` with providers `groq` and `gemini`.
+- A fresh session followed by `PUT /api/wellbeing/preferences` and `POST /api/orders/create` returned **201 PAYMENT_PENDING** with a real PayPal Sandbox `approvalUrl`.
+- Repository is public, MIT licensed, with description, homepage, 18 topics, six live-deployment screenshots in the README, and a `hackathon-submission` release. Zero open issues.
+
+Evidence with dates, do not present as current without re-running:
+
+- Backend: 141 suites / 1351 tests pass, measured 2026-11-05, PayPal and AI mocked.
+- Flutter: 163 tests pass and `flutter analyze` clean on the owner machine, 2026-10-27; re-run after the later commits.
+- Postman: 58 requests / 73 assertions, measured 2026-10-25 before the settlement change; re-run.
+- Full buyer-approval, capture and mandate verification end to end on the deployed app is documented in `docs/PAYMENT_E2E.md` (2026-10-27). Webhook replay and partial refund on the current build are not re-evidenced; the procedure is repeatable.
+- Voice input uses the device on-device recognizer and produces an editable transcript; it is **not** verified in the submitted video and is not claimed there.
+
+Caveats published with the entry:
+
+- No item is ever described as allergen-free or safe; allergen notes are unverified guidance.
+- The UI label "e-invoice" is an itemised order record, not a tax invoice; no VAT claims.
+- The Cart Mandate is a custom signed audit record, not AP2 or an official PayPal Agent Ready / Store Sync integration.
+- The Cart Mandate QR, product feed and discovery manifests are custom `aicafe.*` formats.
+- `/api/orders` is a public read-only demo endpoint; single-instance deployment, no multi-tenancy.
+- The two video panels were recorded in separate takes, so their beats are close but not frame-synchronised. See `DEMO_VIDEO_SCRIPT.md`.
+
+## 10. Requirement checklist (hackathon rules)
+
+- [x] Meaningfully integrates PayPal technology — Orders API v2, Refunds, webhooks, Agent Toolkit, all Sandbox.
+- [x] Meaningfully incorporates AI — tool-calling barista with a multi-provider fallback chain and a labelled non-AI fallback.
+- [x] Working prototype — hosted functional demo, verified creating a real Sandbox order (201) on 2026-11-07.
+- [x] Sufficiently documented — README, judging map, evidence, known limitations, video script, screenshots, this submission copy.
+- [x] Public code repository with a license (MIT) and clear setup/run instructions.
+- [x] Video under 3 minutes — 2:52.17, English narration, no third-party music or footage.
+- [ ] Video is public on YouTube and linked on the form — **the only blocking content item**.
+- [x] Text description and tools list — sections 3 and 4 above.
+- [ ] Team name filled in on the form.
