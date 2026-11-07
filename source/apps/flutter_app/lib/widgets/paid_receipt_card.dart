@@ -89,6 +89,13 @@ class PaidReceiptCard extends StatelessWidget {
               '${_s('receipt.status')}: PAID · $dateText',
               style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
             ),
+            // Web parity: the web order page calls this block the e-invoice
+            // (itemised, signed-mandate QR). It is an order record, not a tax invoice.
+            Text(
+              _s('receipt.invoiceNote'),
+              key: const Key('receipt-invoice-note'),
+              style: TextStyle(color: scheme.onSurfaceVariant, fontSize: 12),
+            ),
             const SizedBox(height: 8),
             for (final line in receipt.lines) _lineRow(line, scheme),
             const Divider(height: 16),

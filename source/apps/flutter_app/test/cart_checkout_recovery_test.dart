@@ -226,7 +226,7 @@ void main() {
   });
 
   testWidgets(
-    'an empty cart offers real quick-add chips, which enable PayPal checkout',
+    'an empty cart points to Home/Barista (no food chips) and checkout enables once items exist',
     (tester) async {
       tester.view.physicalSize = const Size(360, 740);
       tester.view.devicePixelRatio = 1.0;
@@ -238,9 +238,12 @@ void main() {
       await tester.tap(find.byIcon(Icons.shopping_bag_outlined));
       await tester.pumpAndSettle();
 
-      // The empty-state copy used to promise chips that were not in this sheet.
-      expect(find.byKey(const Key('cart-quick-add-coffee')), findsOneWidget);
-      expect(find.byKey(const Key('cart-quick-add-pancakes')), findsOneWidget);
+      // Web parity: the Cart tab never asks what to order. Adding food is a
+      // Home / Barista job, so the empty state only links there.
+      expect(find.byKey(const Key('cart-quick-add-coffee')), findsNothing);
+      expect(find.byKey(const Key('cart-quick-add-pancakes')), findsNothing);
+      expect(find.byKey(const Key('cart-browse-menu')), findsOneWidget);
+      expect(find.byKey(const Key('cart-ask-barista')), findsOneWidget);
 
       final checkoutButton = find.byKey(const Key('cart-checkout'));
       expect(
@@ -249,12 +252,12 @@ void main() {
         reason: 'checkout must stay disabled while the cart is empty',
       );
 
-      await tester.tap(find.byKey(const Key('cart-quick-add-coffee')));
+      checkout.addProduct('coffee');
       await tester.pumpAndSettle();
 
       expect(checkout.cart['coffee'], 1);
       expect(find.text('Fresh Brewed Coffee'), findsOneWidget);
-      expect(find.text('Cart is empty. Tap a product chip to add items.'), findsNothing);
+      expect(find.byKey(const Key('cart-browse-menu')), findsNothing);
       expect(
         tester.widget<ButtonStyleButton>(checkoutButton).onPressed,
         isNotNull,
@@ -264,7 +267,23 @@ void main() {
     },
   );
 
-  testWidgets('a paid receipt never overflows the Barista column',
+  testWidgets('the empty-cart buttons switch to the Barista tab',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await _pumpChatScreen(tester);
+    await tester.tap(find.byIcon(Icons.shopping_bag_outlined));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('cart-ask-barista')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('cart-checkout')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a paid receipt lives on the Cart tab and never in Barista',
       (tester) async {
     tester.view.physicalSize = const Size(360, 740);
     tester.view.devicePixelRatio = 1.0;
@@ -273,19 +292,25 @@ void main() {
     final checkout = await _pumpChatScreen(tester, withReceipt: true);
     expect(checkout.receipt, isNotNull);
 
-    // The receipt lives on the Barista tab, not the default Home destination.
+    // Web parity: Barista is the conversation only.
     await tester.tap(find.text('Barista'));
     await tester.pumpAndSettle();
+    expect(find.byType(PaidReceiptCard), findsNothing);
 
-    // Receipt + status + input row
-    // used to exceed the viewport by ~1px and paint the debug overflow stripes.
+    // The receipt is shown with the cart, and must not overflow the screen.
+    await tester.tap(find.byIcon(Icons.shopping_bag_outlined));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byType(PaidReceiptCard),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
     expect(find.byType(PaidReceiptCard), findsOneWidget);
-    expect(find.byIcon(Icons.shopping_bag_outlined), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'Barista and the cart sheet expose no non-web payment/status controls',
+    'PayPal approval status shows on the Cart tab, not in Barista',
     (tester) async {
       tester.view.physicalSize = const Size(360, 740);
       tester.view.devicePixelRatio = 1.0;
@@ -294,27 +319,27 @@ void main() {
       final checkout = await _pumpChatScreen(tester, withPendingOrder: true);
       expect(checkout.hasPendingOrder, isTrue);
 
-      // The Barista tab is a conversation + menu surface, exactly like the
-      // web app. A payment page, a "check server status" control or a cancel
-      // order control must never be injected here.
+      // Barista: no payment page, no "check server status", no cancel control,
+      // no "Open PayPal" strip.
       await tester.tap(find.text('Barista'));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('checkout-check-status')), findsNothing);
       expect(find.byKey(const Key('checkout-cancel-order')), findsNothing);
       expect(find.text('Check server status'), findsNothing);
       expect(find.text('Cancel this PayPal order'), findsNothing);
+      expect(find.text('Open PayPal'), findsNothing);
       expect(tester.takeException(), isNull, reason: 'empty Barista layout');
 
-      // The cart sheet keeps only the original web-parity actions: split,
-      // clear, checkout, passport, pickup. No pending banner.
+      // Cart tab: the approval status lives here, next to the cart actions.
       await tester.tap(find.byIcon(Icons.shopping_bag_outlined));
       await tester.pumpAndSettle();
+      expect(find.text('Open PayPal'), findsOneWidget);
       expect(find.byKey(const Key('cart-pending-banner')), findsNothing);
       expect(find.byKey(const Key('cart-pending-reconcile')), findsNothing);
       expect(find.byKey(const Key('cart-pending-cancel')), findsNothing);
       expect(find.byKey(const Key('cart-checkout')), findsOneWidget);
       expect(find.byKey(const Key('cart-clear')), findsOneWidget);
-      expect(tester.takeException(), isNull, reason: 'cart sheet layout');
+      expect(tester.takeException(), isNull, reason: 'cart tab layout');
     },
   );
 }

@@ -210,6 +210,7 @@ class _ChatScreenState extends State<ChatScreen> {
   static const int _tabHome = 0;
   static const int _tabCafe = 1;
   static const int _tabBarista = 2;
+  static const int _tabCart = 3;
   int _activeTab = _tabHome;
 
   // Web parity: the storefront has category filters above the product grid.
@@ -286,6 +287,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _handlePayPalReturn(Uri uri) async {
     if (uri.scheme != 'paypalcommerceagent') return;
+    if (mounted) setState(() => _activeTab = _tabCart);
     final handled = await context.read<CheckoutProvider>().handlePayPalReturn(
           uri,
         );
@@ -418,34 +420,10 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  void _openCartSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        final media = MediaQuery.of(ctx);
-        final keyboardInset = media.viewInsets.bottom;
-        // A cart can be taller than the viewport: several product rows, the
-        // Transaction Passport, take-home ideas, the allowance/policy text and
-        // three button rows. A non-scrolling Column used to overflow
-        // ("A RenderFlex overflowed by N pixels on the bottom") and clip the
-        // checkout buttons. Cap the sheet below the status bar and let it
-        // scroll; short carts still size to their content.
-        final visibleHeight = media.size.height - keyboardInset;
-        final maxSheetHeight =
-            (visibleHeight > 0 ? visibleHeight : media.size.height) * 0.9;
-        return SafeArea(
-          top: false,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: maxSheetHeight),
-            child: SingleChildScrollView(
-              child: _CartSheet(catalog: _catalog),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  /// The cart is a real tab (web parity): cart, policy verdict, PayPal approval
+  /// status and the paid receipt live here, never inside the Barista chat. The
+  /// old name is kept so every "Review & pay" entry point lands on the tab.
+  void _openCartSheet() => _goToTab(_tabCart);
 
   void _maybeShowOnboarding() {
     SharedPreferences.getInstance().then((prefs) {
@@ -537,7 +515,9 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? _buildHomeTab()
                 : _activeTab == _tabCafe
                     ? _buildCafeHome()
-                    : _buildBaristaBody(timeFormat),
+                    : _activeTab == _tabCart
+                        ? _buildCartTab()
+                        : _buildBaristaBody(timeFormat),
           ),
         ],
       ),
@@ -622,7 +602,11 @@ class _ChatScreenState extends State<ChatScreen> {
       builder: (ctx, checkout, _) {
         final int count = checkout.cart.values.fold<int>(0, (a, b) => a + b);
         return NavigationBar(
-          selectedIndex: _activeTab == _tabBarista ? 1 : 0,
+          selectedIndex: _activeTab == _tabBarista
+              ? 1
+              : _activeTab == _tabCart
+                  ? 2
+                  : 0,
           onDestinationSelected: (i) {
             if (i == 0) {
               _goToTab(_tabHome);
@@ -1152,6 +1136,75 @@ class _ChatScreenState extends State<ChatScreen> {
     return '€${(minor / 100).toStringAsFixed(2)}';
   }
 
+  /// Cart tab (web parity): the cart, the policy verdict, the PayPal approval
+  /// status and the paid receipt. None of these belong in the Barista chat.
+  Widget _buildCartTab() {
+    return SingleChildScrollView(
+      key: const Key('cart-tab'),
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Consumer<CheckoutProvider>(
+            builder: (ctx, checkout, _) {
+              final hasStatus = checkout.error != null ||
+                  checkout.statusMessage != null ||
+                  checkout.rescue != null ||
+                  (checkout.created != null && checkout.captured == null);
+              if (!hasStatus) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: _CheckoutStatus(checkout: checkout),
+              );
+            },
+          ),
+          _CartSheet(
+            catalog: _catalog,
+            onBrowseMenu: () => _goToTab(_tabHome),
+            onAskBarista: () => _goToTab(_tabBarista),
+          ),
+          Consumer<CheckoutProvider>(
+            builder: (ctx, checkout, _) {
+              final receipt = checkout.receipt;
+              if (receipt == null) return const SizedBox.shrink();
+              final lang = Provider.of<LocaleProvider>(
+                ctx,
+                listen: false,
+              ).languageCode;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: PaidReceiptCard(
+                  receipt: receipt,
+                  lang: lang,
+                  catalogNames: {for (final p in _catalog) p.id: p.name},
+                  onClose: checkout.dismissReceipt,
+                  evidenceSection: EvidencePackageSection(
+                    api: checkout.api,
+                    orderId: receipt.orderId,
+                    lang: lang,
+                  ),
+                  refundSection: RefundSection(
+                    api: checkout.api,
+                    orderId: receipt.orderId,
+                    lang: lang,
+                  ),
+                  pickupSection: checkout.pickupBooking != null
+                      ? PickupLinkSection(
+                          api: checkout.api,
+                          orderId: receipt.orderId,
+                          lang: lang,
+                          booking: checkout.pickupBooking!,
+                        )
+                      : null,
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBaristaBody(DateFormat timeFormat) {
     return Consumer<ChatProvider>(
       builder: (ctx, chat, _) {
@@ -1229,70 +1282,8 @@ class _ChatScreenState extends State<ChatScreen> {
                         )
                       : const SizedBox.shrink(),
             ),
-            // Web parity: Barista is a conversation surface, not a payment
-            // page. The status strip and the paid receipt appear only in the
-            // conversation branch, exactly as in the original app. No order
-            // status / server-check controls are exposed here.
-            Consumer<CheckoutProvider>(
-              builder: (ctx, checkout, _) {
-                final hasStatus = checkout.error != null ||
-                    checkout.statusMessage != null ||
-                    checkout.rescue != null ||
-                    (checkout.created != null && checkout.captured == null);
-                if (!hasStatus) return const SizedBox.shrink();
-                // Cap this panel instead of letting an unbounded Column push
-                // the whole page past the bottom (yellow overflow stripes).
-                return ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(ctx).size.height * 0.32,
-                  ),
-                  child: SingleChildScrollView(
-                    child: _CheckoutStatus(checkout: checkout),
-                  ),
-                );
-              },
-            ),
-            Consumer<CheckoutProvider>(
-              builder: (ctx, checkout, _) {
-                final receipt = checkout.receipt;
-                if (receipt == null) return const SizedBox.shrink();
-                final lang = Provider.of<LocaleProvider>(
-                  ctx,
-                  listen: false,
-                ).languageCode;
-                // A real flex sibling of the chat list: both share the leftover
-                // height, so the outer Column can never overflow.
-                return Expanded(
-                  flex: 2,
-                  child: SingleChildScrollView(
-                    child: PaidReceiptCard(
-                      receipt: receipt,
-                      lang: lang,
-                      catalogNames: {for (final p in _catalog) p.id: p.name},
-                      onClose: checkout.dismissReceipt,
-                      evidenceSection: EvidencePackageSection(
-                        api: checkout.api,
-                        orderId: receipt.orderId,
-                        lang: lang,
-                      ),
-                      refundSection: RefundSection(
-                        api: checkout.api,
-                        orderId: receipt.orderId,
-                        lang: lang,
-                      ),
-                      pickupSection: checkout.pickupBooking != null
-                          ? PickupLinkSection(
-                              api: checkout.api,
-                              orderId: receipt.orderId,
-                              lang: lang,
-                              booking: checkout.pickupBooking!,
-                            )
-                          : null,
-                    ),
-                  ),
-                );
-              },
-            ),
+            // Barista is a conversation surface only. The PayPal approval status and
+            // the paid receipt are shown on the Cart tab, exactly like the web app.
             _inputRow(),
           ],
         );
@@ -2574,8 +2565,14 @@ class _CheckoutStatus extends StatelessWidget {
 /// Bottom sheet for the manual cart.
 class _CartSheet extends StatelessWidget {
   final List<Product> catalog;
+  final VoidCallback? onBrowseMenu;
+  final VoidCallback? onAskBarista;
 
-  const _CartSheet({required this.catalog});
+  const _CartSheet({
+    required this.catalog,
+    this.onBrowseMenu,
+    this.onAskBarista,
+  });
 
   /// Opens the pickup reservation planner (parity with the Web storefront).
   /// The booking is held on the checkout provider until it is linked to the
@@ -2648,39 +2645,27 @@ class _CartSheet extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(t(context, 'cart.empty')),
-                      // The empty-state copy promises "tap a product chip",
-                      // but the chips only existed on the Home tab. After a
-                      // paid order the cart is consumed and checkout stays
-                      // disabled with no way to recover from this sheet.
-                      // Show real catalogue chips here so the shopper can
-                      // build a fresh cart and reach "Checkout with PayPal".
-                      if (catalog.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 6,
-                          children: [
-                            for (final product in catalog.take(6))
-                              ActionChip(
-                                key: Key('cart-quick-add-${product.id}'),
-                                avatar: const Icon(Icons.add, size: 16),
-                                label: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxWidth:
-                                        MediaQuery.of(context).size.width - 96,
-                                  ),
-                                  child: Text(
-                                    '${product.name} · ${product.priceFormatted}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                onPressed: () =>
-                                    checkout.addProduct(product.id),
-                              ),
-                          ],
-                        ),
-                      ],
+                      // Adding food is a Home/Barista job (web parity). An empty cart
+                      // only points there, so nothing in this tab asks what to order.
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          FilledButton.icon(
+                            key: const Key('cart-browse-menu'),
+                            icon: const Icon(Icons.restaurant_menu, size: 18),
+                            label: Text(t(context, 'cart.browseMenu')),
+                            onPressed: onBrowseMenu,
+                          ),
+                          OutlinedButton.icon(
+                            key: const Key('cart-ask-barista'),
+                            icon: const Icon(Icons.forum_outlined, size: 18),
+                            label: Text(t(context, 'cart.askBarista')),
+                            onPressed: onAskBarista,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 )
@@ -2893,7 +2878,6 @@ class _CartSheet extends StatelessWidget {
                                 !checkout.policyAllowsCheckout)
                             ? null
                             : () {
-                                Navigator.of(ctx).pop();
                                 checkout.startCheckout(
                                   wellbeingPreferences: context
                                       .read<ShopperProfileProvider>()
