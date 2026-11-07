@@ -31,6 +31,10 @@ deployed. Both of those changed. Re-checked signed-out, with no session:
 Everything else in this audit still stands. In particular the six "YOU" declaration fields, the
 `[TEAM NAME]` placeholder and the Channel3 sponsor checkbox are still the account owner's to fill.
 
+**When actually filling the form, use [DEVPOST_FINAL_ANSWERS.md](./DEVPOST_FINAL_ANSWERS.md).** It
+turns every verdict in this audit into a paste-ready answer, in form order, and lists the thirteen
+changes from the Claude.ai draft at the top. This document remains the audit trail.
+
 ## 1. Blocking items — fix these first
 
 | # | Problem | Evidence | Action |

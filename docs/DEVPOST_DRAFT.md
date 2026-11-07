@@ -5,6 +5,11 @@ Every `PASTE` block is plain text with no table markup, so it can be selected an
 into Devpost. All text is English. Claims are limited to what the repository and the live deployment
 actually do; anything not re-verified on the current build is marked as such below.
 
+**Use [DEVPOST_FINAL_ANSWERS.md](./DEVPOST_FINAL_ANSWERS.md) as the single source of truth when filling
+the form.** It is the field-by-field, paste-ready answer set in form order, including the corrections to
+the Claude.ai draft. Sections 1–3 below are an earlier, longer narrative variant of the description —
+pick one and do not mix them. Sections 6–7 (testing instructions and YouTube copy) are still current.
+
 **Status re-verified 2026-11-08:** the video at `https://youtu.be/X2y7Iw5WNhE` is now **Public**
 (`playabilityStatus: OK`, `isPrivate: false`, `isUnlisted: false`, oEmbed 200) and is 2:52 long, so the
 official *"publicly visible"* requirement is met. Its metadata is **still the placeholder set** —
