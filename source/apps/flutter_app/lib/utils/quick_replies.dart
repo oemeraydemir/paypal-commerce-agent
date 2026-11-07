@@ -12,6 +12,11 @@ List<QuickReply> extractQuickReplies(String raw) {
   final options = <QuickReply>[];
   var table = false;
   var list = false;
+  // Persist across intervening description lines so a numbered option that
+  // follows a paragraph (e.g. "Options:\n1. Soup\n<nice>\n2. Bowl") is still
+  // recognized. Without this, the description line resets `list` to false and
+  // only the first option is ever captured, so no chips render.
+  var sawList = false;
   var fence = '';
   var invalid = false;
   String clean(String text) => text
@@ -82,6 +87,7 @@ List<QuickReply> extractQuickReplies(String raw) {
             caseSensitive: false)
         .hasMatch(clean(line))) {
       list = true;
+      sawList = true;
       continue;
     }
     final candidate = clean(line).replaceFirst(RegExp(r'^[-*•]\s+'), '');
@@ -89,8 +95,10 @@ List<QuickReply> extractQuickReplies(String raw) {
             .hasMatch(candidate) ||
         RegExp('^\\d\uFE0F?\u20E3').hasMatch(
             line.replaceFirst(RegExp(r'^(?:[-*•]\s+|\*\*)'), ''));
-    if (explicit || (list && RegExp(r'^\d+[.)]\s+').hasMatch(candidate))) {
+    if (explicit || ((list || sawList) &&
+        RegExp(r'^\d+[.)]\s+').hasMatch(candidate))) {
       add(candidate);
+      sawList = true;
     } else if (line.isNotEmpty) {
       list = false;
     }
