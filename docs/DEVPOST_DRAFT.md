@@ -5,7 +5,15 @@ Every `PASTE` block is plain text with no table markup, so it can be selected an
 into Devpost. All text is English. Claims are limited to what the repository and the live deployment
 actually do; anything not re-verified on the current build is marked as such below.
 
-**Two fields only you can fill:** `[YOUTUBE LINK]` and `[TEAM NAME]`. See section 8.
+**Only one form field is still yours to fill:** `[TEAM NAME]`. The video is already uploaded at
+`https://youtu.be/X2y7Iw5WNhE`, but it is currently **Private** with a placeholder title and an empty
+description — see section 8 for the exact YouTube Studio settings before publishing. See also
+[DEVPOST_ANSWER_AUDIT.md](./DEVPOST_ANSWER_AUDIT.md) for the field-by-field audit of the Claude.ai draft.
+
+**Name decision:** use `AI Café — The AI prepares, you approve, PayPal pays` everywhere (form, YouTube
+title, thumbnail, README). The Claude.ai alternative `AI Café: Agentic Commerce You Can Trust (PayPal + AI)`
+is also valid and measured 53/60 characters, but mixing the two would look careless. If you prefer that
+one, change it in the form, in the YouTube title and in section 1 here together.
 
 ---
 
@@ -73,6 +81,8 @@ APIMatic — TypeScript and Python SDKs generated locally from openapi.json and 
 
 Postman — request collection for the API, including the three mandate verification endpoints.
 
+Channel3 — powers the read-only "Take it home" suggestions on the cart. Fixed category-derived queries return retailer offers that open on the retailer's own page; they are never added to the PayPal cart, never covered by an allowance and cannot be bought through this app.
+
 Flutter — native Android/iOS shopper client using the same server-owned prices, policy and approval flow.
 
 Node.js crypto / Ed25519 — signs the Cart Mandate and the automation event HMACs.
@@ -83,7 +93,7 @@ OBS, ffmpeg and ElevenLabs (demo production only) — capture the split-screen w
 ## 5. "Built with" short list — PASTE
 
 ```
-TypeScript, Node.js, Express, vanilla JavaScript, Flutter and Dart, PostgreSQL, PayPal REST APIs (Sandbox), Google Gemini, AG Grid Community, MCP, OpenAPI 3, Postman, Render
+TypeScript, Node.js, Express, vanilla JavaScript, Flutter and Dart, PostgreSQL, PayPal REST APIs (Sandbox), Google Gemini, AG Grid Community, MCP, OpenAPI 3, Postman, APIMatic, Channel3, Render
 ```
 
 ## 6. Testing instructions — PASTE in the **private** testing-instructions field
@@ -96,11 +106,12 @@ GET /api/health should report status ok, paypal.environment sandbox, durable Pos
 Quick path with no credentials:
 1. Open the live URL. Browse the menu, open the AI barista tab, type a request such as "I want a lunch for around 12 euros", and review the proposed cart.
 2. Open Profile and save a dietary preference and an allergen note. Watch the wellbeing panel label them unverified.
-3. Open "For cafés" for the merchant walkthrough, and /dashboard.html for the AG Grid order board and refund queue.
+3. With items in the cart, open "Show take-home ideas" to see read-only Channel3 retailer suggestions. They are clearly labelled as not part of the café order and cannot be bought here.
+4. Open "For cafés" for the merchant walkthrough, and /dashboard.html for the AG Grid order board and refund queue.
 
 Full payment path (Sandbox only, no real money):
 1. Use a PayPal Developer Sandbox PERSONAL (buyer) account. Credentials belong in this private field only and are never committed to the repository.
-2. Add items to the cart, choose Checkout with PayPal, log in at the PayPal Sandbox approval page and approve.
+2. Add items to the cart, choose Checkout with PayPal, log in at the PayPal Sandbox approval page, approve, return to the store and press "Confirm and pay now".
 3. After capture, open the receipt to scan the QR-coded signed Cart Mandate, then verify it at /api/mandates/verify.
 4. In /dashboard.html, let the Ops Copilot propose a refund and click "Approve & refund" as the merchant. The AI can only propose.
 
@@ -136,18 +147,29 @@ Rule of the project: the AI proposes, the server prices, the human authorises, P
 Live demo: https://paypal-commerce-agent.onrender.com
 Public source (MIT): https://github.com/oemeraydemir/paypal-commerce-agent
 
-PayPal Sandbox only. No real money, no live credentials. English narration, no third-party music or footage.
+PayPal Sandbox only. No real money, no live credentials. English narration generated with an AI voice (ElevenLabs); no third-party music or footage.
+
+Chapters:
+0:00 The problem and the rule
+0:16 Who I am: dietary and allergen notes
+0:31 Tell the barista what you want
+0:45 Cart, wellbeing panel and split bill
+1:03 Human approval in PayPal Sandbox
+1:23 Paid: e-invoice and signed Cart Mandate
+1:43 Ops Copilot proposes, merchant approves
+2:07 For cafés: the owner's control center
+2:35 One backend, web and Flutter
 ```
 
 Tags:
 
 ```
-PayPal, PayPal Sandbox, agentic commerce, AI agent, hackathon, Devpost, Flutter, Gemini, MCP, AG Grid, fintech, human in the loop, Ed25519, Render
+PayPal, PayPal Sandbox, agentic commerce, AI agent, hackathon, Devpost, Flutter, Gemini, MCP, AG Grid, Channel3, fintech, human in the loop, Ed25519, Render
 ```
 
 ## 8. What still needs a human (blocking)
 
-- [ ] Upload `AICafe_Final.mp4` (2:52.17, under the 3-minute limit) to YouTube as **Public** or **Unlisted**, then replace `[YOUTUBE LINK]` here and on the Devpost form. Devpost will not accept a local file.
+- [ ] `AICafe_Final.mp4` (2:52.17, under the 3-minute limit) is already uploaded at **https://youtu.be/X2y7Iw5WNhE**, but it is **Private**, titled only `AICafe`, and has an empty description. In YouTube Studio set `Sichtbarkeit` = **Öffentlich / Public** (the official rules say *"publicly visible"*, so do **not** use Unlisted), paste the title, description, chapters and tags from section 7, upload `Video_Kit/youtube_thumbnail.jpg`, set "not made for children", no paid promotion, **AI use = Yes** (realistic AI narration), language English, category Science & Technology, and allow embedding. Verify the link plays in a **signed-out** browser before submitting.
 - [ ] Replace `[TEAM NAME]` with the real team name. A solo entry is fine.
 - [ ] Paste sections 1–7 into the Devpost form and submit before 12 Nov 2026, 21:00 GMT+1.
 - [ ] Warm the Render service shortly before judging (free tier).
@@ -159,11 +181,14 @@ Verified live on **2026-11-07** against `https://paypal-commerce-agent.onrender.
 
 - `GET /api/health` → `status: ok`, `buildCommit: 987af54`, `paypal.environment: sandbox`, `paypal.enabled: true`, `storage: postgres / durable`, `mandates.keyPersistence: configured`, `ai.enabled: true` with providers `groq` and `gemini`.
 - A fresh session followed by `PUT /api/wellbeing/preferences` and `POST /api/orders/create` returned **201 PAYMENT_PENDING** with a real PayPal Sandbox `approvalUrl`.
-- Repository is public, MIT licensed, with description, homepage, 18 topics, six live-deployment screenshots in the README, and a `hackathon-submission` release. Zero open issues.
+- Repository is public, MIT licensed, with description, homepage, 18 topics, ten live-deployment screenshots in the README, and a `hackathon-submission` release. Zero open issues.
+- Channel3 is live: `GET /api/health` reports `channel3.enabled: true`; a fresh-session `POST /api/discover/take-home` returned real retailer offers.
 
-Evidence with dates, do not present as current without re-running:
+Current re-measured evidence:
 
-- Backend: 141 suites / 1351 tests pass, measured 2026-11-05, PayPal and AI mocked.
+- Backend: **141 suites / 1351 tests pass, re-measured 2026-11-07 on the current source** (234 s), PayPal and AI mocked. Six stale expectations were updated for the intentional gluten-free catalog labels and the Groq tool-capable model defaults; no assertion was removed.
+
+Other evidence with dates, do not present as current without re-running:
 - Flutter: 163 tests pass and `flutter analyze` clean on the owner machine, 2026-10-27; re-run after the later commits.
 - Postman: 58 requests / 73 assertions, measured 2026-10-25 before the settlement change; re-run.
 - Full buyer-approval, capture and mandate verification end to end on the deployed app is documented in `docs/PAYMENT_E2E.md` (2026-10-27). Webhook replay and partial refund on the current build are not re-evidenced; the procedure is repeatable.
@@ -186,6 +211,6 @@ Caveats published with the entry:
 - [x] Sufficiently documented — README, judging map, evidence, known limitations, video script, screenshots, this submission copy.
 - [x] Public code repository with a license (MIT) and clear setup/run instructions.
 - [x] Video under 3 minutes — 2:52.17, English narration, no third-party music or footage.
-- [ ] Video is public on YouTube and linked on the form — **the only blocking content item**.
+- [ ] Video is **Public** on YouTube (currently Private) and linked on the form as https://youtu.be/X2y7Iw5WNhE — **the only blocking content item**.
 - [x] Text description and tools list — sections 3 and 4 above.
 - [ ] Team name filled in on the form.

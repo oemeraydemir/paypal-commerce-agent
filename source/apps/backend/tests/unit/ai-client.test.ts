@@ -330,8 +330,12 @@ describe('provider model configuration', () => {
 
     const groq = resolveAIProviders({ GROQ_API_KEY: 'g' } as NodeJS.ProcessEnv)[0];
     // llama-3.3-70b-versatile is no longer listed by Groq (FIX-06, verified 2026-10-23).
-    expect(groq.models).toEqual(['openai/gpt-oss-120b', 'openai/gpt-oss-20b']);
+    // openai/gpt-oss-120b answers HTTP 400 to the tool/injection probe with the current
+    // key (verified 2026-11-07), so the defaults are the two models that really pass a
+    // tool round trip. Keep both exclusions as regressions.
+    expect(groq.models).toEqual(['openai/gpt-oss-20b', 'qwen/qwen3.8-27b']);
     expect(groq.models).not.toContain('llama-3.3-70b-versatile');
+    expect(groq.models).not.toContain('openai/gpt-oss-120b');
 
     // meta-llama/llama-3.3-70b-instruct:free was retired by OpenRouter (HTTP 404, FIX-06).
     const openrouter = resolveAIProviders({ OPENROUTER_API_KEY: 'o' } as NodeJS.ProcessEnv)[0];
@@ -402,7 +406,7 @@ describe('AI provider config parsing', () => {
     const providers = resolveAIProviders({ GROQ_API_KEY: 'g' } as NodeJS.ProcessEnv);
     expect(providers.map((p) => p.id)).toEqual(['groq']);
     expect(providers[0].baseURL).toBe('https://api.groq.com/openai/v1');
-    expect(providers[0].model).toBe('openai/gpt-oss-120b');
+    expect(providers[0].model).toBe('openai/gpt-oss-20b');
   });
 
   test('respects a custom AI_PROVIDER_ORDER (and excludes unlisted providers)', () => {

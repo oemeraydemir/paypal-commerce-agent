@@ -1,13 +1,13 @@
 # Submission checklist (Devpost, deadline 12 Nov 2026, 21:00 GMT+1)
 
 Order matters: do the top block first, because everything below depends on it.
-Status refreshed **2026-11-07**. Only the video upload and the form submission remain for the account owner.
+Status refreshed **2026-11-07**. The video is already uploaded (`https://youtu.be/X2y7Iw5WNhE`) but is **Private**; only publishing it as Public with metadata, plus the form submission, remain for the account owner. Full field-by-field audit: [DEVPOST_ANSWER_AUDIT.md](./DEVPOST_ANSWER_AUDIT.md).
 
 ## 1. Make the repository complete and public
 
-- [x] `git status` is clean: everything in `source/`, `docs/`, `openapi.json`, `DEMO_VIDEO_SCRIPT.md` is committed and pushed (judges only see what is on the remote). HEAD `ce0a39f` matches `origin/main`.
+- [x] Everything in `source/`, `docs/`, `openapi.json`, `DEMO_VIDEO_SCRIPT.md` is committed and pushed (judges only see what is on the remote). Confirm with `git status` and `git log -1` after the final push: HEAD must match `origin/main`. Backend re-measured 2026-11-07: 141 suites / 1351 tests pass.
 - [x] Repository is **public** (`private: false`), `LICENSE` (MIT) shows in the About box; description, homepage and 18 topics are set. Spam issue #1 closed; 0 open issues. A `hackathon-submission` release exists.
-- [x] README has the submission summary, a two-minute no-keys quick start, a Tools-used table and six screenshots captured from the live deployment.
+- [x] README has the submission summary, a two-minute no-keys quick start, a Tools-used table, an explicit "How AI and PayPal are used" section and ten screenshots captured from the live deployment.
 - [ ] CI is green on the pushed commit (backend, real-PostgreSQL smoke, Flutter) — verify in the Actions tab.
 
 ## 2. Prove it runs
@@ -37,13 +37,13 @@ Confirmed on the Render dashboard (values masked, never shared). Every key the c
 - [x] Nothing in the video says "allergen-safe", "verified PayPal integration" beyond what step 2 proved, or that Flutter enforces the guard. Allergy language is always "unverified"; the split-bill narration quotes no number; "e-invoice" is the app's own UI label.
 - [x] The "For cafés" control center and the human-approved refund queue are shown and narrated.
 - [ ] Confirm the mandate card (limit, cart, remaining, per-person split, refunded so far) and the Agent timeline are legible in the final encode before publishing.
-- [ ] Upload to YouTube as **Public** or **Unlisted** and paste the link on the Devpost form. Devpost does not accept a local file. Title, description and tags are ready in [DEVPOST_DRAFT.md](./DEVPOST_DRAFT.md#7-youtube-upload-copy--paste).
+- [ ] Uploaded at **https://youtu.be/X2y7Iw5WNhE** but **Private** (`AICafe`, empty description). Set `Sichtbarkeit` = **Öffentlich / Public** — the official rules require a *"publicly visible"* video, so Unlisted is not enough. Paste title, description, chapters and tags from [DEVPOST_DRAFT.md](./DEVPOST_DRAFT.md#7-youtube-upload-copy--paste), upload `Video_Kit/youtube_thumbnail.jpg`, set "not made for children", no paid promotion, **AI use = Yes**, language English, category Science & Technology, allow embedding. Then verify playback in a signed-out browser.
 
 ## 4. Devpost form
 
 - [x] Description, one-liner, tools list, built-with list and private testing instructions written and fact-checked: [DEVPOST_DRAFT.md](./DEVPOST_DRAFT.md). Every paste block is plain text with no table markup.
 - [x] Repo link, hosted demo URL and testing instructions prepared. Sandbox buyer credentials go only in the private testing-instructions field, never in the repo.
-- [ ] Replace `[YOUTUBE LINK]` and `[TEAM NAME]`, paste sections 1–7 into the form, and submit before the deadline.
+- [ ] Replace `[TEAM NAME]`, use `https://youtu.be/X2y7Iw5WNhE` for the video link, mark the sponsor tools **AG Grid, Render, Postman, APIMatic and Channel3** (not Bryntum/Elastic/Astropods/KERNEL/Zapier), fill the declaration fields yourself (country, consents, submitter type, PayPal rating, feedback, learning level, AI-value-for-career), paste sections 1–7 into the form, and submit before the deadline.
 - [ ] Warm the Render service shortly before judging starts.
 
 Status of each verification layer: `docs/KNOWN_LIMITATIONS.md`.

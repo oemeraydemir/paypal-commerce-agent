@@ -34,7 +34,10 @@ describe('web wellbeing card', () => {
     expect(text).toMatch(/Sensitivities you selected/i);
     expect(text).toMatch(/Gluten/i);
     expect(text).toMatch(/Fresh Brewed Coffee/i);
-    expect(text).toMatch(/Gluten information is missing; we cannot verify suitability/i);
+    // Coffee is now labelled gluten-free (35f078f), so the card reports a
+    // merchant-label result instead of missing information.
+    expect(text).toMatch(/No known conflict/i);
+    expect(text).toMatch(/The merchant data shows no known Gluten conflict/i);
     // Ingredient facts and cross-contact stay separate; source + limits are shown.
     expect(text).toMatch(/Cross-contact information is not available/i);
     expect(text).toMatch(/Based on the menu information provided by the business/i);
@@ -44,6 +47,14 @@ describe('web wellbeing card', () => {
     expect(text).not.toMatch(/UNKNOWN|Missing information|allergen:gluten|dietary:vegan/i);
     expect(text.toLowerCase()).not.toMatch(/\bsafe\b|suitable|allergen-free|gluten-free product/);
     expect(dom.window.document.getElementById('wb-sample')!.textContent).toMatch(/unknown information blocks checkout/i);
+
+    // A product with no merchant data still gets the honest "cannot verify" wording,
+    // never a "safe" verdict and never a raw machine code.
+    const unknownDom = await open({ 'aicafe.onboarded': 'true', 'aicafe.cart': JSON.stringify({ latte: 1 }), 'aicafe.allergens': JSON.stringify(['gluten']) });
+    const unknownBox = await waitFor(() => { const b = unknownDom.window.document.getElementById('wellbeing'); return b && !b.hidden && b.querySelector('li.wb-item') && b; }, 'wellbeing card with missing data');
+    const unknownText = unknownBox.textContent || '';
+    expect(unknownText).toMatch(/Gluten information is missing; we cannot verify suitability/i);
+    expect(unknownText).not.toMatch(/UNKNOWN|Missing information|allergen:gluten/i);
   });
 
   test('a confirmed merchant ingredient conflict is attributed to the menu text, and the remove action works', async () => {

@@ -47,7 +47,7 @@ describe('Wellbeing Guard authoritative contract', () => {
 
   test('exposes per-restriction facts with merchant provenance and separate cross-contact', () => {
     const decision = evaluateWellbeing(
-      [{ productId: 'veg_breakfast', quantity: 1 }, { productId: 'coffee', quantity: 1 }],
+      [{ productId: 'veg_breakfast', quantity: 1 }, { productId: 'latte', quantity: 1 }],
       { dietary: [], allergens: ['gluten'] },
       catalog,
     );
@@ -65,12 +65,23 @@ describe('Wellbeing Guard authoritative contract', () => {
     expect(breakfast.facts[0].source).toBe('merchant-ingredients');
     expect(breakfast.facts[0].ingredients).toEqual(expect.arrayContaining(['toast', 'granola']));
 
-    // Coffee has neither a gluten-free label nor a named ingredient -> UNKNOWN,
-    // never guessed as safe.
-    const coffee = decision.items[1];
-    expect(coffee.status).toBe('UNKNOWN');
-    expect(coffee.facts[0].status).toBe('UNKNOWN');
-    expect(coffee.facts[0].source).toBeNull();
+    // Latte has neither a gluten-free label nor a named gluten ingredient -> UNKNOWN,
+    // never guessed as safe. (Coffee is now labelled gluten-free, 35f078f.)
+    const latte = decision.items[1];
+    expect(latte.status).toBe('UNKNOWN');
+    expect(latte.facts[0].status).toBe('UNKNOWN');
+    expect(latte.facts[0].source).toBeNull();
+
+    // The labelled product gets a merchant-label NO_CONFLICT, but the decision still
+    // carries unverified provenance and no cross-contact assessment.
+    const labelled = evaluateWellbeing(
+      [{ productId: 'coffee', quantity: 1 }],
+      { dietary: [], allergens: ['gluten'] },
+      catalog,
+    );
+    expect(labelled.items[0].facts[0]).toMatchObject({ status: 'NO_CONFLICT', source: 'merchant-label' });
+    expect(labelled.source.verified).toBe(false);
+    expect(labelled.crossContact).toEqual({ assessed: false, merchantData: false });
   });
 
   test('direct order API cannot bypass missing profile or UNKNOWN restriction data', async () => {

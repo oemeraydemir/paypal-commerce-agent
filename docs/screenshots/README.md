@@ -1,10 +1,13 @@
 # Screenshots — capture guide & inventory
 
-Screenshots for AI Café are captured from a **running instance**, not from design mocks. The six images in
+Screenshots for AI Café are captured from a **running instance**, not from design mocks. The ten images in
 the inventory below were taken from the live Render deployment
 (<https://paypal-commerce-agent.onrender.com>) at build `987af54`, with the storefront's customer-facing
-merchant links removed. No credentials or merchant keys appear in any capture. This file explains how to
-reproduce them.
+merchant links removed. No credentials or merchant keys appear in any capture. They use the current light
+iOS-style theme (light blue / white), not the older orange one. This file explains how to reproduce them.
+
+The four later shots (`07`–`10`) were captured with `Video_Kit/capture_shots_extra.mjs`; the first six with
+`Video_Kit/capture_shots.mjs`. Both drive a headless Chromium against the live deployment.
 
 ## How to capture
 
@@ -20,24 +23,18 @@ reproduce them.
    `storefront-chat.png`, `dashboard-aggrid.png`, `flutter-coco-explanation.png`.
 6. Add the file name and a one-line description to the inventory table below.
 
-## Planned shots (take these 12, in this order)
+## Gallery scope
 
-| # | File name | Shows | Criterion it supports |
-|---|---|---|---|
-| 1 | `01-storefront-chat.png` | Storefront with the chat and quick scenario chips | Design |
-| 2 | `02-cart-policy-allow.png` | A cart inside the limit with the green policy verdict and server prices | Technological Implementation |
-| 3 | `03-policy-block.png` | An over-limit cart with the BLOCK verdict and no pay button | Technological Implementation, Impact |
-| 4 | `04-why-these-items.png` | "Why these items?" panel | Design, Innovation |
-| 5 | `05-allergy-unverified.png` | Allergen selected, the note reads unverified | Honesty, Impact |
-| 6 | `06-paypal-sandbox-approval.png` | PayPal Sandbox approval screen (no credentials visible) | Technological Implementation |
-| 7 | `07-receipt-paid.png` | Receipt after capture with the Cart Mandate verify button | Innovation |
-| 8 | `08-dashboard-orders-grid.png` | AG Grid orders with a filter and a pinned column | Technological Implementation |
-| 9 | `09-dashboard-policy-events.png` | Policy-event grid with BLOCK and REQUIRE_CONFIRMATION rows | Impact |
-| 10 | `10-refund-queue.png` | Refund queue with a PROPOSED item and the approve button | Technological Implementation |
-| 11 | `11-agent-manifest.png` | `/.well-known/agent-commerce.json` in the browser | Innovation, Agentic Commerce |
-| 12 | `12-newman-green.png` | newman summary: 58 requests, 73 assertions, 0 failed | Presentation |
+Devpost allows up to 15 gallery images. The ten real captures in the inventory below are enough; no
+placeholder or mock images are used. Every one was taken from the live deployment with Playwright, so
+the guide above is about reproduction, not about staged data.
 
-Only shots 6, 7 and 10 need the PayPal Sandbox sequence from `docs/PAYMENT_E2E.md`; skip them and say so if you did not run it.
+Still **not** captured, intentionally: the policy BLOCK cart, the Flutter "Why these items?" and
+unverified allergen panels, the PayPal approval and paid receipt with its QR mandate, AG Grid filtered
+views, the refund queue and a newman summary. The ones showing a paid order, a PayPal approval or a
+refund require the Sandbox payment run in
+[PAYMENT_E2E.md](../PAYMENT_E2E.md); they are deliberately not faked with mock data. The public agent
+manifest is already covered by `05-agent-manifest.png`.
 
 ## Inventory
 
@@ -49,13 +46,13 @@ Only shots 6, 7 and 10 need the PayPal Sandbox sequence from `docs/PAYMENT_E2E.m
 | `04-for-cafes.png` | "For cafés": setup path, honest scope and the live server readiness checklist | Captured from the live deployment |
 | `05-agent-manifest.png` | Public `/.well-known/agent-commerce.json` with MCP tool names and payment guardrails | Captured from the live deployment |
 | `06-dashboard.png` | Agent Control Center: AG Grid order board, policy metrics and read-only Ops Copilot | Captured from the live deployment |
+| `07-profile-allowances.png` | Scoped allowances panel: checkout selector, daily-limit creation form and the fail-closed note | Captured from the live deployment |
+| `08-barista-cart.png` | The exact demo prompt "I want a lunch for around 12 euros" answered with a prepared, budgeted cart | Captured from the live deployment |
+| `09-take-home-channel3.png` | Real Channel3 retailer suggestions with the "not part of your café order" disclosure | Captured from the live deployment |
+| `10-profile-diet-budget.png` | Dietary preferences, barista budget filter and allergen concerns | Captured from the live deployment |
 
-The public agent manifest (planned as `11-agent-manifest.png`) is covered by `05-agent-manifest.png`.
-The other planned shots — the policy BLOCK/ALLOW carts, the Flutter "Why these items?" and unverified
-allergen panels, the PayPal approval and paid receipt, the AG Grid filtered views, the refund queue and
-the newman summary — were **not** captured in this pass. The ones showing a paid order, a PayPal approval
-or a refund require the Sandbox payment run from
-[../../docs/PAYMENT_E2E.md](../../docs/PAYMENT_E2E.md); they are intentionally not faked with mock data.
+All ten files are 1440×900 (1.60:1, close to Devpost's preferred 3:2) and under 0.30 MB, well below
+the 5 MB per-image limit. See **Gallery scope** above for what is intentionally missing.
 
 ## Notes
 

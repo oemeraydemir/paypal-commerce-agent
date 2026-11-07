@@ -180,8 +180,10 @@ describe('PolicyService', () => {
   });
 
   test('BLOCK when an item lacks a required dietary attribute', () => {
+    // `coffee` is now labelled gluten-free (35f078f, fixes checkout 403), so exercise
+    // the blocking rule with `latte`, which has no gluten-free label.
     const result = evaluate(
-      createOrder(),
+      createOrder('latte', 450),
       createPolicy({ requiredDietaryAttributes: ['gluten-free'] })
     );
 
@@ -189,6 +191,8 @@ describe('PolicyService', () => {
     expect(result.violations.map((violation) => violation.type)).toContain(
       'DIETARY_REQUIREMENT_NOT_MET'
     );
+    // The labelled product is allowed under the very same policy.
+    expect(evaluate(createOrder('coffee', 300), createPolicy({ requiredDietaryAttributes: ['gluten-free'] })).decision).toBe('AUTO_ALLOW');
   });
 
   test('BLOCK when an item contains a blocked dietary attribute', () => {

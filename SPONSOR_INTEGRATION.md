@@ -1,9 +1,10 @@
 # Sponsor Integration — Postman / APIMatic
 
 This document describes **only what currently exists in this repository** and how
-it can be presented to a sponsor via Postman or APIMatic. It does **not** claim
-that any SDK has been generated, that a sponsor integration is live, or that any
-API is in production — none of those steps have been performed here.
+it can be presented to a sponsor via Postman or APIMatic. TypeScript and Python SDKs
+**have been generated locally** from `openapi.json` and are committed under `sdks/`,
+but nothing has been uploaded to the APIMatic cloud portal and no sponsor
+integration is claimed as "live" or "in production" beyond the running Sandbox demo.
 
 ## What is verified in this repo
 

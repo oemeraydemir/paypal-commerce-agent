@@ -25,6 +25,16 @@ refund queue. External AI agents can shop through an MCP server.
 - **Run it yourself:** [Quick start](#quick-start-local-2-minutes-no-keys-needed) needs only Node.js 20+ and no API keys. The [live demo](#at-a-glance--hackathon-submission) is the same code with PayPal Sandbox enabled.
 - **License:** MIT · **More detail:** [docs/DETAILS.md](./docs/DETAILS.md) · [Architecture](./ARCHITECTURE.md)
 
+## How AI and PayPal are used
+
+**AI.** A tool-calling barista turns a natural-language goal and budget into a *proposed* cart. It is routed through Google Gemini by default, with Groq, OpenRouter, Cerebras and OpenAI in an automatic fallback chain, and only receives catalog and cart tools. There is **no payment tool** anywhere in the system. The "Why these items?" note is built from the server response, not from the model. An MCP server at `/api/mcp` gives external agents the same read-only boundary. If no model is reachable, a clearly labelled rule-based planner runs instead of pretending to be AI.
+
+**PayPal (Sandbox only).** `POST /api/orders/create` creates a PayPal Orders API v2 order and returns an approval URL. A human logs in at PayPal and approves; the backend then captures with `PayPal-Request-Id` idempotency, verifies the `PAYMENT.CAPTURE.COMPLETED` webhook through PayPal's `verify-webhook-signature` API, and writes a signed Cart Mandate. Refunds use the Payments refund API, but only after an authenticated merchant clicks **Approve & refund**: the read-only Ops Copilot (PayPal Agent Toolkit) can propose, never execute. Live money cannot be configured.
+
+**The boundary in one line:** the AI proposes, the server fixes prices and enforces policy, the human authorises in PayPal, and the merchant approves any refund. No code path lets a model move money.
+
+**Sponsor tools.** AG Grid Community (merchant dashboard), Render (hosting), Postman (API collection), APIMatic (SDKs generated from `openapi.json`) and Channel3 (read-only "Take it home" retailer suggestions, outside the PayPal cart). See [Tools used](#tools-used) for the full inventory.
+
 ## Quick start (local, ~2 minutes, no keys needed)
 
 Requires **Node.js 20+**.
@@ -105,6 +115,9 @@ logic, not PayPal behaviour; only the sandbox flow above proves the real integra
 - **MCP server** (`/api/mcp`): external agents can search, prepare a cart and start checkout — never pay.
 - **Ops Copilot**: read-only PayPal Agent Toolkit assistant (off by default).
 - **Signed Cart Mandate** (custom audit record, not AP2): every order has an Ed25519-signed, tamper-evident record of what was proposed and who held payment authority (`/api/mandates/verify`, `/.well-known/mandate-keys.json`). Set `MANDATE_SIGNING_KEY` (`npm run mandate:keygen`) so it survives restarts — **required when `NODE_ENV=production`** (the server refuses to start without it); after a rotation list the old *public* key in `MANDATE_PREVIOUS_PUBLIC_KEYS` so older mandates stay verifiable. An invalid key stops the server from starting.
+- **Scoped AI allowances**: a shopper can create a named, session-bound spending envelope (for example a daily limit) that checkout re-checks on the server. An allowance that cannot be verified **fails closed** and payment stays disabled.
+- **Dispute evidence**: every order has a signed, self-contained evidence package (`/api/orders/:id/evidence`) that anyone can verify at `/api/evidence/verify`. Merchant dispute cases record lifecycle stages and evidence preparation/submission; the app never auto-submits and never invents a PayPal outcome.
+- **Channel3 "Take it home"**: read-only retailer suggestions on the cart, linked to the retailer's own page. They are not part of the PayPal cart, not covered by an allowance and cannot be purchased here. Disabled with an honest message when `CHANNEL3_API_KEY` is absent.
 - **Agent discovery** (custom `aicafe.*` formats, public, read-only; not an official PayPal Agent Ready / Store Sync / AP2 integration): `/.well-known/agent-commerce.json` is the single canonical manifest (guardrails: the agent cannot pay, capture or refund; policy limits; MCP tool names taken from the real registry). `/.well-known/agent.json` and `/llms.txt` are generated from it, and `/api/feed/products` is a schema.org-style product feed with server catalog prices. URLs come from `PUBLIC_BASE_URL`, never from request headers in production. Details: [docs/AGENTIC_FEATURES.md](docs/AGENTIC_FEATURES.md).
 - **Automation events (optional, not production-grade)**: signed `order.paid` / `order.policy_blocked` / `refund.completed` POSTs to a public https Zapier/n8n/Make URL. In-memory only, no outbox: events can be lost or repeated, so consumers must dedupe on the event id and check the timestamped HMAC. Private, loopback and link-local destinations are refused.
 - **AG Grid dashboard**, Flutter Android/iOS shopper app, OpenAPI spec and Postman collection.
@@ -122,6 +135,7 @@ The hackathon asks which AI/PayPal/sponsor tools were used and how. This is the 
 | **Model Context Protocol (MCP)** | `/api/mcp` lets external agents search the menu, prepare a cart, check policy and start checkout — but never pay. Tool names in the discovery manifest come from the real registry. |
 | **Render** | Hosts the single web service (API + static web demo) and a managed PostgreSQL database on the free tier. |
 | **APIMatic** | TypeScript and Python SDKs generated locally from `openapi.json` and committed under `sdks/`. Nothing is uploaded to the APIMatic cloud portal. |
+| **Channel3** | Cross-retailer search for the "Take it home" suggestions on the cart. Fixed category-derived queries, read-only outbound links only; never in the PayPal cart and never purchasable through this app. |
 | **Postman** | Request collection for the API, including the three mandate endpoints. |
 | **Flutter** | Native Android/iOS shopper app with the same server-owned prices, policy and approval flow. |
 | **Ed25519 / Node.js crypto** | Signs the Cart Mandate, the tamper-evident audit record of what was proposed and who held payment authority. |
@@ -174,6 +188,14 @@ Captured from the **live deployment**, not from design mocks. No credentials or 
 | Public agent manifest | Merchant dashboard (AG Grid) |
 |---|---|
 | ![Agent manifest](docs/screenshots/05-agent-manifest.png) | ![Dashboard](docs/screenshots/06-dashboard.png) |
+
+| Scoped allowances | AI-prepared cart |
+|---|---|
+| ![Scoped allowances](docs/screenshots/07-profile-allowances.png) | ![AI-prepared cart](docs/screenshots/08-barista-cart.png) |
+
+| Channel3 take-home ideas | Diet, budget and allergen preferences |
+|---|---|
+| ![Take it home](docs/screenshots/09-take-home-channel3.png) | ![Profile preferences](docs/screenshots/10-profile-diet-budget.png) |
 
 Full inventory, the reproduction steps and the shots that still require a Sandbox payment run are in
 [docs/screenshots/README.md](docs/screenshots/README.md).

@@ -28,13 +28,13 @@ list is the pass/fail gate.
 - [ ] No statement claims an item is **allergen-free** or **safe**.
 - [ ] Allergen preferences are sent as **guidance only**: they prefer/flag items but are never filtered hard server-side, never declared safe, and always labelled unverified. Dietary preferences (vegan/vegetarian/gluten-free) ARE used server-side in catalog discovery, and the UI never claims a match is a safety guarantee.
 - [ ] No live-money PayPal flow shown; sandbox only.
-- [ ] Test counts quoted match `docs/EVIDENCE.md` and keep the historical/re-measured distinction. Current backend run (2026-11-05): **141 suites / 1351 tests pass**; `flutter analyze` clean (widget tests blocked in sandbox; owner-machine run 163/163).
+- [ ] Test counts quoted match `docs/EVIDENCE.md` and keep the historical/re-measured distinction. Current backend run (re-measured **2026-11-07**): **141 suites / 1351 tests pass** after six stale expectations were updated for the intentional gluten-free labels and Groq model change; `flutter analyze` clean (widget tests blocked in sandbox; owner-machine run 163/163).
 - [ ] Links in `README.md`, `docs/JUDGING.md`, `docs/DETAILS.md` resolve (no broken demo-checklist/arch links).
 
 ## Open items before submitting (carried over from the jury self-review)
 
 - [ ] Warm the Render service shortly before judging starts (free tier needs about a minute) and say so in the testing instructions.
-- [x] Repository: About description, website and 18 topics set via the GitHub API; MIT license visible in the About box. Spam issue #1 closed. README now has a submission summary, a Tools-used table and six live-deployment screenshots.
+- [x] Repository: About description, website and 18 topics set via the GitHub API; MIT license visible in the About box. Spam issue #1 closed. README now has a submission summary, a Tools-used table, an explicit "How AI and PayPal are used" section and ten live-deployment screenshots.
 - [x] APIMatic: SDK generated from `openapi.json` (TypeScript + Python, committed under `sdks/`); portal config is in `apimatic/`. Generated locally via the APIMatic CLI; nothing has been uploaded to the APIMatic cloud portal.
 - [ ] Postman (optional): add requests for the three mandate endpoints, then update every quoted newman count together.
 - [x] Render: redeployed the current source (verified 2026-11-07: `/api/health` reports `buildCommit: 987af54`, `paypal: sandbox`, durable PostgreSQL; a fresh session + wellbeing preferences + `POST /api/orders/create` answers **201** with a real Sandbox approval URL). `MANDATE_SIGNING_KEY` and `PUBLIC_BASE_URL` are set in production.
@@ -43,7 +43,7 @@ list is the pass/fail gate.
 - [ ] If the video shows the Flutter app: `flutter test` was 163/163 on 2026-10-27; re-run it after any change and update `docs/PLATFORM_STATUS.md`.
 - [x] Final demo video produced (2026-11-07): `AICafe_Final.mp4`, 2:52.17, split-screen web + Flutter, English narration in nine beat-aligned blocks, no third-party music or footage. Shot order and exact narration: [DEMO_VIDEO_SCRIPT.md](./DEMO_VIDEO_SCRIPT.md).
 - [x] Devpost form copy written and fact-checked against the video and the live deployment: [docs/DEVPOST_DRAFT.md](./docs/DEVPOST_DRAFT.md). Includes the project name, description, tools list, built-with list, private testing instructions and the YouTube title/description/tags.
-- [ ] Upload the video to YouTube as Public or Unlisted, paste the link into the Devpost form, replace `[TEAM NAME]`, and submit. This can only be done by the account owner.
+- [ ] The video is uploaded at https://youtu.be/X2y7Iw5WNhE but is **Private** with a placeholder title. Set it to **Public** (official rule: *"publicly visible"* — Unlisted is not enough), add the title/description/chapters/tags/thumbnail and the AI-use disclosure from [docs/DEVPOST_DRAFT.md](./docs/DEVPOST_DRAFT.md), replace `[TEAM NAME]`, and submit. This can only be done by the account owner.
 
 ## Packaging note
 
