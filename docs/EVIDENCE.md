@@ -1,5 +1,10 @@
 # Evidence matrix (2026-10-20, fourth pass: local verification, counts re-measured)
 
+> **Current backend test count (single source of truth):** `npm test` → **141 suites / 1361 tests
+> pass, 0 failed** on the current source, re-measured **2026-11-07** after the Split Bill cancellation
+> fix. The other counts quoted below (83/928, 141/1351, 79/883, 60/636 …) are dated historical
+> baselines for the audit trail, **not** the current number. Use 141 / 1361 everywhere on the form.
+
 > **Backend counts re-measured on 2026-10-25 (audit pass, commands run in that session):** `tsc --noEmit` clean;
 > `npm test` **83 suites / 928 tests pass on 2026-10-27** (commit 364824d; six regression tests were added afterwards, so the next run should show 85 / 934);
 > **Backend re-measured on 2026-11-05 (final polish):** `npm test` **141 suites / 1351 tests pass, re-measured 2026-11-05** (includes the scope fail-closed, evidence, checkout-rescue, web-scopes and iOS design-token regressions); `flutter analyze` reports no issues.

@@ -121,7 +121,7 @@ Full payment path (Sandbox only, no real money):
 1. Use a PayPal Developer Sandbox PERSONAL (buyer) account. Credentials belong in this private field only and are never committed to the repository.
 2. Add items to the cart, choose Checkout with PayPal, log in at the PayPal Sandbox approval page, approve, return to the store and press "Confirm and pay now".
 3. After capture, open the receipt to scan the QR-coded signed Cart Mandate, then verify it at /api/mandates/verify.
-4. In /dashboard.html, let the Ops Copilot propose a refund and click "Approve & refund" as the merchant. The AI can only propose.
+4. Merchant refund step: the refund queue and the Ops Copilot need the merchant key, so the hosted demo is view-only for judges (the full approve/refund flow is shown in the demo video). To try it yourself, run `npm ci && npm run demo` in source/apps/backend: it prints a throw-away ops key, then open the dashboard on localhost.
 5. Split Bill recovery (no money moves): add items, click "Split the bill", choose 2 people, open the split room, press "Pay my share with PayPal" and return to /split WITHOUT confirming. The organiser still sees "Cancel split bill and discard the started payment"; confirm it. The server asks PayPal for proof that nothing was captured, then cancels the order, releases its reservation and closes the bill. If a share was actually paid, the room explains that only a café-approved refund can undo it instead of hiding the control.
 
 Run it locally (Node.js 20+, no keys needed for the basic demo):

@@ -189,6 +189,16 @@ is the Channel3 evidence for the sponsor prize.
 needs a fresh Sandbox payment and cannot be faked. It is optional, not blocking. No "orange theme"
 re-capture is needed.
 
+**Caption fix (live metrics, re-verified 2026-11-08):** the live dashboard reports **87 orders**
+(40 paid, 36 cancelled), **226 policy events** (214 allowed, **12 blocked**), net **€382.15**
+captured (€31.20 refunded), with mandate defaults max €20/order and €100/day. Replace any gallery
+caption with these real numbers — they are the current truth. In particular:
+- Image 12 (7-day pickup / agent activity) currently says "100 carts checked, 5 blocked, €xx captured" —
+  that is placeholder. Use: *"Agent activity summary: 87 orders (40 paid, 36 cancelled), 226 policy
+  events with 12 blocked, net €382.15 captured. Wellbeing Guard allergen decisions logged."*
+- Image 10 says "max €20/order, €100/day" — this is correct as-is (matches the live mandate defaults);
+  keep it.
+
 ### \* Demonstration video
 
 PASTE:
@@ -326,13 +336,13 @@ Quick path (no credentials):
 1. Open the live URL, browse the menu, open the AI barista tab and type "I want a lunch for around 12 euros". A cart with server prices and a policy verdict appears.
 2. Open Profile and save a dietary preference and an allergen note. The wellbeing panel labels them unverified.
 3. With items in the cart, press "Show take-home ideas" for read-only Channel3 retailer suggestions. They are labelled as not part of your café order and cannot be bought here.
-4. Open "For cafés" at /merchant.html for the merchant walkthrough, and /dashboard.html for the AG Grid order board and refund queue. If the dashboard asks for a key: [OPS KEY].
+4. Open "For cafés" at /merchant.html for the merchant walkthrough, and /dashboard.html for the AG Grid order board and refund queue. The dashboard runs in public demo view, so no key is needed to see orders, policy decisions and the read-only Ops Copilot; the refund queue and refund approval require the merchant key (see step 4 of the full path).
 
 Full payment path (PayPal Sandbox only, no real money):
 1. Use a PayPal Developer Sandbox PERSONAL (buyer) account: [email] / [password]. Credentials belong in this private field only and are never committed to the repository.
 2. Add items to the cart, choose "Review & pay with PayPal" (web) or "Checkout with PayPal" (Flutter), log in at the PayPal Sandbox approval page, approve, return to the store and press "Confirm and pay now".
 3. The receipt opens: items, the QR-coded Ed25519-signed Cart Mandate (Verify), and the dispute evidence package.
-4. In /dashboard.html, let the Ops Copilot propose a refund and click "Approve & refund" as the merchant. The AI can only propose.
+4. Merchant refund step: the refund queue and the Ops Copilot need the merchant key, so the hosted demo is view-only for judges (the full approve/refund flow is shown in the demo video). To try it yourself, run `npm ci && npm run demo` in source/apps/backend: it prints a throw-away ops key, then open the dashboard on localhost.
 5. Split Bill recovery (no money moves): add items, click "Split the bill", choose 2 people, open the split room, press "Pay my share with PayPal" and return to /split WITHOUT confirming. The organiser still sees "Cancel split bill and discard the started payment"; confirm it. The server asks PayPal for proof that nothing was captured, then cancels the order, releases its reservation and closes the bill. If a share was actually paid, the room explains that only a café-approved refund can undo it.
 
 Run locally with no keys: npm ci && npm run demo in source/apps/backend, then open http://localhost:3000. Plain "npm run dev" keeps the dashboard private; "npm run demo" opens it in public view.
